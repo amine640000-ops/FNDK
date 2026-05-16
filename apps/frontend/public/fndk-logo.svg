@@ -1,0 +1,11 @@
+<svg fill="none" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="fndk-logo-gradient" x1="256" x2="256" y1="23" y2="489" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#55C7F4"/>
+      <stop offset="0.5" stop-color="#33C5F3"/>
+      <stop offset="1" stop-color="#78D7F4"/>
+    </linearGradient>
+  </defs>
+  <path d="M52 142 256 23l85 51-202 117-3 231-85-47 1-233Z" fill="url(#fndk-logo-gradient)"/>
+  <path d="m220 235 205-116 39 24v229L260 489l-41-23 167-95V241L220 334v-99Z" fill="url(#fndk-logo-gradient)"/>
+</svg>

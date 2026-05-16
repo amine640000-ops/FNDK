@@ -1,0 +1,432 @@
+import { useEffect, useRef, useState } from "react";
+import axios from "axios";
+import toast from "react-hot-toast";
+import { RefreshCcw, X } from "lucide-react";
+import type { VipTier } from "@nevo/shared-types";
+import { formatCurrency, formatPercent } from "@nevo/shared-utils";
+import { useNavigate } from "react-router-dom";
+import { SectionCard } from "@/components/section-card";
+
+const adminApi = axios.create({
+  baseURL: import.meta.env.VITE_ADMIN_API_URL ?? "http://localhost:4006/api"
+});
+
+type ProfitSettings = {
+  autoProfitDistribution: boolean;
+};
+
+type TierEditorState = {
+  id: number;
+  name: string;
+  minDeposit: string;
+  dailyRoiMinPercent: string;
+  dailyRoiMaxPercent: string;
+  activationLimitPerDay: string;
+  activationDurationMinutes: string;
+};
+
+const toEditorState = (tier: VipTier): TierEditorState => ({
+  id: tier.id,
+  name: tier.name,
+  minDeposit: String(tier.minDeposit),
+  dailyRoiMinPercent: String(Number((tier.dailyRoiMin * 100).toFixed(2))),
+  dailyRoiMaxPercent: String(Number((tier.dailyRoiMax * 100).toFixed(2))),
+  activationLimitPerDay: String(tier.activationLimitPerDay),
+  activationDurationMinutes: String(tier.activationDurationMinutes)
+});
+
+export function AdminProfitPage() {
+  const navigate = useNavigate();
+  const [vipTiers, setVipTiers] = useState<VipTier[]>([]);
+  const [profitSettings, setProfitSettings] = useState<ProfitSettings>({ autoProfitDistribution: true });
+  const [loading, setLoading] = useState(true);
+  const [adminApiOffline, setAdminApiOffline] = useState(false);
+  const [savingTierId, setSavingTierId] = useState<number | null>(null);
+  const [savingDistribution, setSavingDistribution] = useState(false);
+  const [recalculating, setRecalculating] = useState(false);
+  const [editingTier, setEditingTier] = useState<TierEditorState | null>(null);
+  const loadedRef = useRef(false);
+
+  const handleAuthFailure = () => {
+    localStorage.removeItem("nevo.accessToken");
+    localStorage.removeItem("nevo.refreshToken");
+    localStorage.removeItem("nevo.user");
+    setAdminApiOffline(false);
+    toast.error("Your admin session expired. Sign in again.");
+    navigate("/login", { replace: true });
+  };
+
+  const loadPageState = async () => {
+    const token = localStorage.getItem("nevo.accessToken");
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const [tiersResponse, settingsResponse] = await Promise.all([
+        adminApi.get<VipTier[]>("/admin/vip-tiers", {
+          headers: { Authorization: `Bearer ${token}` }
+        }),
+        adminApi.get<ProfitSettings>("/admin/profit-settings", {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+      ]);
+
+      setAdminApiOffline(false);
+      setVipTiers(tiersResponse.data);
+      setProfitSettings(settingsResponse.data);
+    } catch (error) {
+      if (axios.isAxiosError(error) && (error.response?.status === 401 || error.response?.status === 403)) {
+        handleAuthFailure();
+        return;
+      }
+
+      setAdminApiOffline(true);
+      toast.error("VIP settings service is unavailable right now.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (loadedRef.current) {
+      return;
+    }
+
+    loadedRef.current = true;
+    void loadPageState();
+  }, []);
+
+  const saveTier = async () => {
+    if (!editingTier) {
+      return;
+    }
+
+    const token = localStorage.getItem("nevo.accessToken");
+    if (!token) {
+      toast.error("Sign in as admin first.");
+      return;
+    }
+
+    setSavingTierId(editingTier.id);
+    try {
+      const response = await adminApi.patch<VipTier>(
+        `/admin/vip-tiers/${editingTier.id}`,
+        {
+          name: editingTier.name.trim(),
+          minDeposit: Number(editingTier.minDeposit),
+          dailyRoiMin: Number(editingTier.dailyRoiMinPercent) / 100,
+          dailyRoiMax: Number(editingTier.dailyRoiMaxPercent) / 100,
+          activationLimitPerDay: Number(editingTier.activationLimitPerDay),
+          activationDurationMinutes: Number(editingTier.activationDurationMinutes)
+        },
+        {
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      );
+
+      setVipTiers((current) =>
+        current
+          .map((tier) => (tier.id === response.data.id ? response.data : tier))
+          .sort((left, right) => left.minDeposit - right.minDeposit)
+      );
+      setEditingTier(null);
+      toast.success(`VIP ${response.data.id} saved.`);
+    } catch (error) {
+      if (axios.isAxiosError(error) && (error.response?.status === 401 || error.response?.status === 403)) {
+        handleAuthFailure();
+        return;
+      }
+
+      const responseMessage = axios.isAxiosError(error) ? error.response?.data?.message : null;
+      if (typeof responseMessage === "string") {
+        toast.error(responseMessage);
+      } else {
+        toast.error("Could not save VIP tier.");
+      }
+    } finally {
+      setSavingTierId(null);
+    }
+  };
+
+  const toggleAutoDistribution = async () => {
+    const token = localStorage.getItem("nevo.accessToken");
+    if (!token) {
+      toast.error("Sign in as admin first.");
+      return;
+    }
+
+    setSavingDistribution(true);
+    try {
+      const response = await adminApi.patch<ProfitSettings>(
+        "/admin/profit-settings",
+        {
+          autoProfitDistribution: !profitSettings.autoProfitDistribution
+        },
+        {
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      );
+
+      setProfitSettings(response.data);
+      toast.success(`Auto distribution ${response.data.autoProfitDistribution ? "enabled" : "disabled"}.`);
+    } catch (error) {
+      if (axios.isAxiosError(error) && (error.response?.status === 401 || error.response?.status === 403)) {
+        handleAuthFailure();
+        return;
+      }
+
+      toast.error("Could not update auto distribution.");
+    } finally {
+      setSavingDistribution(false);
+    }
+  };
+
+  const triggerAllUsers = async () => {
+    const token = localStorage.getItem("nevo.accessToken");
+    if (!token) {
+      toast.error("Sign in as admin first.");
+      return;
+    }
+
+    setRecalculating(true);
+    try {
+      const response = await adminApi.post<{ processedUsers: number; updatedUsers: number }>(
+        "/admin/profit/recalculate-users",
+        {},
+        {
+          headers: { Authorization: `Bearer ${token}` }
+        }
+      );
+
+      toast.success(`Processed ${response.data.processedUsers} users. Updated ${response.data.updatedUsers}.`);
+    } catch (error) {
+      if (axios.isAxiosError(error) && (error.response?.status === 401 || error.response?.status === 403)) {
+        handleAuthFailure();
+        return;
+      }
+
+      toast.error("Could not recalculate VIP assignments.");
+    } finally {
+      setRecalculating(false);
+    }
+  };
+
+  return (
+    <>
+      {editingTier ? (
+        <div className="fixed inset-0 z-40 bg-[#020223]/75 backdrop-blur-sm">
+          <button
+            aria-label="Close tier editor"
+            className="absolute inset-0"
+            onClick={() => setEditingTier(null)}
+            type="button"
+          />
+          <div className="absolute inset-x-4 top-[12%] mx-auto max-w-2xl rounded-[30px] border border-cyan-300/15 bg-[linear-gradient(180deg,rgba(14,19,142,0.98)_0%,rgba(9,11,110,0.99)_45%,rgba(6,8,82,1)_100%)] p-6 shadow-[0_28px_60px_rgba(0,0,0,0.4)]">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-[1.5rem] font-extrabold text-white">Edit VIP {editingTier.id}</div>
+                <div className="mt-1 text-sm text-slate-300">Update tier thresholds and run settings.</div>
+              </div>
+              <button
+                className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white"
+                onClick={() => setEditingTier(null)}
+                type="button"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              <label className="grid gap-2">
+                <span className="text-sm text-slate-300">Tier name</span>
+                <input
+                  className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white"
+                  value={editingTier.name}
+                  onChange={(event) => setEditingTier((current) => (current ? { ...current, name: event.target.value } : current))}
+                />
+              </label>
+              <label className="grid gap-2">
+                <span className="text-sm text-slate-300">Minimum deposit</span>
+                <input
+                  className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white"
+                  inputMode="decimal"
+                  min="0"
+                  step="0.01"
+                  type="number"
+                  value={editingTier.minDeposit}
+                  onChange={(event) =>
+                    setEditingTier((current) => (current ? { ...current, minDeposit: event.target.value } : current))
+                  }
+                />
+              </label>
+              <label className="grid gap-2">
+                <span className="text-sm text-slate-300">Min daily ROI %</span>
+                <input
+                  className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white"
+                  inputMode="decimal"
+                  min="0"
+                  step="0.01"
+                  type="number"
+                  value={editingTier.dailyRoiMinPercent}
+                  onChange={(event) =>
+                    setEditingTier((current) => (current ? { ...current, dailyRoiMinPercent: event.target.value } : current))
+                  }
+                />
+              </label>
+              <label className="grid gap-2">
+                <span className="text-sm text-slate-300">Max daily ROI %</span>
+                <input
+                  className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white"
+                  inputMode="decimal"
+                  min="0"
+                  step="0.01"
+                  type="number"
+                  value={editingTier.dailyRoiMaxPercent}
+                  onChange={(event) =>
+                    setEditingTier((current) => (current ? { ...current, dailyRoiMaxPercent: event.target.value } : current))
+                  }
+                />
+              </label>
+              <label className="grid gap-2">
+                <span className="text-sm text-slate-300">Daily reservations</span>
+                <input
+                  className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white"
+                  inputMode="numeric"
+                  min="1"
+                  step="1"
+                  type="number"
+                  value={editingTier.activationLimitPerDay}
+                  onChange={(event) =>
+                    setEditingTier((current) =>
+                      current ? { ...current, activationLimitPerDay: event.target.value } : current
+                    )
+                  }
+                />
+              </label>
+              <label className="grid gap-2 md:col-span-2">
+                <span className="text-sm text-slate-300">Reservation duration (minutes)</span>
+                <input
+                  className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white"
+                  inputMode="numeric"
+                  min="1"
+                  step="1"
+                  type="number"
+                  value={editingTier.activationDurationMinutes}
+                  onChange={(event) =>
+                    setEditingTier((current) =>
+                      current ? { ...current, activationDurationMinutes: event.target.value } : current
+                    )
+                  }
+                />
+              </label>
+            </div>
+
+            <div className="mt-6 flex flex-wrap gap-3">
+              <button
+                className="rounded-2xl bg-cyan-400 px-5 py-3 font-semibold text-slate-950 disabled:opacity-70"
+                disabled={savingTierId === editingTier.id}
+                onClick={() => void saveTier()}
+                type="button"
+              >
+                {savingTierId === editingTier.id ? "Saving..." : "Save tier"}
+              </button>
+              <button
+                className="rounded-2xl border border-white/10 px-5 py-3 font-semibold text-white"
+                onClick={() => setEditingTier(null)}
+                type="button"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="grid gap-6">
+        <SectionCard
+          action={
+            <button
+              className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-200"
+              disabled={loading}
+              onClick={() => void loadPageState()}
+              type="button"
+            >
+              <RefreshCcw className="h-4 w-4" />
+              Refresh
+            </button>
+          }
+          title="VIP & Profit Settings"
+          subtitle="Tier thresholds and automated distribution controls."
+        >
+          {adminApiOffline ? (
+            <div className="mb-4 rounded-3xl border border-amber-300/20 bg-amber-300/10 p-4 text-sm text-amber-100">
+              Live VIP settings are unavailable because `admin-service` is not responding on `localhost:4006`.
+            </div>
+          ) : null}
+
+          <div className="space-y-3">
+            {vipTiers.length ? (
+              vipTiers.map((tier) => (
+                <div key={tier.id} className="grid gap-3 rounded-3xl border border-white/10 bg-white/5 p-4 md:grid-cols-4">
+                  <div>
+                    <div className="text-sm text-slate-400">Tier</div>
+                    <div className="font-semibold text-white">{tier.name}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-slate-400">Min deposit</div>
+                    <div className="font-semibold text-white">{formatCurrency(tier.minDeposit)}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-slate-400">Daily ROI</div>
+                    <div className="font-semibold text-emerald-300">
+                      {formatPercent(tier.dailyRoiMin)} - {formatPercent(tier.dailyRoiMax)}
+                    </div>
+                    <div className="mt-1 text-xs text-slate-400">
+                      {tier.activationLimitPerDay} runs/day · {tier.activationDurationMinutes} min
+                    </div>
+                  </div>
+                  <div className="flex items-end justify-start md:justify-end">
+                    <button
+                      className="rounded-2xl border border-white/10 px-4 py-2 text-white"
+                      onClick={() => setEditingTier(toEditorState(tier))}
+                      type="button"
+                    >
+                      Edit Tier
+                    </button>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-3xl border border-dashed border-white/10 bg-white/5 p-4 text-sm text-slate-400">
+                {loading ? "Loading VIP tiers..." : "No VIP tiers available."}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-6 flex flex-wrap gap-3">
+            <button
+              className="rounded-2xl bg-cyan-400 px-4 py-3 font-semibold text-slate-950 disabled:opacity-70"
+              disabled={recalculating || loading}
+              onClick={() => void triggerAllUsers()}
+              type="button"
+            >
+              {recalculating ? "Processing..." : "Trigger All Users"}
+            </button>
+            <button
+              className="rounded-2xl border border-white/10 px-4 py-3 text-white disabled:opacity-70"
+              disabled={savingDistribution || loading}
+              onClick={() => void toggleAutoDistribution()}
+              type="button"
+            >
+              {savingDistribution
+                ? "Saving..."
+                : `${profitSettings.autoProfitDistribution ? "Disable" : "Enable"} Auto Distribution`}
+            </button>
+          </div>
+        </SectionCard>
+      </div>
+    </>
+  );
+}

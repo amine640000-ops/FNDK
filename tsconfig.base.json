@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "strict": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": ".",
+    "paths": {
+      "@nevo/shared-infra": [
+        "packages/shared-infra/src/index.ts"
+      ],
+      "@nevo/shared-types": [
+        "packages/shared-types/src/index.ts"
+      ],
+      "@nevo/shared-utils": [
+        "packages/shared-utils/src/index.ts"
+      ]
+    }
+  }
+}

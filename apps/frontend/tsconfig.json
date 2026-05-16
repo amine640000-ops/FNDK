@@ -1,0 +1,34 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "baseUrl": ".",
+    "paths": {
+      "@nevo/shared-infra": [
+        "../../packages/shared-infra/src/index.ts"
+      ],
+      "@nevo/shared-types": [
+        "../../packages/shared-types/src/index.ts"
+      ],
+      "@nevo/shared-utils": [
+        "../../packages/shared-utils/src/index.ts"
+      ],
+      "@/*": [
+        "src/*"
+      ]
+    },
+    "types": [
+      "vite/client"
+    ],
+    "allowJs": false,
+    "noEmit": true
+  },
+  "include": [
+    "src/**/*",
+    "vite.config.ts",
+    "tailwind.config.ts"
+  ]
+}
