@@ -83,3 +83,4 @@ This repo is scaffolded with representative controllers, services, routes, and d
 - `task-service` handles manual AI activations with tier-based daily click limits and timed completion, and it can still publish `profit.distributed`
 - `notification-service` persists notifications and consumes platform events
 - `admin-service` reads platform metrics from SQL and publishes approval events for deposits and withdrawals
+# fndk
