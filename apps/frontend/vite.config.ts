@@ -4,6 +4,9 @@ import { resolve } from "node:path";
 
 export default defineConfig({
   plugins: [react()],
+  preview: {
+    allowedHosts: ["frontend-production-d39c.up.railway.app", "fndk.site", "www.fndk.site"]
+  },
   resolve: {
     alias: {
       "@": resolve(__dirname, "src"),
