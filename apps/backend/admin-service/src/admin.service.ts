@@ -4,14 +4,16 @@ import type {
   AdCarouselSlide,
   AdminOverviewMetrics,
   AdminPlatformSettings,
+  AssetRouteSetting,
   AssetType,
   TransactionType,
   VipTier
 } from "@nevo/shared-types";
+import { DEFAULT_ASSET_LABELS, DEFAULT_ASSET_ROUTE_SETTINGS, SUPPORTED_ASSETS } from "@nevo/shared-utils";
 import type { PoolClient } from "pg";
 import type { UpdateAdminSettingsDto, UpdateVipTierDto } from "./admin.dto";
 
-type AdminSettingValue = string | number | boolean | null | AdCarouselSlide[];
+type AdminSettingValue = string | number | boolean | null | AdCarouselSlide[] | AssetRouteSetting[];
 
 const maxAdCarouselSlides = 8;
 
@@ -213,11 +215,13 @@ export class AdminService {
     const settings = new Map(result.rows.map((row) => [row.key, row.value]));
 
     const adCarouselSlides = this.normalizeAdCarouselSlides(settings.get("platform.adCarouselSlides"));
+    const assetSettings = this.normalizeAssetSettings(settings);
+    const assetSettingByAsset = new Map(assetSettings.map((assetSetting) => [assetSetting.asset, assetSetting]));
 
     return {
       platformName: String(settings.get("platform.name") ?? "FNDK"),
       maintenanceMode: Boolean(settings.get("platform.maintenanceMode") ?? false),
-      enableBtc: Boolean(settings.get("asset.BTC.enabled") ?? true),
+      enableBtc: assetSettingByAsset.get("BTC")?.enabled ?? true,
       enableForex: Boolean(settings.get("asset.Forex.enabled") ?? true),
       referralBonusPercent: Number(settings.get("platform.referralBonusPercent") ?? 5),
       feePercent: Number(settings.get("platform.feePercent") ?? 20),
@@ -235,14 +239,15 @@ export class AdminService {
           ? String(settings.get("platform.giveawayEndsAt"))
           : null,
       adCarouselSlides,
-      depositAddressBtc: String(settings.get("wallet.depositAddress.BTC") ?? ""),
-      depositAddressEth: String(settings.get("wallet.depositAddress.ETH") ?? ""),
-      depositAddressUsdtTrc20: String(settings.get("wallet.depositAddress.USDT_TRC20") ?? ""),
-      depositAddressUsdtErc20: String(settings.get("wallet.depositAddress.USDT_ERC20") ?? ""),
-      depositAddressUsd: String(settings.get("wallet.depositAddress.USD") ?? ""),
-      depositAddressEur: String(settings.get("wallet.depositAddress.EUR") ?? ""),
-      depositAddressGbp: String(settings.get("wallet.depositAddress.GBP") ?? ""),
-      depositAddressStocks: String(settings.get("wallet.depositAddress.STOCKS") ?? "")
+      assetSettings,
+      depositAddressBtc: assetSettingByAsset.get("BTC")?.address ?? "",
+      depositAddressEth: assetSettingByAsset.get("ETH")?.address ?? "",
+      depositAddressUsdtTrc20: assetSettingByAsset.get("USDT_TRC20")?.address ?? "",
+      depositAddressUsdtErc20: assetSettingByAsset.get("USDT_ERC20")?.address ?? "",
+      depositAddressUsd: assetSettingByAsset.get("USD")?.address ?? "",
+      depositAddressEur: assetSettingByAsset.get("EUR")?.address ?? "",
+      depositAddressGbp: assetSettingByAsset.get("GBP")?.address ?? "",
+      depositAddressStocks: assetSettingByAsset.get("STOCKS")?.address ?? ""
     };
   }
 
@@ -792,7 +797,6 @@ export class AdminService {
   private readonly settingKeys = [
     "platform.name",
     "platform.maintenanceMode",
-    "asset.BTC.enabled",
     "asset.Forex.enabled",
     "platform.referralBonusPercent",
     "platform.feePercent",
@@ -806,14 +810,11 @@ export class AdminService {
     "platform.giveawayWinners",
     "platform.giveawayEndsAt",
     "platform.adCarouselSlides",
-    "wallet.depositAddress.BTC",
-    "wallet.depositAddress.ETH",
-    "wallet.depositAddress.USDT_TRC20",
-    "wallet.depositAddress.USDT_ERC20",
-    "wallet.depositAddress.USD",
-    "wallet.depositAddress.EUR",
-    "wallet.depositAddress.GBP",
-    "wallet.depositAddress.STOCKS"
+    ...SUPPORTED_ASSETS.flatMap((asset) => [
+      `asset.${asset}.enabled`,
+      `asset.${asset}.label`,
+      `wallet.depositAddress.${asset}`
+    ])
   ];
 
   private mapVipTier(tier: VipTierRow): VipTier {
@@ -921,35 +922,44 @@ export class AdminService {
       entries.push(["platform.adCarouselSlides", this.normalizeAdCarouselSlides(input.adCarouselSlides)]);
     }
 
-    if (input.depositAddressBtc !== undefined) {
+    if (input.assetSettings !== undefined) {
+      const normalizedAssetSettings = this.normalizeAssetRouteSettings(input.assetSettings);
+      for (const assetSetting of normalizedAssetSettings) {
+        entries.push([`asset.${assetSetting.asset}.enabled`, assetSetting.enabled]);
+        entries.push([`asset.${assetSetting.asset}.label`, assetSetting.label]);
+        entries.push([`wallet.depositAddress.${assetSetting.asset}`, assetSetting.address]);
+      }
+    }
+
+    if (input.assetSettings === undefined && input.depositAddressBtc !== undefined) {
       entries.push(["wallet.depositAddress.BTC", input.depositAddressBtc.trim()]);
     }
 
-    if (input.depositAddressEth !== undefined) {
+    if (input.assetSettings === undefined && input.depositAddressEth !== undefined) {
       entries.push(["wallet.depositAddress.ETH", input.depositAddressEth.trim()]);
     }
 
-    if (input.depositAddressUsdtTrc20 !== undefined) {
+    if (input.assetSettings === undefined && input.depositAddressUsdtTrc20 !== undefined) {
       entries.push(["wallet.depositAddress.USDT_TRC20", input.depositAddressUsdtTrc20.trim()]);
     }
 
-    if (input.depositAddressUsdtErc20 !== undefined) {
+    if (input.assetSettings === undefined && input.depositAddressUsdtErc20 !== undefined) {
       entries.push(["wallet.depositAddress.USDT_ERC20", input.depositAddressUsdtErc20.trim()]);
     }
 
-    if (input.depositAddressUsd !== undefined) {
+    if (input.assetSettings === undefined && input.depositAddressUsd !== undefined) {
       entries.push(["wallet.depositAddress.USD", input.depositAddressUsd.trim()]);
     }
 
-    if (input.depositAddressEur !== undefined) {
+    if (input.assetSettings === undefined && input.depositAddressEur !== undefined) {
       entries.push(["wallet.depositAddress.EUR", input.depositAddressEur.trim()]);
     }
 
-    if (input.depositAddressGbp !== undefined) {
+    if (input.assetSettings === undefined && input.depositAddressGbp !== undefined) {
       entries.push(["wallet.depositAddress.GBP", input.depositAddressGbp.trim()]);
     }
 
-    if (input.depositAddressStocks !== undefined) {
+    if (input.assetSettings === undefined && input.depositAddressStocks !== undefined) {
       entries.push(["wallet.depositAddress.STOCKS", input.depositAddressStocks.trim()]);
     }
 
@@ -989,6 +999,44 @@ export class AdminService {
     return slides.length ? slides : defaultAdCarouselSlides;
   }
 
+  private normalizeAssetSettings(settings: Map<string, unknown>): AssetRouteSetting[] {
+    return SUPPORTED_ASSETS.map((asset) => {
+      const enabledValue = settings.get(`asset.${asset}.enabled`);
+      const fallback = DEFAULT_ASSET_ROUTE_SETTINGS.find((assetSetting) => assetSetting.asset === asset)!;
+
+      return {
+        asset,
+        enabled: typeof enabledValue === "boolean" ? enabledValue : fallback.enabled,
+        label: this.cleanSettingText(settings.get(`asset.${asset}.label`), DEFAULT_ASSET_LABELS[asset], 80),
+        address: this.cleanOptionalSettingText(settings.get(`wallet.depositAddress.${asset}`), 500)
+      };
+    });
+  }
+
+  private normalizeAssetRouteSettings(value: unknown): AssetRouteSetting[] {
+    if (!Array.isArray(value)) {
+      return DEFAULT_ASSET_ROUTE_SETTINGS;
+    }
+
+    return SUPPORTED_ASSETS.map((asset) => {
+      const fallback = DEFAULT_ASSET_ROUTE_SETTINGS.find((assetSetting) => assetSetting.asset === asset)!;
+      const submitted = value.find((entry): entry is Partial<AssetRouteSetting> => {
+        if (!entry || typeof entry !== "object") {
+          return false;
+        }
+
+        return (entry as Partial<AssetRouteSetting>).asset === asset;
+      });
+
+      return {
+        asset,
+        enabled: typeof submitted?.enabled === "boolean" ? submitted.enabled : fallback.enabled,
+        label: this.cleanSettingText(submitted?.label, fallback.label, 80),
+        address: this.cleanOptionalSettingText(submitted?.address, 500)
+      };
+    });
+  }
+
   private cleanSettingText(value: unknown, fallback: string, maxLength: number) {
     if (typeof value !== "string") {
       return fallback;
@@ -996,5 +1044,13 @@ export class AdminService {
 
     const trimmed = value.trim();
     return (trimmed || fallback).slice(0, maxLength);
+  }
+
+  private cleanOptionalSettingText(value: unknown, maxLength: number) {
+    if (typeof value !== "string") {
+      return "";
+    }
+
+    return value.trim().slice(0, maxLength);
   }
 }

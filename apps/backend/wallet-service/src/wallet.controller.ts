@@ -41,6 +41,11 @@ export class WalletController {
     return this.walletService.getDepositAddresses();
   }
 
+  @Get("deposit-assets")
+  depositAssets() {
+    return this.walletService.getDepositAssets();
+  }
+
   @Post("deposits")
   @UseInterceptors(FileInterceptor("proof", createDiskStorageOptions("deposit-proofs")))
   createDeposit(

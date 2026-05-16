@@ -10,6 +10,7 @@ import {
   withTransaction
 } from "@nevo/shared-infra";
 import type {
+  AssetRouteSetting,
   AssetType,
   DepositAddressMap,
   DashboardTransaction,
@@ -17,7 +18,7 @@ import type {
   RabbitEventMap,
   WalletSummary
 } from "@nevo/shared-types";
-import { SUPPORTED_ASSETS } from "@nevo/shared-utils";
+import { DEFAULT_ASSET_LABELS, SUPPORTED_ASSETS } from "@nevo/shared-utils";
 import type { PoolClient } from "pg";
 import type { CreateDepositDto, CreateWithdrawalDto } from "./wallet.dto";
 import { toPublicUploadUrl } from "@nevo/shared-infra";
@@ -45,7 +46,7 @@ type WithdrawalRulesRow = {
 
 type AdminSettingRow = {
   key: string;
-  value: string | null;
+  value: unknown;
 };
 
 const WITHDRAWAL_FEE_RATE = 0.05;
@@ -149,32 +150,35 @@ export class WalletService implements OnModuleInit {
   }
 
   async getDepositAddresses(): Promise<DepositAddressMap> {
-    const result = await dbQuery<AdminSettingRow>(
-      `
-        SELECT key, value #>> '{}' AS value
-        FROM admin_settings
-        WHERE key = ANY($1)
-      `,
-      [this.depositAddressKeys]
-    );
-
-    const configured = new Map(result.rows.map((row) => [row.key, row.value]));
+    const assetSettings = await this.getAssetSettings();
+    const settingsByAsset = new Map(assetSettings.map((assetSetting) => [assetSetting.asset, assetSetting]));
 
     return {
-      BTC: this.resolveWalletAddress("BTC", configured),
-      ETH: this.resolveWalletAddress("ETH", configured),
-      USDT_TRC20: this.resolveWalletAddress("USDT_TRC20", configured),
-      USDT_ERC20: this.resolveWalletAddress("USDT_ERC20", configured),
-      USD: this.resolveWalletAddress("USD", configured),
-      EUR: this.resolveWalletAddress("EUR", configured),
-      GBP: this.resolveWalletAddress("GBP", configured),
-      STOCKS: this.resolveWalletAddress("STOCKS", configured)
+      BTC: settingsByAsset.get("BTC")?.address ?? this.resolveWalletAddress("BTC"),
+      ETH: settingsByAsset.get("ETH")?.address ?? this.resolveWalletAddress("ETH"),
+      USDT_TRC20: settingsByAsset.get("USDT_TRC20")?.address ?? this.resolveWalletAddress("USDT_TRC20"),
+      USDT_ERC20: settingsByAsset.get("USDT_ERC20")?.address ?? this.resolveWalletAddress("USDT_ERC20"),
+      USD: settingsByAsset.get("USD")?.address ?? this.resolveWalletAddress("USD"),
+      EUR: settingsByAsset.get("EUR")?.address ?? this.resolveWalletAddress("EUR"),
+      GBP: settingsByAsset.get("GBP")?.address ?? this.resolveWalletAddress("GBP"),
+      STOCKS: settingsByAsset.get("STOCKS")?.address ?? this.resolveWalletAddress("STOCKS")
     };
+  }
+
+  async getDepositAssets(): Promise<AssetRouteSetting[]> {
+    const assetSettings = await this.getAssetSettings();
+    return assetSettings.filter((assetSetting) => assetSetting.enabled);
   }
 
   async createDeposit(userId: string, dto: CreateDepositDto, proof?: { filename: string }) {
     await this.ensureWallets(userId);
-    const addresses = await this.getDepositAddresses();
+    const assetSettings = await this.getDepositAssets();
+    const assetSetting = assetSettings.find((setting) => setting.asset === dto.asset);
+
+    if (!assetSetting) {
+      throw new BadRequestException("This deposit asset is disabled by admin");
+    }
+
     const result = await getOne<{ id: string }>(
       `
         INSERT INTO transactions (id, user_id, type, asset, amount, status, proof_url)
@@ -189,9 +193,29 @@ export class WalletService implements OnModuleInit {
       type: "deposit",
       ...dto,
       status: "pending",
-      walletAddress: addresses[dto.asset],
+      walletAddress: assetSetting.address,
       message: "Deposit submitted for admin review."
     };
+  }
+
+  private async getAssetSettings(): Promise<AssetRouteSetting[]> {
+    const result = await dbQuery<AdminSettingRow>(
+      `
+        SELECT key, value
+        FROM admin_settings
+        WHERE key = ANY($1)
+      `,
+      [this.assetSettingKeys]
+    );
+
+    const configured = new Map(result.rows.map((row) => [row.key, row.value]));
+
+    return SUPPORTED_ASSETS.map((asset) => ({
+      asset,
+      label: this.resolveAssetLabel(asset, configured),
+      address: this.resolveWalletAddress(asset, configured),
+      enabled: this.resolveAssetEnabled(asset, configured)
+    }));
   }
 
   async createWithdrawal(userId: string, dto: CreateWithdrawalDto) {
@@ -446,18 +470,13 @@ export class WalletService implements OnModuleInit {
     }
   }
 
-  private readonly depositAddressKeys = [
-    "wallet.depositAddress.BTC",
-    "wallet.depositAddress.ETH",
-    "wallet.depositAddress.USDT_TRC20",
-    "wallet.depositAddress.USDT_ERC20",
-    "wallet.depositAddress.USD",
-    "wallet.depositAddress.EUR",
-    "wallet.depositAddress.GBP",
-    "wallet.depositAddress.STOCKS"
-  ];
+  private readonly assetSettingKeys = SUPPORTED_ASSETS.flatMap((asset) => [
+    `asset.${asset}.enabled`,
+    `asset.${asset}.label`,
+    `wallet.depositAddress.${asset}`
+  ]);
 
-  private resolveWalletAddress(asset: AssetType, configured?: Map<string, string | null>) {
+  private resolveWalletAddress(asset: AssetType, configured?: Map<string, unknown>) {
     const defaults: Record<AssetType, string> = {
       BTC: "configure-btc-wallet-before-live",
       ETH: "configure-eth-wallet-before-live",
@@ -469,7 +488,31 @@ export class WalletService implements OnModuleInit {
       STOCKS: "usd-ledger-internal"
     };
 
-    const configuredValue = configured?.get(`wallet.depositAddress.${asset}`)?.trim();
-    return configuredValue || defaults[asset];
+    const configuredValue = configured?.get(`wallet.depositAddress.${asset}`);
+    if (typeof configuredValue !== "string") {
+      return defaults[asset];
+    }
+
+    const trimmedValue = configuredValue.trim();
+    return trimmedValue || defaults[asset];
+  }
+
+  private resolveAssetLabel(asset: AssetType, configured: Map<string, unknown>) {
+    const configuredValue = configured.get(`asset.${asset}.label`);
+    if (typeof configuredValue !== "string") {
+      return DEFAULT_ASSET_LABELS[asset];
+    }
+
+    const trimmedValue = configuredValue.trim();
+    return trimmedValue || DEFAULT_ASSET_LABELS[asset];
+  }
+
+  private resolveAssetEnabled(asset: AssetType, configured: Map<string, unknown>) {
+    const configuredValue = configured.get(`asset.${asset}.enabled`);
+    if (typeof configuredValue !== "boolean") {
+      return true;
+    }
+
+    return configuredValue;
   }
 }

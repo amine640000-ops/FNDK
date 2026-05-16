@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import { ImagePlus, Plus, Trash2 } from "lucide-react";
-import type { AdCarouselSlide, AdminPlatformSettings } from "@nevo/shared-types";
+import type { AdCarouselSlide, AdminPlatformSettings, AssetRouteSetting } from "@nevo/shared-types";
+import { DEFAULT_ASSET_ROUTE_SETTINGS } from "@nevo/shared-utils";
 import { useNavigate } from "react-router-dom";
 import { SectionCard } from "@/components/section-card";
 
@@ -62,6 +63,7 @@ const defaultSettings: AdminPlatformSettings = {
   giveawayWinners: 3,
   giveawayEndsAt: null,
   adCarouselSlides: defaultAdCarouselSlides,
+  assetSettings: DEFAULT_ASSET_ROUTE_SETTINGS,
   depositAddressBtc: "",
   depositAddressEth: "",
   depositAddressUsdtTrc20: "",
@@ -132,7 +134,10 @@ export function AdminSettingsPage() {
           ...response.data,
           adCarouselSlides: response.data.adCarouselSlides?.length
             ? response.data.adCarouselSlides
-            : defaultAdCarouselSlides
+            : defaultAdCarouselSlides,
+          assetSettings: response.data.assetSettings?.length
+            ? response.data.assetSettings
+            : DEFAULT_ASSET_ROUTE_SETTINGS
         });
       })
       .catch((error) => {
@@ -165,6 +170,19 @@ export function AdminSettingsPage() {
       ...current,
       adCarouselSlides: current.adCarouselSlides.map((slide) =>
         slide.id === slideId ? { ...slide, [key]: value } : slide
+      )
+    }));
+  };
+
+  const updateAssetSetting = <Key extends keyof AssetRouteSetting,>(
+    asset: AssetRouteSetting["asset"],
+    key: Key,
+    value: AssetRouteSetting[Key]
+  ) => {
+    setSettings((current) => ({
+      ...current,
+      assetSettings: current.assetSettings.map((assetSetting) =>
+        assetSetting.asset === asset ? { ...assetSetting, [key]: value } : assetSetting
       )
     }));
   };
@@ -260,26 +278,9 @@ export function AdminSettingsPage() {
               type="checkbox"
             />
           </label>
-          <label className={toggleRowClass}>
-            <span className="min-w-0">Enable BTC</span>
-            <input
-              className="h-4 w-4 shrink-0"
-              checked={settings.enableBtc}
-              disabled={loading}
-              onChange={(event) => updateField("enableBtc", event.target.checked)}
-              type="checkbox"
-            />
-          </label>
-          <label className={toggleRowClass}>
-            <span className="min-w-0">Enable Forex</span>
-            <input
-              className="h-4 w-4 shrink-0"
-              checked={settings.enableForex}
-              disabled={loading}
-              onChange={(event) => updateField("enableForex", event.target.checked)}
-              type="checkbox"
-            />
-          </label>
+          <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-100">
+            Asset availability, display labels, and destination addresses are controlled in Asset Routes below.
+          </div>
         </div>
       </SectionCard>
 
@@ -545,95 +546,63 @@ export function AdminSettingsPage() {
         </div>
       </SectionCard>
 
-      <SectionCard title="Deposit Addresses" subtitle="These wallet addresses are shown directly on the app deposit page.">
-        <div className="grid gap-3">
-          <label className="grid gap-2">
-            <span className="text-sm text-slate-300">BTC</span>
-            <input
-              className={fieldClass}
-              disabled={loading}
-              placeholder="BTC wallet address"
-              value={settings.depositAddressBtc}
-              onChange={(event) => updateField("depositAddressBtc", event.target.value)}
-            />
-          </label>
-          <label className="grid gap-2">
-            <span className="text-sm text-slate-300">ETH</span>
-            <input
-              className={fieldClass}
-              disabled={loading}
-              placeholder="ETH wallet address"
-              value={settings.depositAddressEth}
-              onChange={(event) => updateField("depositAddressEth", event.target.value)}
-            />
-          </label>
-          <label className="grid gap-2">
-            <span className="text-sm text-slate-300">USDT (TRC20)</span>
-            <input
-              className={fieldClass}
-              disabled={loading}
-              placeholder="TRC20 deposit address"
-              value={settings.depositAddressUsdtTrc20}
-              onChange={(event) => updateField("depositAddressUsdtTrc20", event.target.value)}
-            />
-          </label>
-          <label className="grid gap-2">
-            <span className="text-sm text-slate-300">USDT (ERC20)</span>
-            <input
-              className={fieldClass}
-              disabled={loading}
-              placeholder="ERC20 deposit address"
-              value={settings.depositAddressUsdtErc20}
-              onChange={(event) => updateField("depositAddressUsdtErc20", event.target.value)}
-            />
-          </label>
-          <label className="grid gap-2">
-            <span className="text-sm text-slate-300">USD instructions</span>
-            <input
-              className={fieldClass}
-              disabled={loading}
-              placeholder="Bank / wire instructions"
-              value={settings.depositAddressUsd}
-              onChange={(event) => updateField("depositAddressUsd", event.target.value)}
-            />
-          </label>
-          <label className="grid gap-2">
-            <span className="text-sm text-slate-300">EUR instructions</span>
-            <input
-              className={fieldClass}
-              disabled={loading}
-              placeholder="IBAN / SEPA instructions"
-              value={settings.depositAddressEur}
-              onChange={(event) => updateField("depositAddressEur", event.target.value)}
-            />
-          </label>
-          <label className="grid gap-2">
-            <span className="text-sm text-slate-300">GBP instructions</span>
-            <input
-              className={fieldClass}
-              disabled={loading}
-              placeholder="GBP deposit instructions"
-              value={settings.depositAddressGbp}
-              onChange={(event) => updateField("depositAddressGbp", event.target.value)}
-            />
-          </label>
-          <label className="grid gap-2">
-            <span className="text-sm text-slate-300">Stocks instructions</span>
-            <input
-              className={fieldClass}
-              disabled={loading}
-              placeholder="Internal ledger instructions"
-              value={settings.depositAddressStocks}
-              onChange={(event) => updateField("depositAddressStocks", event.target.value)}
-            />
-          </label>
+      <SectionCard
+        className="xl:col-span-2"
+        title="Asset Routes"
+        subtitle="Only enabled assets appear in the app deposit picker. Edit the user-facing label and destination address here."
+      >
+        <div className="grid gap-4 lg:grid-cols-2">
+          {settings.assetSettings.map((assetSetting) => (
+            <div key={assetSetting.asset} className="grid gap-3 rounded-lg border border-white/10 bg-white/5 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm uppercase tracking-[0.2em] text-cyan-200/75">{assetSetting.asset}</div>
+                  <div className="mt-1 text-base font-semibold text-white">{assetSetting.label}</div>
+                </div>
+                <label className="flex items-center gap-2 text-sm text-slate-300">
+                  <input
+                    checked={assetSetting.enabled}
+                    className="h-4 w-4 shrink-0"
+                    disabled={loading}
+                    type="checkbox"
+                    onChange={(event) => updateAssetSetting(assetSetting.asset, "enabled", event.target.checked)}
+                  />
+                  Enabled
+                </label>
+              </div>
+
+              <label className="grid gap-2">
+                <span className="text-sm text-slate-300">Label shown to users</span>
+                <input
+                  className={fieldClass}
+                  disabled={loading}
+                  placeholder="Asset label"
+                  value={assetSetting.label}
+                  onChange={(event) => updateAssetSetting(assetSetting.asset, "label", event.target.value)}
+                />
+              </label>
+
+              <label className="grid gap-2">
+                <span className="text-sm text-slate-300">Deposit address or instructions</span>
+                <textarea
+                  className={`${fieldClass} min-h-24 resize-y`}
+                  disabled={loading}
+                  placeholder="Wallet address, IBAN, wire details, or internal instructions"
+                  value={assetSetting.address}
+                  onChange={(event) => updateAssetSetting(assetSetting.asset, "address", event.target.value)}
+                />
+              </label>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4">
           <button
             className={primaryButtonClass}
             disabled={loading || saving}
             onClick={saveSettings}
             type="button"
           >
-            {saving ? "Saving..." : "Save addresses"}
+            {saving ? "Saving..." : "Save asset routes"}
           </button>
         </div>
       </SectionCard>

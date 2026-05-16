@@ -1,6 +1,26 @@
-import { ChangeEvent, useId, useState } from "react";
-import { ChevronRight, FileText, ShieldCheck, Upload, UserRound } from "lucide-react";
+import { ChangeEvent, useEffect, useId, useState } from "react";
+import axios from "axios";
+import toast from "react-hot-toast";
+import { ChevronRight, ExternalLink, FileText, ShieldCheck, Upload, UserRound } from "lucide-react";
 import { MobilePageHeader } from "@/components/mobile-page-header";
+
+const identityApiBase = import.meta.env.VITE_IDENTITY_API_URL ?? "http://localhost:4001/api";
+const identityUploadsBase = identityApiBase.replace(/\/api\/?$/, "");
+
+const identityApi = axios.create({
+  baseURL: identityApiBase
+});
+
+type KycSubmission = {
+  id: string;
+  documentType: string | null;
+  documentUrl: string;
+  selfieUrl: string;
+  status: "pending" | "verified" | "rejected";
+  adminNote?: string | null;
+  submittedAt: string;
+  reviewedAt?: string | null;
+};
 
 type UploadFieldProps = {
   title: string;
@@ -36,6 +56,7 @@ function UploadField({ title, description, onChange, fileName }: UploadFieldProp
       </label>
 
       <input
+        accept="image/png,image/jpeg,image/webp,application/pdf"
         className="sr-only"
         id={inputId}
         onChange={onChange}
@@ -45,9 +66,88 @@ function UploadField({ title, description, onChange, fileName }: UploadFieldProp
   );
 }
 
+const resolveKycUploadUrl = (url: string) => {
+  if (url.startsWith("http://") || url.startsWith("https://")) {
+    return url;
+  }
+
+  return `${identityUploadsBase}${url}`;
+};
+
 export function ProfilePage() {
-  const [documentFileName, setDocumentFileName] = useState<string>();
-  const [selfieFileName, setSelfieFileName] = useState<string>();
+  const [documentType, setDocumentType] = useState("");
+  const [documentFile, setDocumentFile] = useState<File>();
+  const [selfieFile, setSelfieFile] = useState<File>();
+  const [submittingKyc, setSubmittingKyc] = useState(false);
+  const [submissions, setSubmissions] = useState<KycSubmission[]>([]);
+
+  useEffect(() => {
+    const token = localStorage.getItem("nevo.accessToken");
+    if (!token) {
+      return;
+    }
+
+    let active = true;
+
+    const loadKycSubmissions = async () => {
+      try {
+        const response = await identityApi.get<KycSubmission[]>("/kyc/submissions/me", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (active) {
+          setSubmissions(response.data);
+        }
+      } catch {
+        if (active) {
+          setSubmissions([]);
+        }
+      }
+    };
+
+    void loadKycSubmissions();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const submitKyc = async () => {
+    const token = localStorage.getItem("nevo.accessToken");
+    if (!token) {
+      toast.error("Sign in first.");
+      return;
+    }
+
+    if (!documentFile || !selfieFile) {
+      toast.error("Upload both your ID document and selfie.");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("documentType", documentType.trim() || "government-id");
+    formData.append("idDocument", documentFile);
+    formData.append("selfie", selfieFile);
+
+    setSubmittingKyc(true);
+    try {
+      const response = await identityApi.post<KycSubmission>("/kyc/submissions", formData, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      setSubmissions((current) => [response.data, ...current]);
+      toast.success("KYC submitted for admin review.");
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const responseMessage = error.response?.data?.message;
+        toast.error(typeof responseMessage === "string" ? responseMessage : "KYC submission failed.");
+      } else {
+        toast.error("KYC submission failed.");
+      }
+    } finally {
+      setSubmittingKyc(false);
+    }
+  };
 
   return (
     <div className="pb-6">
@@ -127,25 +227,66 @@ export function ProfilePage() {
             <input
               className="w-full min-w-0 max-w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-[15px] text-white outline-none transition focus:border-cyan-300/40"
               placeholder="Document type"
+              value={documentType}
+              onChange={(event) => setDocumentType(event.target.value)}
             />
 
             <UploadField
               description="Passport, national ID, or driver&apos;s license"
-              fileName={documentFileName}
-              onChange={(event) => setDocumentFileName(event.target.files?.[0]?.name)}
+              fileName={documentFile?.name}
+              onChange={(event) => setDocumentFile(event.target.files?.[0])}
               title="Upload ID document"
             />
 
             <UploadField
               description="Clear face photo with good lighting"
-              fileName={selfieFileName}
-              onChange={(event) => setSelfieFileName(event.target.files?.[0]?.name)}
+              fileName={selfieFile?.name}
+              onChange={(event) => setSelfieFile(event.target.files?.[0])}
               title="Upload selfie"
             />
 
-            <button className="mt-1 w-full min-w-0 max-w-full rounded-[20px] bg-cyan-400 px-4 py-4 text-[15px] font-semibold text-slate-950">
-              Submit KYC
+            <button
+              className="mt-1 w-full min-w-0 max-w-full rounded-[20px] bg-cyan-400 px-4 py-4 text-[15px] font-semibold text-slate-950 disabled:opacity-60"
+              disabled={submittingKyc}
+              onClick={() => void submitKyc()}
+              type="button"
+            >
+              {submittingKyc ? "Submitting..." : "Submit KYC"}
             </button>
+
+            {submissions.length ? (
+              <div className="mt-2 grid gap-3">
+                {submissions.slice(0, 3).map((submission) => (
+                  <div key={submission.id} className="rounded-[20px] border border-white/10 bg-white/5 px-4 py-4 text-[13px] text-slate-300">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <span className="font-semibold text-white">{submission.documentType ?? "government-id"}</span>
+                      <span className="uppercase tracking-[0.18em] text-cyan-200">{submission.status}</span>
+                    </div>
+                    <div className="mt-2">{new Date(submission.submittedAt).toLocaleString("en-GB")}</div>
+                    <div className="mt-3 flex flex-wrap gap-3">
+                      <a
+                        className="inline-flex items-center gap-2 text-cyan-200"
+                        href={resolveKycUploadUrl(submission.documentUrl)}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        ID document
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                      <a
+                        className="inline-flex items-center gap-2 text-cyan-200"
+                        href={resolveKycUploadUrl(submission.selfieUrl)}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        Selfie
+                        <ExternalLink className="h-3.5 w-3.5" />
+                      </a>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
         </section>
       </div>

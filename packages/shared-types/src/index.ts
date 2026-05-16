@@ -38,6 +38,13 @@ export interface WalletSummary {
   }>;
 }
 
+export interface AssetRouteSetting {
+  asset: AssetType;
+  label: string;
+  address: string;
+  enabled: boolean;
+}
+
 export interface DashboardTradeLog {
   id: string;
   asset: AssetType;
@@ -98,6 +105,7 @@ export interface AdminPlatformSettings {
   giveawayWinners: number;
   giveawayEndsAt: string | null;
   adCarouselSlides: AdCarouselSlide[];
+  assetSettings: AssetRouteSetting[];
   depositAddressBtc: string;
   depositAddressEth: string;
   depositAddressUsdtTrc20: string;

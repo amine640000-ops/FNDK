@@ -3,24 +3,13 @@ import axios from "axios";
 import toast from "react-hot-toast";
 import { Check, CheckCircle2, ChevronDown, Copy, Landmark, X } from "lucide-react";
 import { useEffect } from "react";
-import type { AssetType, DepositAddressMap } from "@nevo/shared-types";
-import { SUPPORTED_ASSETS, formatCurrency } from "@nevo/shared-utils";
+import type { AssetRouteSetting, AssetType } from "@nevo/shared-types";
+import { DEFAULT_ASSET_LABELS, DEFAULT_ASSET_ROUTE_SETTINGS, formatCurrency } from "@nevo/shared-utils";
 import { MobilePageHeader } from "@/components/mobile-page-header";
 
 const walletApi = axios.create({
   baseURL: import.meta.env.VITE_WALLET_API_URL ?? "http://localhost:4002/api"
 });
-
-const assetLabels: Record<AssetType, string> = {
-  BTC: "BTC",
-  ETH: "ETH",
-  USDT_TRC20: "USDT (TRC20)",
-  USDT_ERC20: "USDT (ERC20)",
-  USD: "USD",
-  EUR: "EUR",
-  GBP: "GBP",
-  STOCKS: "STOCKS"
-};
 
 type DepositResponse = {
   id: string;
@@ -38,10 +27,20 @@ export function DepositPage() {
   const [submitting, setSubmitting] = useState(false);
   const [depositResponse, setDepositResponse] = useState<DepositResponse | null>(null);
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
-  const [depositAddresses, setDepositAddresses] = useState<DepositAddressMap | null>(null);
+  const [assetRoutesLoaded, setAssetRoutesLoaded] = useState(false);
+  const [assetSettings, setAssetSettings] = useState<AssetRouteSetting[]>([]);
 
   const parsedAmount = useMemo(() => Number(amount || 0), [amount]);
-  const selectedWalletAddress = depositResponse?.walletAddress ?? depositAddresses?.[asset] ?? "";
+  const selectableAssetSettings = useMemo(
+    () => (assetRoutesLoaded ? assetSettings : DEFAULT_ASSET_ROUTE_SETTINGS),
+    [assetRoutesLoaded, assetSettings]
+  );
+  const selectedAssetSetting = useMemo(
+    () => selectableAssetSettings.find((assetSetting) => assetSetting.asset === asset),
+    [asset, selectableAssetSettings]
+  );
+  const selectedAssetLabel = selectedAssetSetting?.label ?? DEFAULT_ASSET_LABELS[asset];
+  const selectedWalletAddress = depositResponse?.walletAddress ?? selectedAssetSetting?.address ?? "";
 
   useEffect(() => {
     const token = localStorage.getItem("nevo.accessToken");
@@ -51,25 +50,32 @@ export function DepositPage() {
 
     let active = true;
 
-    const loadDepositAddresses = async () => {
+    const loadDepositAssets = async () => {
       try {
-        const response = await walletApi.get<DepositAddressMap>("/wallet/deposit-addresses", {
+        const response = await walletApi.get<AssetRouteSetting[]>("/wallet/deposit-assets", {
           headers: {
             Authorization: `Bearer ${token}`
           }
         });
 
         if (active) {
-          setDepositAddresses(response.data);
+          setAssetSettings(response.data);
+          setAssetRoutesLoaded(true);
+          setAsset((currentAsset) =>
+            response.data.some((assetSetting) => assetSetting.asset === currentAsset)
+              ? currentAsset
+              : response.data[0]?.asset ?? currentAsset
+          );
         }
       } catch {
         if (active) {
-          setDepositAddresses(null);
+          setAssetSettings([]);
+          setAssetRoutesLoaded(true);
         }
       }
     };
 
-    void loadDepositAddresses();
+    void loadDepositAssets();
 
     return () => {
       active = false;
@@ -85,6 +91,11 @@ export function DepositPage() {
 
     if (!parsedAmount || parsedAmount < 1) {
       toast.error("Enter a deposit amount of at least 1.");
+      return;
+    }
+
+    if (!selectedAssetSetting) {
+      toast.error("No active deposit asset is available.");
       return;
     }
 
@@ -158,24 +169,28 @@ export function DepositPage() {
             </div>
 
             <div className="mt-5 space-y-3">
-              {SUPPORTED_ASSETS.map((supportedAsset) => (
+              {selectableAssetSettings.length ? selectableAssetSettings.map((assetSetting) => (
                 <button
-                  key={supportedAsset}
+                  key={assetSetting.asset}
                   className={`flex w-full items-center justify-between rounded-[22px] border px-4 py-4 text-left transition ${
-                    asset === supportedAsset
+                    asset === assetSetting.asset
                       ? "border-cyan-300/30 bg-cyan-300/10 text-cyan-100"
                       : "border-white/10 bg-white/5 text-white"
                   }`}
                   onClick={() => {
-                    setAsset(supportedAsset);
+                    setAsset(assetSetting.asset);
                     setAssetPickerOpen(false);
                   }}
                   type="button"
                 >
-                  <span className="text-[15px] font-semibold">{assetLabels[supportedAsset]}</span>
-                  {asset === supportedAsset ? <Check className="h-5 w-5" /> : null}
+                  <span className="text-[15px] font-semibold">{assetSetting.label}</span>
+                  {asset === assetSetting.asset ? <Check className="h-5 w-5" /> : null}
                 </button>
-              ))}
+              )) : (
+                <div className="rounded-[22px] border border-amber-300/20 bg-amber-300/10 px-4 py-4 text-sm text-amber-100">
+                  No deposit assets are enabled by admin.
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -204,7 +219,7 @@ export function DepositPage() {
               onClick={() => setAssetPickerOpen(true)}
               type="button"
             >
-              <span>{assetLabels[asset]}</span>
+              <span>{selectedAssetLabel}</span>
               <ChevronDown className="h-5 w-5 text-white/70" />
             </button>
           </label>
@@ -243,7 +258,7 @@ export function DepositPage() {
 
           <button
             className="rounded-[20px] bg-cyan-400 px-4 py-4 text-[15px] font-semibold text-slate-950 disabled:opacity-60"
-            disabled={submitting}
+            disabled={submitting || !selectedAssetSetting}
             onClick={submitDeposit}
             type="button"
           >

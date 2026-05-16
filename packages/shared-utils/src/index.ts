@@ -1,4 +1,4 @@
-import type { VipTier } from "@nevo/shared-types";
+import type { AssetRouteSetting, AssetType, VipTier } from "@nevo/shared-types";
 
 export const SUPPORTED_ASSETS = [
   "BTC",
@@ -10,6 +10,24 @@ export const SUPPORTED_ASSETS = [
   "GBP",
   "STOCKS"
 ] as const;
+
+export const DEFAULT_ASSET_LABELS: Record<AssetType, string> = {
+  BTC: "BTC",
+  ETH: "ETH",
+  USDT_TRC20: "USDT (TRC20)",
+  USDT_ERC20: "USDT (ERC20)",
+  USD: "USD",
+  EUR: "EUR",
+  GBP: "GBP",
+  STOCKS: "STOCKS"
+};
+
+export const DEFAULT_ASSET_ROUTE_SETTINGS: AssetRouteSetting[] = SUPPORTED_ASSETS.map((asset) => ({
+  asset,
+  label: DEFAULT_ASSET_LABELS[asset],
+  address: "",
+  enabled: true
+}));
 
 export const VIP_TIERS: VipTier[] = [
   {
