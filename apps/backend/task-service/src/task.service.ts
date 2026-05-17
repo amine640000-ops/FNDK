@@ -1,6 +1,13 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
-import { dbQuery, getOne, publishEvent, withTransaction } from "@nevo/shared-infra";
-import type { AiTradingActivation, AssetType, ProfitDistributionEvent, VipTier } from "@nevo/shared-types";
+import { dbQuery, getOne, hashSecurityPasscode, publishEvent, withTransaction } from "@nevo/shared-infra";
+import type {
+  AiTradingActivation,
+  AssetType,
+  MissionTaskProgress,
+  MissionTaskSetting,
+  ProfitDistributionEvent,
+  VipTier
+} from "@nevo/shared-types";
 import { calculateDailyProfit, getTierConfig } from "@nevo/shared-utils";
 import type { PoolClient } from "pg";
 
@@ -49,6 +56,53 @@ type ReservationRulesRow = {
   reservation_failures_per_day: number;
   failed_reservations_today: number;
 };
+
+type SecurityPasscodeRow = {
+  security_passcode_hash: string | null;
+};
+
+const defaultMissionTasks: MissionTaskSetting[] = [
+  {
+    id: "direct-invites-2",
+    enabled: true,
+    category: "limited",
+    title: "Invite 2 first-line members",
+    description: "Complete direct invitation task phase 1.",
+    target: 2,
+    rewardAmount: 20,
+    rewardAsset: "USDT_TRC20"
+  },
+  {
+    id: "direct-invites-3",
+    enabled: true,
+    category: "limited",
+    title: "Invite 3 first-line members",
+    description: "Complete direct invitation task phase 2.",
+    target: 3,
+    rewardAmount: 60,
+    rewardAsset: "USDT_TRC20"
+  },
+  {
+    id: "direct-invites-10",
+    enabled: true,
+    category: "daily",
+    title: "Invite 10 first-line members",
+    description: "Complete direct invitation task phase 3.",
+    target: 10,
+    rewardAmount: 150,
+    rewardAsset: "USDT_TRC20"
+  },
+  {
+    id: "direct-invites-20",
+    enabled: true,
+    category: "long-term",
+    title: "Invite 20 first-line members",
+    description: "Complete direct invitation task phase 4.",
+    target: 20,
+    rewardAmount: 300,
+    rewardAsset: "USDT_TRC20"
+  }
+];
 
 @Injectable()
 export class TaskService {
@@ -153,8 +207,55 @@ export class TaskService {
     };
   }
 
-  async startManualActivation(userId: string, reservationAmount?: number) {
+  async getMissionCenter(userId: string) {
+    const tasks = await this.getMissionTaskSettings();
+    const referralCount = await getOne<{ count: number }>(
+      `
+        SELECT COUNT(*)::int AS count
+        FROM users
+        WHERE referred_by = $1
+          AND role = 'USER'
+      `,
+      [userId]
+    );
+
+    const progress = referralCount?.count ?? 0;
+    const missionTasks: MissionTaskProgress[] = tasks
+      .filter((task) => task.enabled)
+      .map((task) => ({
+        ...task,
+        progress: Math.min(progress, task.target),
+        completed: progress >= task.target,
+        rewardClaimed: false
+      }));
+
+    await this.creditCompletedMissionRewards(userId, missionTasks.filter((task) => task.completed));
+
+    const claimedResult = await dbQuery<{ task_id: string }>(
+      `
+        SELECT task_id
+        FROM mission_task_claims
+        WHERE user_id = $1
+      `,
+      [userId]
+    );
+    const claimedTaskIds = new Set(claimedResult.rows.map((claim) => claim.task_id));
+    const tasksWithClaims = missionTasks.map((task) => ({
+      ...task,
+      rewardClaimed: claimedTaskIds.has(task.id)
+    }));
+
+    return {
+      totalRewardAmount: tasksWithClaims
+        .filter((task) => task.rewardClaimed)
+        .reduce((sum, task) => sum + task.rewardAmount, 0),
+      tasks: tasksWithClaims
+    };
+  }
+
+  async startManualActivation(userId: string, reservationAmount?: number, securityPasscode?: string) {
     await this.finalizeDueActivations(userId);
+    await this.verifySecurityPasscode(userId, securityPasscode);
     const tier = await this.getTierForUser(userId);
 
     if (tier.active_investment <= 0) {
@@ -620,6 +721,131 @@ export class TaskService {
       activation_assets: starter.activationAssets,
       active_investment: 0
     };
+  }
+
+  private async creditCompletedMissionRewards(userId: string, tasks: MissionTaskProgress[]) {
+    const payableTasks = tasks.filter((task) => task.rewardAmount > 0);
+    if (!payableTasks.length) {
+      return;
+    }
+
+    await withTransaction(async (client: PoolClient) => {
+      for (const task of payableTasks) {
+        const insertedClaim = await client.query<{ id: string }>(
+          `
+            INSERT INTO mission_task_claims (id, user_id, task_id, reward_amount, reward_asset)
+            VALUES (gen_random_uuid(), $1, $2, $3, $4)
+            ON CONFLICT (user_id, task_id) DO NOTHING
+            RETURNING id
+          `,
+          [userId, task.id, task.rewardAmount, task.rewardAsset]
+        );
+
+        if (!insertedClaim.rowCount) {
+          continue;
+        }
+
+        await client.query(
+          `
+            INSERT INTO wallets (id, user_id, asset_type, balance, total_earned)
+            VALUES (gen_random_uuid(), $1, $2, $3, $3)
+            ON CONFLICT (user_id, asset_type)
+            DO UPDATE SET
+              balance = wallets.balance + EXCLUDED.balance,
+              total_earned = wallets.total_earned + EXCLUDED.total_earned
+          `,
+          [userId, task.rewardAsset, task.rewardAmount]
+        );
+
+        await client.query(
+          `
+            INSERT INTO transactions (id, user_id, type, asset, amount, fee_amount, status, admin_note)
+            VALUES (gen_random_uuid(), $1, 'referral', $2, $3, 0, 'approved', $4)
+          `,
+          [userId, task.rewardAsset, task.rewardAmount, `Mission reward: ${task.title}`]
+        );
+
+        await client.query(
+          `
+            INSERT INTO notifications (id, user_id, title, message, is_read, created_at)
+            VALUES (gen_random_uuid(), $1, $2, $3, FALSE, NOW())
+          `,
+          [
+            userId,
+            "Mission reward paid",
+            `Your mission reward of ${task.rewardAmount} ${task.rewardAsset} was added to your wallet.`
+          ]
+        );
+      }
+    });
+  }
+
+  private async verifySecurityPasscode(userId: string, passcode?: string) {
+    if (!passcode || !/^\d{6}$/.test(passcode)) {
+      throw new BadRequestException("Enter your 6-digit security passcode");
+    }
+
+    const user = await getOne<SecurityPasscodeRow>(
+      `
+        SELECT security_passcode_hash
+        FROM users
+        WHERE id = $1
+      `,
+      [userId]
+    );
+
+    if (!user?.security_passcode_hash) {
+      throw new BadRequestException("Set your 6-digit security passcode in profile settings first");
+    }
+
+    if (user.security_passcode_hash !== hashSecurityPasscode(passcode)) {
+      throw new BadRequestException("Invalid security passcode");
+    }
+  }
+
+  private async getMissionTaskSettings(): Promise<MissionTaskSetting[]> {
+    const setting = await getOne<{ value: unknown }>(
+      `
+        SELECT value
+        FROM admin_settings
+        WHERE key = 'platform.missionTasks'
+      `
+    );
+
+    if (!Array.isArray(setting?.value)) {
+      return defaultMissionTasks;
+    }
+
+    const normalized = setting.value.flatMap((entry): MissionTaskSetting[] => {
+      if (!entry || typeof entry !== "object") {
+        return [];
+      }
+
+      const task = entry as Partial<MissionTaskSetting>;
+      const id = typeof task.id === "string" && task.id.trim() ? task.id.trim() : "";
+      const category = task.category === "daily" || task.category === "long-term" ? task.category : "limited";
+      const target = Number(task.target);
+      const rewardAmount = Number(task.rewardAmount);
+
+      if (!id || !Number.isFinite(target) || target < 1 || !Number.isFinite(rewardAmount) || rewardAmount < 0) {
+        return [];
+      }
+
+      return [
+        {
+          id,
+          enabled: task.enabled !== false,
+          category,
+          title: typeof task.title === "string" && task.title.trim() ? task.title.trim() : "Mission task",
+          description: typeof task.description === "string" ? task.description.trim() : "",
+          target,
+          rewardAmount,
+          rewardAsset: task.rewardAsset ?? "USDT_TRC20"
+        }
+      ];
+    });
+
+    return normalized.length ? normalized : defaultMissionTasks;
   }
 
   private buildActivationPlan(tier: ActivationTierRow) {

@@ -2,7 +2,7 @@ import { Body, Controller, Get, Headers, Inject, Post, UseGuards } from "@nestjs
 import { CurrentUser, JwtAuthGuard } from "@nevo/shared-infra";
 import type { AccessTokenPayload } from "@nevo/shared-types";
 import { AuthService } from "./auth.service";
-import { LoginDto, RegisterDto, ResendEmailVerificationDto, VerifyEmailDto } from "./auth.dto";
+import { LoginDto, RegisterDto, ResendEmailVerificationDto, SetSecurityPasscodeDto, VerifyEmailDto } from "./auth.dto";
 
 @Controller("auth")
 export class AuthController {
@@ -31,6 +31,12 @@ export class AuthController {
   @Post("resend-email-verification")
   resendEmailVerification(@Body() dto: ResendEmailVerificationDto) {
     return this.authService.resendEmailVerification(dto.email);
+  }
+
+  @Post("security-passcode")
+  @UseGuards(JwtAuthGuard)
+  setSecurityPasscode(@CurrentUser() user: AccessTokenPayload, @Body() dto: SetSecurityPasscodeDto) {
+    return this.authService.setSecurityPasscode(user.sub, dto.passcode);
   }
 
   @Get("me")

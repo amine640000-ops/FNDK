@@ -89,6 +89,25 @@ export interface AdCarouselSlide {
   imageUrl: string;
 }
 
+export type MissionTaskCategory = "limited" | "daily" | "long-term";
+
+export interface MissionTaskSetting {
+  id: string;
+  enabled: boolean;
+  category: MissionTaskCategory;
+  title: string;
+  description: string;
+  target: number;
+  rewardAmount: number;
+  rewardAsset: AssetType;
+}
+
+export interface MissionTaskProgress extends MissionTaskSetting {
+  progress: number;
+  completed: boolean;
+  rewardClaimed: boolean;
+}
+
 export interface AdminPlatformSettings {
   platformName: string;
   maintenanceMode: boolean;
@@ -105,6 +124,7 @@ export interface AdminPlatformSettings {
   giveawayWinners: number;
   giveawayEndsAt: string | null;
   adCarouselSlides: AdCarouselSlide[];
+  missionTasks: MissionTaskSetting[];
   assetSettings: AssetRouteSetting[];
   depositAddressBtc: string;
   depositAddressEth: string;

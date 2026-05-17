@@ -13,6 +13,7 @@ import {
   dbQuery,
   getOne,
   hashVerificationCode,
+  hashSecurityPasscode,
   normalizeVerificationCode,
   publishEvent,
   sendMail,
@@ -33,6 +34,7 @@ interface IdentityUserRecord {
   kyc_status: KycStatus;
   role: UserRole;
   email_verified_at: string | null;
+  security_passcode_hash: string | null;
 }
 
 type VerificationCodeRecord = {
@@ -51,6 +53,7 @@ export interface IdentityUser {
   kycStatus: KycStatus;
   role: UserRole;
   emailVerifiedAt: string | null;
+  hasSecurityPasscode: boolean;
 }
 
 export interface AuthSession {
@@ -241,7 +244,7 @@ export class AuthService {
   }
 
   async login(dto: LoginDto): Promise<AuthSession> {
-    const user = await this.getUserByEmail(dto.email.trim().toLowerCase());
+    const user = await this.getUserByLoginIdentifier(dto.email.trim());
     const isValid = await bcrypt.compare(dto.password, user.password_hash);
 
     if (!isValid) {
@@ -274,7 +277,8 @@ export class AuthService {
           referred_by,
           kyc_status,
           role,
-          email_verified_at
+          email_verified_at,
+          security_passcode_hash
         FROM users
         WHERE id = $1
       `,
@@ -286,6 +290,22 @@ export class AuthService {
     }
 
     return this.toPublicUser(user);
+  }
+
+  async setSecurityPasscode(userId: string, passcode: string) {
+    await dbQuery(
+      `
+        UPDATE users
+        SET security_passcode_hash = $2
+        WHERE id = $1
+      `,
+      [userId, hashSecurityPasscode(passcode)]
+    );
+
+    return {
+      message: "Security passcode saved",
+      hasSecurityPasscode: true
+    };
   }
 
   private async getUserByEmail(email: string) {
@@ -301,11 +321,45 @@ export class AuthService {
           referred_by,
           kyc_status,
           role,
-          email_verified_at
+          email_verified_at,
+          security_passcode_hash
         FROM users
         WHERE email = $1
       `,
       [email]
+    );
+
+    if (!user) {
+      throw new UnauthorizedException("Invalid credentials");
+    }
+
+    return user;
+  }
+
+  private async getUserByLoginIdentifier(identifier: string) {
+    const user = await getOne<IdentityUserRecord>(
+      `
+        SELECT
+          id,
+          email,
+          password_hash,
+          full_name,
+          phone,
+          referral_code,
+          referred_by,
+          kyc_status,
+          role,
+          email_verified_at,
+          security_passcode_hash
+        FROM users
+        WHERE LOWER(email) = LOWER($1)
+           OR LOWER(full_name) = LOWER($1)
+           OR regexp_replace(UPPER(referral_code), '[^A-Z0-9]', '', 'g') =
+              regexp_replace(UPPER($1), '[^A-Z0-9]', '', 'g')
+        ORDER BY created_at ASC
+        LIMIT 1
+      `,
+      [identifier]
     );
 
     if (!user) {
@@ -340,7 +394,8 @@ export class AuthService {
       referredBy: user.referred_by ?? undefined,
       kycStatus: user.kyc_status,
       role: user.role,
-      emailVerifiedAt: user.email_verified_at
+      emailVerifiedAt: user.email_verified_at,
+      hasSecurityPasscode: Boolean(user.security_passcode_hash)
     };
   }
 

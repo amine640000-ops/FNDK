@@ -20,7 +20,7 @@ export function LoginPage() {
     setLoading(true);
 
     try {
-      const response = await identityApi.post("/auth/login", { email: email.trim().toLowerCase(), password });
+      const response = await identityApi.post("/auth/login", { email: email.trim(), password });
       localStorage.setItem("nevo.accessToken", response.data.accessToken);
       localStorage.setItem("nevo.refreshToken", response.data.refreshToken);
       localStorage.setItem("nevo.user", JSON.stringify(response.data.user));
@@ -64,11 +64,11 @@ export function LoginPage() {
               <div className="mt-2 text-[2rem] font-extrabold text-white">Account Access</div>
               <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
                 <div className="space-y-2">
-                  <label className="text-sm text-slate-300">Email</label>
+                  <label className="text-sm text-slate-300">Username or email</label>
                   <input
                     className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
-                    placeholder="admin@fndk.capital"
-                    type="email"
+                    placeholder="Username, name, or email"
+                    type="text"
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
                   />
@@ -152,11 +152,11 @@ export function LoginPage() {
 
               <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
                 <div className="space-y-2">
-                  <label className="text-sm text-slate-300">Email</label>
+                  <label className="text-sm text-slate-300">Username or email</label>
                   <input
                     className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
-                    placeholder="admin@fndk.capital"
-                    type="email"
+                    placeholder="Username, name, or email"
+                    type="text"
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
                   />

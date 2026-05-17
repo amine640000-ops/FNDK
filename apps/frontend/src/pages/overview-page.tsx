@@ -41,7 +41,7 @@ const shortcutItems = [
   {
     title: "VIP\nUpgrade",
     icon: Sparkles,
-    to: "/app/mission"
+    to: "/app/strategy"
   },
   {
     title: "Online\nService",

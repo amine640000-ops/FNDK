@@ -1,5 +1,5 @@
 import { IsArray, IsBoolean, IsInt, IsNumber, IsOptional, IsString, Min } from "class-validator";
-import type { AdCarouselSlide, AssetRouteSetting } from "@nevo/shared-types";
+import type { AdCarouselSlide, AssetRouteSetting, MissionTaskSetting } from "@nevo/shared-types";
 
 export class UpdateAdminSettingsDto {
   @IsOptional()
@@ -70,6 +70,10 @@ export class UpdateAdminSettingsDto {
   @IsOptional()
   @IsArray()
   assetSettings?: AssetRouteSetting[];
+
+  @IsOptional()
+  @IsArray()
+  missionTasks?: MissionTaskSetting[];
 
   @IsOptional()
   @IsString()

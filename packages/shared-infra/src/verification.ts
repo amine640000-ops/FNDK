@@ -15,3 +15,10 @@ export const hashVerificationCode = (code: string) =>
 
 export const hashVerificationContext = (context: string) =>
   createHmac("sha256", getVerificationSecret()).update(context).digest("hex");
+
+export const normalizeSecurityPasscode = (passcode: string) => passcode.trim();
+
+export const isSecurityPasscode = (passcode: string) => /^\d{6}$/.test(normalizeSecurityPasscode(passcode));
+
+export const hashSecurityPasscode = (passcode: string) =>
+  createHmac("sha256", getVerificationSecret()).update(`security-passcode:${normalizeSecurityPasscode(passcode)}`).digest("hex");

@@ -45,6 +45,7 @@ export const router = createBrowserRouter([
           { path: "wallet/deposit", element: <DepositPage /> },
           { path: "wallet/withdraw", element: <WithdrawPage /> },
           { path: "mission", element: <VipPage /> },
+          { path: "strategy", element: <VipPage /> },
           { path: "vip", element: <VipPage /> },
           { path: "trades", element: <TradeHistoryPage /> },
           { path: "referrals", element: <ReferralsPage /> },

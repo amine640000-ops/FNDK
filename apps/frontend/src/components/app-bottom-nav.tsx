@@ -1,10 +1,10 @@
-import { House, Sparkles, UserRound, UsersRound, WalletCards } from "lucide-react";
+import { House, Lightbulb, UserRound, UsersRound, WalletCards } from "lucide-react";
 import { NavLink } from "react-router-dom";
 
 const items = [
   { to: "/app", label: "Home", icon: House },
   { to: "/app/wallet", label: "Assets", icon: WalletCards },
-  { to: "/app/mission", label: "Mission", icon: Sparkles },
+  { to: "/app/strategy", label: "Strategy", icon: Lightbulb },
   { to: "/app/referrals", label: "Team", icon: UsersRound },
   { to: "/app/profile", label: "My Profile", icon: UserRound }
 ];

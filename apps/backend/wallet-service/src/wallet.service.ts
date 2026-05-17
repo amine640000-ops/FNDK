@@ -7,8 +7,10 @@ import {
   createNumericVerificationCode,
   dbQuery,
   getOne,
+  hashSecurityPasscode,
   hashVerificationCode,
   hashVerificationContext,
+  isSecurityPasscode,
   normalizeVerificationCode,
   sendMail,
   subscribeToEvents,
@@ -63,6 +65,10 @@ type WithdrawalUserRow = {
 type VerificationCodeRow = {
   id: string;
   code_hash: string;
+};
+
+type SecurityPasscodeRow = {
+  security_passcode_hash: string | null;
 };
 
 type AdminSettingRow = {
@@ -246,6 +252,7 @@ export class WalletService implements OnModuleInit {
     const { feeAmount, netAmount, rules } = await this.validateWithdrawalRequest(userId, dto);
     const destinationAddress = dto.destinationAddress.trim();
     const contextHash = this.createWithdrawalContextHash(dto.asset, dto.amount, destinationAddress);
+    await this.verifySecurityPasscode(userId, dto.securityPasscode);
 
     const result = await withTransaction(async (client: PoolClient) => {
       await this.consumeWithdrawalVerificationCode(client, userId, dto.verificationCode, contextHash);
@@ -416,6 +423,29 @@ export class WalletService implements OnModuleInit {
     }
 
     await client.query("UPDATE verification_codes SET consumed_at = NOW() WHERE id = $1", [candidate.rows[0].id]);
+  }
+
+  private async verifySecurityPasscode(userId: string, passcode: string) {
+    if (!passcode || !isSecurityPasscode(passcode)) {
+      throw new BadRequestException("Enter your 6-digit security passcode");
+    }
+
+    const user = await getOne<SecurityPasscodeRow>(
+      `
+        SELECT security_passcode_hash
+        FROM users
+        WHERE id = $1
+      `,
+      [userId]
+    );
+
+    if (!user?.security_passcode_hash) {
+      throw new BadRequestException("Set your 6-digit security passcode in profile settings first");
+    }
+
+    if (user.security_passcode_hash !== hashSecurityPasscode(passcode)) {
+      throw new BadRequestException("Invalid security passcode");
+    }
   }
 
   private createWithdrawalContextHash(asset: AssetType, amount: number, destinationAddress: string) {

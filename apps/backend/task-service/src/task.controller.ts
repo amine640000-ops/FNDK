@@ -27,11 +27,18 @@ export class TaskController {
     return this.taskService.getManualActivationState(user.sub);
   }
 
+  @Get("missions/me")
+  @UseGuards(RolesGuard)
+  @Roles("USER", "ADMIN")
+  myMissions(@CurrentUser() user: AccessTokenPayload) {
+    return this.taskService.getMissionCenter(user.sub);
+  }
+
   @Post("activations/start")
   @UseGuards(RolesGuard)
   @Roles("USER", "ADMIN")
-  startActivation(@CurrentUser() user: AccessTokenPayload, @Body() body: { reservationAmount?: number }) {
-    return this.taskService.startManualActivation(user.sub, body.reservationAmount);
+  startActivation(@CurrentUser() user: AccessTokenPayload, @Body() body: { reservationAmount?: number; securityPasscode?: string }) {
+    return this.taskService.startManualActivation(user.sub, body.reservationAmount, body.securityPasscode);
   }
 
   @Post("profit-distribution")

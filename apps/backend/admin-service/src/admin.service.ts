@@ -6,6 +6,7 @@ import type {
   AdminPlatformSettings,
   AssetRouteSetting,
   AssetType,
+  MissionTaskSetting,
   TransactionType,
   VipTier
 } from "@nevo/shared-types";
@@ -13,7 +14,7 @@ import { DEFAULT_ASSET_LABELS, DEFAULT_ASSET_ROUTE_SETTINGS, SUPPORTED_ASSETS } 
 import type { PoolClient } from "pg";
 import type { UpdateAdminSettingsDto, UpdateVipTierDto } from "./admin.dto";
 
-type AdminSettingValue = string | number | boolean | null | AdCarouselSlide[] | AssetRouteSetting[];
+type AdminSettingValue = string | number | boolean | null | AdCarouselSlide[] | AssetRouteSetting[] | MissionTaskSetting[];
 
 const maxAdCarouselSlides = 8;
 
@@ -47,6 +48,49 @@ const defaultAdCarouselSlides: AdCarouselSlide[] = [
     ctaLabel: "Deposit Funds",
     ctaHref: "/app/wallet/deposit",
     imageUrl: ""
+  }
+];
+
+const defaultMissionTasks: MissionTaskSetting[] = [
+  {
+    id: "direct-invites-2",
+    enabled: true,
+    category: "limited",
+    title: "Invite 2 first-line members",
+    description: "Complete direct invitation task phase 1.",
+    target: 2,
+    rewardAmount: 20,
+    rewardAsset: "USDT_TRC20"
+  },
+  {
+    id: "direct-invites-3",
+    enabled: true,
+    category: "limited",
+    title: "Invite 3 first-line members",
+    description: "Complete direct invitation task phase 2.",
+    target: 3,
+    rewardAmount: 60,
+    rewardAsset: "USDT_TRC20"
+  },
+  {
+    id: "direct-invites-10",
+    enabled: true,
+    category: "daily",
+    title: "Invite 10 first-line members",
+    description: "Complete direct invitation task phase 3.",
+    target: 10,
+    rewardAmount: 150,
+    rewardAsset: "USDT_TRC20"
+  },
+  {
+    id: "direct-invites-20",
+    enabled: true,
+    category: "long-term",
+    title: "Invite 20 first-line members",
+    description: "Complete direct invitation task phase 4.",
+    target: 20,
+    rewardAmount: 300,
+    rewardAsset: "USDT_TRC20"
   }
 ];
 
@@ -215,6 +259,7 @@ export class AdminService {
     const settings = new Map(result.rows.map((row) => [row.key, row.value]));
 
     const adCarouselSlides = this.normalizeAdCarouselSlides(settings.get("platform.adCarouselSlides"));
+    const missionTasks = this.normalizeMissionTasks(settings.get("platform.missionTasks"));
     const assetSettings = this.normalizeAssetSettings(settings);
     const assetSettingByAsset = new Map(assetSettings.map((assetSetting) => [assetSetting.asset, assetSetting]));
 
@@ -239,6 +284,7 @@ export class AdminService {
           ? String(settings.get("platform.giveawayEndsAt"))
           : null,
       adCarouselSlides,
+      missionTasks,
       assetSettings,
       depositAddressBtc: assetSettingByAsset.get("BTC")?.address ?? "",
       depositAddressEth: assetSettingByAsset.get("ETH")?.address ?? "",
@@ -810,6 +856,7 @@ export class AdminService {
     "platform.giveawayWinners",
     "platform.giveawayEndsAt",
     "platform.adCarouselSlides",
+    "platform.missionTasks",
     ...SUPPORTED_ASSETS.flatMap((asset) => [
       `asset.${asset}.enabled`,
       `asset.${asset}.label`,
@@ -922,6 +969,10 @@ export class AdminService {
       entries.push(["platform.adCarouselSlides", this.normalizeAdCarouselSlides(input.adCarouselSlides)]);
     }
 
+    if (input.missionTasks !== undefined) {
+      entries.push(["platform.missionTasks", this.normalizeMissionTasks(input.missionTasks)]);
+    }
+
     if (input.assetSettings !== undefined) {
       const normalizedAssetSettings = this.normalizeAssetRouteSettings(input.assetSettings);
       for (const assetSetting of normalizedAssetSettings) {
@@ -997,6 +1048,46 @@ export class AdminService {
     });
 
     return slides.length ? slides : defaultAdCarouselSlides;
+  }
+
+  private normalizeMissionTasks(value: unknown): MissionTaskSetting[] {
+    if (!Array.isArray(value)) {
+      return defaultMissionTasks;
+    }
+
+    const tasks = value.slice(0, 12).flatMap((entry): MissionTaskSetting[] => {
+      if (!entry || typeof entry !== "object") {
+        return [];
+      }
+
+      const task = entry as Partial<MissionTaskSetting>;
+      const id = typeof task.id === "string" && task.id.trim() ? task.id.trim() : `mission-${Date.now()}`;
+      const target = Number(task.target);
+      const rewardAmount = Number(task.rewardAmount);
+      const category = task.category === "daily" || task.category === "long-term" ? task.category : "limited";
+      const rewardAsset = SUPPORTED_ASSETS.includes(task.rewardAsset as AssetType)
+        ? task.rewardAsset as AssetType
+        : "USDT_TRC20";
+
+      if (!Number.isFinite(target) || target < 1 || !Number.isFinite(rewardAmount) || rewardAmount < 0) {
+        return [];
+      }
+
+      return [
+        {
+          id,
+          enabled: task.enabled !== false,
+          category,
+          title: typeof task.title === "string" && task.title.trim() ? task.title.trim() : "Mission task",
+          description: typeof task.description === "string" ? task.description.trim() : "",
+          target,
+          rewardAmount,
+          rewardAsset
+        }
+      ];
+    });
+
+    return tasks.length ? tasks : defaultMissionTasks;
   }
 
   private normalizeAssetSettings(settings: Map<string, unknown>): AssetRouteSetting[] {

@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import { ImagePlus, Plus, Trash2 } from "lucide-react";
-import type { AdCarouselSlide, AdminPlatformSettings, AssetRouteSetting } from "@nevo/shared-types";
-import { DEFAULT_ASSET_ROUTE_SETTINGS } from "@nevo/shared-utils";
+import type { AdCarouselSlide, AdminPlatformSettings, AssetRouteSetting, MissionTaskSetting } from "@nevo/shared-types";
+import { DEFAULT_ASSET_ROUTE_SETTINGS, SUPPORTED_ASSETS } from "@nevo/shared-utils";
 import { useNavigate } from "react-router-dom";
 import { SectionCard } from "@/components/section-card";
 
@@ -47,6 +47,49 @@ const defaultAdCarouselSlides: AdCarouselSlide[] = [
   }
 ];
 
+const defaultMissionTasks: MissionTaskSetting[] = [
+  {
+    id: "direct-invites-2",
+    enabled: true,
+    category: "limited",
+    title: "Invite 2 first-line members",
+    description: "Complete direct invitation task phase 1.",
+    target: 2,
+    rewardAmount: 20,
+    rewardAsset: "USDT_TRC20"
+  },
+  {
+    id: "direct-invites-3",
+    enabled: true,
+    category: "limited",
+    title: "Invite 3 first-line members",
+    description: "Complete direct invitation task phase 2.",
+    target: 3,
+    rewardAmount: 60,
+    rewardAsset: "USDT_TRC20"
+  },
+  {
+    id: "direct-invites-10",
+    enabled: true,
+    category: "daily",
+    title: "Invite 10 first-line members",
+    description: "Complete direct invitation task phase 3.",
+    target: 10,
+    rewardAmount: 150,
+    rewardAsset: "USDT_TRC20"
+  },
+  {
+    id: "direct-invites-20",
+    enabled: true,
+    category: "long-term",
+    title: "Invite 20 first-line members",
+    description: "Complete direct invitation task phase 4.",
+    target: 20,
+    rewardAmount: 300,
+    rewardAsset: "USDT_TRC20"
+  }
+];
+
 const defaultSettings: AdminPlatformSettings = {
   platformName: "FNDK",
   maintenanceMode: false,
@@ -63,6 +106,7 @@ const defaultSettings: AdminPlatformSettings = {
   giveawayWinners: 3,
   giveawayEndsAt: null,
   adCarouselSlides: defaultAdCarouselSlides,
+  missionTasks: defaultMissionTasks,
   assetSettings: DEFAULT_ASSET_ROUTE_SETTINGS,
   depositAddressBtc: "",
   depositAddressEth: "",
@@ -88,6 +132,17 @@ const createAdSlide = (): AdCarouselSlide => ({
   ctaLabel: "Open",
   ctaHref: "/app/mission",
   imageUrl: ""
+});
+
+const createMissionTask = (): MissionTaskSetting => ({
+  id: `mission-task-${Date.now()}`,
+  enabled: true,
+  category: "daily",
+  title: "New mission task",
+  description: "Describe the task target and reward.",
+  target: 1,
+  rewardAmount: 20,
+  rewardAsset: "USDT_TRC20"
 });
 
 const resolveAdminAssetUrl = (url: string) => {
@@ -135,6 +190,9 @@ export function AdminSettingsPage() {
           adCarouselSlides: response.data.adCarouselSlides?.length
             ? response.data.adCarouselSlides
             : defaultAdCarouselSlides,
+          missionTasks: response.data.missionTasks?.length
+            ? response.data.missionTasks
+            : defaultMissionTasks,
           assetSettings: response.data.assetSettings?.length
             ? response.data.assetSettings
             : DEFAULT_ASSET_ROUTE_SETTINGS
@@ -187,10 +245,30 @@ export function AdminSettingsPage() {
     }));
   };
 
+  const updateMissionTask = <Key extends keyof MissionTaskSetting,>(
+    taskId: string,
+    key: Key,
+    value: MissionTaskSetting[Key]
+  ) => {
+    setSettings((current) => ({
+      ...current,
+      missionTasks: current.missionTasks.map((task) =>
+        task.id === taskId ? { ...task, [key]: value } : task
+      )
+    }));
+  };
+
   const addAdSlide = () => {
     setSettings((current) => ({
       ...current,
       adCarouselSlides: [...current.adCarouselSlides, createAdSlide()]
+    }));
+  };
+
+  const addMissionTask = () => {
+    setSettings((current) => ({
+      ...current,
+      missionTasks: [...current.missionTasks, createMissionTask()]
     }));
   };
 
@@ -200,6 +278,16 @@ export function AdminSettingsPage() {
       return {
         ...current,
         adCarouselSlides: nextSlides.length ? nextSlides : [createAdSlide()]
+      };
+    });
+  };
+
+  const removeMissionTask = (taskId: string) => {
+    setSettings((current) => {
+      const nextTasks = current.missionTasks.filter((task) => task.id !== taskId);
+      return {
+        ...current,
+        missionTasks: nextTasks.length ? nextTasks : [createMissionTask()]
       };
     });
   };
@@ -343,6 +431,132 @@ export function AdminSettingsPage() {
             type="button"
           >
             {saving ? "Saving..." : "Save settings"}
+          </button>
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        className="xl:col-span-2"
+        title="Mission Tasks"
+        subtitle="Tasks shown in the user Mission Center. Progress currently tracks direct invited members against each target."
+        action={
+          <button className={secondaryButtonClass} disabled={loading} onClick={addMissionTask} type="button">
+            <Plus className="h-4 w-4" />
+            Add task
+          </button>
+        }
+      >
+        <div className="grid gap-4 lg:grid-cols-2">
+          {settings.missionTasks.map((task, index) => (
+            <div key={task.id} className="grid gap-3 rounded-lg border border-white/10 bg-white/5 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <label className="flex min-w-0 items-center gap-3 text-sm text-slate-300">
+                  <input
+                    checked={task.enabled}
+                    className="h-4 w-4 shrink-0"
+                    disabled={loading}
+                    type="checkbox"
+                    onChange={(event) => updateMissionTask(task.id, "enabled", event.target.checked)}
+                  />
+                  Mission {index + 1} enabled
+                </label>
+                <button
+                  aria-label={`Remove mission task ${index + 1}`}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-rose-300/20 bg-rose-400/10 text-rose-100 transition hover:bg-rose-400/15"
+                  disabled={loading || settings.missionTasks.length <= 1}
+                  onClick={() => removeMissionTask(task.id)}
+                  type="button"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+
+              <input
+                className={fieldClass}
+                disabled={loading}
+                placeholder="Task title"
+                value={task.title}
+                onChange={(event) => updateMissionTask(task.id, "title", event.target.value)}
+              />
+              <textarea
+                className={`${fieldClass} min-h-24 resize-y`}
+                disabled={loading}
+                placeholder="Task description"
+                value={task.description}
+                onChange={(event) => updateMissionTask(task.id, "description", event.target.value)}
+              />
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="grid gap-2">
+                  <span className="text-sm text-slate-300">Category</span>
+                  <select
+                    className={fieldClass}
+                    disabled={loading}
+                    value={task.category}
+                    onChange={(event) =>
+                      updateMissionTask(task.id, "category", event.target.value as MissionTaskSetting["category"])
+                    }
+                  >
+                    <option value="limited">Limited time</option>
+                    <option value="daily">Daily</option>
+                    <option value="long-term">Long-term</option>
+                  </select>
+                </label>
+                <label className="grid gap-2">
+                  <span className="text-sm text-slate-300">Invite target</span>
+                  <input
+                    className={fieldClass}
+                    disabled={loading}
+                    min={1}
+                    type="number"
+                    value={task.target}
+                    onChange={(event) => updateMissionTask(task.id, "target", Number(event.target.value))}
+                  />
+                </label>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="grid gap-2">
+                  <span className="text-sm text-slate-300">Reward amount</span>
+                  <input
+                    className={fieldClass}
+                    disabled={loading}
+                    min={0}
+                    step="0.01"
+                    type="number"
+                    value={task.rewardAmount}
+                    onChange={(event) => updateMissionTask(task.id, "rewardAmount", Number(event.target.value))}
+                  />
+                </label>
+                <label className="grid gap-2">
+                  <span className="text-sm text-slate-300">Reward asset</span>
+                  <select
+                    className={fieldClass}
+                    disabled={loading}
+                    value={task.rewardAsset}
+                    onChange={(event) =>
+                      updateMissionTask(task.id, "rewardAsset", event.target.value as MissionTaskSetting["rewardAsset"])
+                    }
+                  >
+                    {SUPPORTED_ASSETS.map((asset) => (
+                      <option key={asset} value={asset}>
+                        {asset}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4">
+          <button
+            className={primaryButtonClass}
+            disabled={loading || saving}
+            onClick={saveSettings}
+            type="button"
+          >
+            {saving ? "Saving..." : "Save mission tasks"}
           </button>
         </div>
       </SectionCard>

@@ -1,4 +1,4 @@
-import { IsEmail, IsOptional, IsPhoneNumber, IsString, MinLength } from "class-validator";
+import { IsEmail, IsOptional, IsPhoneNumber, IsString, Matches, MinLength } from "class-validator";
 
 export class RegisterDto {
   @IsEmail()
@@ -22,7 +22,8 @@ export class RegisterDto {
 }
 
 export class LoginDto {
-  @IsEmail()
+  @IsString()
+  @MinLength(2)
   email!: string;
 
   @IsString()
@@ -42,4 +43,10 @@ export class VerifyEmailDto {
 export class ResendEmailVerificationDto {
   @IsEmail()
   email!: string;
+}
+
+export class SetSecurityPasscodeDto {
+  @IsString()
+  @Matches(/^\d{6}$/, { message: "Security passcode must be exactly 6 digits" })
+  passcode!: string;
 }

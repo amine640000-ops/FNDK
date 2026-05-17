@@ -1,7 +1,7 @@
 import { ChangeEvent, useEffect, useId, useState } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
-import { ChevronRight, ExternalLink, FileText, ShieldCheck, Upload, UserRound } from "lucide-react";
+import { ChevronRight, ExternalLink, FileText, KeyRound, ShieldCheck, Upload, UserRound } from "lucide-react";
 import { MobilePageHeader } from "@/components/mobile-page-header";
 
 const identityApiBase = import.meta.env.VITE_IDENTITY_API_URL ?? "http://localhost:4001/api";
@@ -93,6 +93,17 @@ export function ProfilePage() {
   const [selfieFile, setSelfieFile] = useState<File>();
   const [submittingKyc, setSubmittingKyc] = useState(false);
   const [submissions, setSubmissions] = useState<KycSubmission[]>([]);
+  const [securityPasscode, setSecurityPasscode] = useState("");
+  const [securityPasscodeConfirm, setSecurityPasscodeConfirm] = useState("");
+  const [savingSecurityPasscode, setSavingSecurityPasscode] = useState(false);
+  const [hasSecurityPasscode, setHasSecurityPasscode] = useState(() => {
+    try {
+      const storedUser = localStorage.getItem("nevo.user");
+      return storedUser ? Boolean(JSON.parse(storedUser).hasSecurityPasscode) : false;
+    } catch {
+      return false;
+    }
+  });
 
   useEffect(() => {
     const token = localStorage.getItem("nevo.accessToken");
@@ -157,6 +168,47 @@ export function ProfilePage() {
     }
   };
 
+  const saveSecurityPasscode = async () => {
+    const token = localStorage.getItem("nevo.accessToken");
+    if (!token) {
+      toast.error("Sign in first.");
+      return;
+    }
+
+    if (!/^\d{6}$/.test(securityPasscode)) {
+      toast.error("Security passcode must be exactly 6 digits.");
+      return;
+    }
+
+    if (securityPasscode !== securityPasscodeConfirm) {
+      toast.error("Security passcodes do not match.");
+      return;
+    }
+
+    setSavingSecurityPasscode(true);
+    try {
+      await identityApi.post(
+        "/auth/security-passcode",
+        { passcode: securityPasscode },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      const storedUser = localStorage.getItem("nevo.user");
+      if (storedUser) {
+        localStorage.setItem("nevo.user", JSON.stringify({ ...JSON.parse(storedUser), hasSecurityPasscode: true }));
+      }
+
+      setHasSecurityPasscode(true);
+      setSecurityPasscode("");
+      setSecurityPasscodeConfirm("");
+      toast.success("Security passcode saved.");
+    } catch (error) {
+      toast.error(resolveApiErrorMessage("Could not save security passcode.", error));
+    } finally {
+      setSavingSecurityPasscode(false);
+    }
+  };
+
   return (
     <div className="pb-6">
       <MobilePageHeader title="My Profile" subtitle="account settings" />
@@ -208,6 +260,48 @@ export function ProfilePage() {
           </div>
 
           <div className="mt-4 space-y-3">
+            <div className="rounded-[22px] border border-cyan-300/15 bg-cyan-300/10 px-4 py-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2 text-cyan-100">
+                  <KeyRound className="h-4 w-4 shrink-0" />
+                  <span className="text-sm font-semibold uppercase tracking-[0.2em]">Security passcode</span>
+                </div>
+                <span className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] ${
+                  hasSecurityPasscode ? "bg-emerald-300/12 text-emerald-100" : "bg-amber-300/12 text-amber-100"
+                }`}>
+                  {hasSecurityPasscode ? "Set" : "Missing"}
+                </span>
+              </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <input
+                  className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-center text-[18px] font-semibold tracking-[0.28em] text-white outline-none transition focus:border-cyan-300/40"
+                  inputMode="numeric"
+                  maxLength={6}
+                  placeholder="000000"
+                  type="password"
+                  value={securityPasscode}
+                  onChange={(event) => setSecurityPasscode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                />
+                <input
+                  className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-center text-[18px] font-semibold tracking-[0.28em] text-white outline-none transition focus:border-cyan-300/40"
+                  inputMode="numeric"
+                  maxLength={6}
+                  placeholder="Confirm"
+                  type="password"
+                  value={securityPasscodeConfirm}
+                  onChange={(event) => setSecurityPasscodeConfirm(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                />
+              </div>
+              <button
+                className="mt-3 w-full rounded-[20px] bg-cyan-400 px-4 py-3.5 text-[15px] font-semibold text-slate-950 disabled:opacity-60"
+                disabled={savingSecurityPasscode}
+                onClick={() => void saveSecurityPasscode()}
+                type="button"
+              >
+                {savingSecurityPasscode ? "Saving..." : hasSecurityPasscode ? "Update passcode" : "Set passcode"}
+              </button>
+            </div>
             <button
               className="flex w-full items-center justify-between rounded-[20px] border border-white/10 bg-white/5 px-4 py-4 text-left text-[15px] text-white"
               type="button"

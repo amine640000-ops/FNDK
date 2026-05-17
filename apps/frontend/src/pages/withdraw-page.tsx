@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
-import { Check, ChevronDown, Clock3, HandCoins, MailCheck, X } from "lucide-react";
+import { Check, ChevronDown, Clock3, HandCoins, KeyRound, MailCheck, X } from "lucide-react";
 import type { AssetType, WalletSummary } from "@nevo/shared-types";
 import { SUPPORTED_ASSETS, formatCurrency } from "@nevo/shared-utils";
 import { MobilePageHeader } from "@/components/mobile-page-header";
@@ -51,6 +51,7 @@ export function WithdrawPage() {
   const [amount, setAmount] = useState("");
   const [destinationAddress, setDestinationAddress] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
+  const [securityPasscode, setSecurityPasscode] = useState("");
   const [verificationCodeSent, setVerificationCodeSent] = useState(false);
   const [sendingVerificationCode, setSendingVerificationCode] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -158,6 +159,11 @@ export function WithdrawPage() {
       return;
     }
 
+    if (!/^\d{6}$/.test(securityPasscode)) {
+      toast.error("Enter your 6-digit security passcode.");
+      return;
+    }
+
     setSubmitting(true);
     try {
       const response = await walletApi.post<WithdrawalResponse>(
@@ -166,7 +172,8 @@ export function WithdrawPage() {
           asset,
           amount: parsedAmount,
           destinationAddress: destinationAddress.trim(),
-          verificationCode: verificationCode.trim()
+          verificationCode: verificationCode.trim(),
+          securityPasscode
         },
         {
           headers: {
@@ -177,6 +184,7 @@ export function WithdrawPage() {
 
       setWithdrawalResponse(response.data);
       setVerificationCode("");
+      setSecurityPasscode("");
       setVerificationCodeSent(false);
       toast.success(response.data.message);
     } catch (error) {
@@ -336,6 +344,22 @@ export function WithdrawPage() {
               </button>
             </div>
           </div>
+
+          <label className="grid gap-2">
+            <span className="flex items-center gap-2 text-sm text-slate-300">
+              <KeyRound className="h-4 w-4 text-cyan-200" />
+              Security passcode
+            </span>
+            <input
+              className="rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-center text-[18px] font-semibold tracking-[0.28em] text-white outline-none"
+              inputMode="numeric"
+              maxLength={6}
+              placeholder="000000"
+              type="password"
+              value={securityPasscode}
+              onChange={(event) => setSecurityPasscode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+            />
+          </label>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-[20px] border border-white/10 bg-white/5 px-4 py-4">

@@ -10,6 +10,7 @@ import {
   Globe,
   HandCoins,
   Headset,
+  KeyRound,
   Landmark,
   LogOut,
   PlayCircle,
@@ -18,9 +19,9 @@ import {
   Wallet,
   X
 } from "lucide-react";
-import type { AiTradingActivation, AssetType, VipTier, WalletSummary } from "@nevo/shared-types";
+import type { AiTradingActivation, AssetType, MissionTaskCategory, MissionTaskProgress, VipTier, WalletSummary } from "@nevo/shared-types";
 import { formatCurrency, formatPercent, resolveTierByDeposit } from "@nevo/shared-utils";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { BrandMark } from "@/components/brand-mark";
 import { useDashboardStore } from "@/store/use-dashboard-store";
 
@@ -50,6 +51,11 @@ type StartActivationResponse = {
   remainingActivationsToday: number;
 };
 
+type MissionCenterState = {
+  totalRewardAmount: number;
+  tasks: MissionTaskProgress[];
+};
+
 const compactNumber = new Intl.NumberFormat("en-US", {
   notation: "compact",
   maximumFractionDigits: 2
@@ -74,11 +80,18 @@ const assetBadgeTone: Partial<Record<AssetType, string>> = {
 };
 
 const missionTabs = [
+  { id: "tasks", label: "Missions" },
   { id: "strategy", label: "Strategie" },
   { id: "today", label: "Aujourd'hui" },
   { id: "invoices", label: "Facture" },
   { id: "history", label: "Historique" }
 ] as const;
+
+const missionCategoryTabs: Array<{ id: MissionTaskCategory; label: string }> = [
+  { id: "limited", label: "Limited Time Tasks" },
+  { id: "daily", label: "Daily Tasks" },
+  { id: "long-term", label: "Long-Term Tasks" }
+];
 
 const formatMoneyValue = (value: number) => formatCurrency(value).replace("$", "");
 
@@ -154,6 +167,7 @@ function AssetBadge({ asset, className = "" }: { asset: AssetType; className?: s
 
 export function VipPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const vipTiers = useDashboardStore((state) => state.vipTiers);
   const wallet = useDashboardStore((state) => state.wallet);
   const overview = useDashboardStore((state) => state.overview);
@@ -167,9 +181,15 @@ export function VipPage() {
     const stored = localStorage.getItem("nevo.language");
     return stored === "fr" ? "fr" : "en";
   });
-  const [activeTab, setActiveTab] = useState<(typeof missionTabs)[number]["id"]>("strategy");
+  const [activeTab, setActiveTab] = useState<(typeof missionTabs)[number]["id"]>(() =>
+    location.pathname.endsWith("/mission") ? "tasks" : "strategy"
+  );
+  const [missionCategory, setMissionCategory] = useState<MissionTaskCategory>("limited");
+  const [missionCenter, setMissionCenter] = useState<MissionCenterState>({ totalRewardAmount: 0, tasks: [] });
+  const [loadingMissionCenter, setLoadingMissionCenter] = useState(false);
   const [reservationModalOpen, setReservationModalOpen] = useState(false);
   const [reservationAmount, setReservationAmount] = useState("");
+  const [securityPasscode, setSecurityPasscode] = useState("");
   const [failedReservation, setFailedReservation] = useState<StartActivationResponse | null>(null);
   const [vipListOpen, setVipListOpen] = useState(false);
 
@@ -201,6 +221,10 @@ export function VipPage() {
     document.documentElement.lang = language;
     localStorage.setItem("nevo.language", language);
   }, [language]);
+
+  useEffect(() => {
+    setActiveTab(location.pathname.endsWith("/mission") ? "tasks" : "strategy");
+  }, [location.pathname]);
 
   useEffect(() => {
     const token = localStorage.getItem("nevo.accessToken");
@@ -267,6 +291,42 @@ export function VipPage() {
   }, [fallbackActivationState, navigate]);
 
   useEffect(() => {
+    const token = localStorage.getItem("nevo.accessToken");
+    if (!token) {
+      return;
+    }
+
+    let active = true;
+    setLoadingMissionCenter(true);
+
+    taskApi
+      .get<MissionCenterState>("/tasks/missions/me", {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      })
+      .then((response) => {
+        if (active) {
+          setMissionCenter(response.data);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setMissionCenter({ totalRewardAmount: 0, tasks: [] });
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoadingMissionCenter(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
     const interval = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(interval);
   }, []);
@@ -317,6 +377,10 @@ export function VipPage() {
   const parsedReservationAmount = Number(reservationAmount || 0);
   const sortedVipTiers = useMemo(() => [...vipTiers].sort((left, right) => left.id - right.id), [vipTiers]);
   const unlockReferenceAmount = Math.max(liveState.activeInvestment, 0);
+  const visibleMissionTasks = useMemo(
+    () => missionCenter.tasks.filter((task) => task.enabled && task.category === missionCategory),
+    [missionCategory, missionCenter.tasks]
+  );
 
   useEffect(() => {
     if (!reservationModalOpen) {
@@ -402,6 +466,7 @@ export function VipPage() {
     }
 
     setReservationAmount(liveState.activeInvestment.toFixed(2));
+    setSecurityPasscode("");
     setReservationModalOpen(true);
   };
 
@@ -422,11 +487,16 @@ export function VipPage() {
       return;
     }
 
+    if (!/^\d{6}$/.test(securityPasscode)) {
+      toast.error("Enter your 6-digit security passcode.");
+      return;
+    }
+
     setLoadingActivation(true);
     try {
       const response = await taskApi.post<StartActivationResponse>(
         "/tasks/activations/start",
-        { reservationAmount: parsedReservationAmount },
+        { reservationAmount: parsedReservationAmount, securityPasscode },
         {
           headers: {
             Authorization: `Bearer ${token}`
@@ -442,6 +512,7 @@ export function VipPage() {
       }
 
       setReservationModalOpen(false);
+      setSecurityPasscode("");
       const latestState = await taskApi.get<ActivationState>("/tasks/activations/me", {
         headers: {
           Authorization: `Bearer ${token}`
@@ -521,7 +592,10 @@ export function VipPage() {
           <button
             aria-label="Close reservation confirmation"
             className="absolute inset-0"
-            onClick={() => setReservationModalOpen(false)}
+            onClick={() => {
+              setReservationModalOpen(false);
+              setSecurityPasscode("");
+            }}
             type="button"
           />
           <div className="absolute inset-x-4 top-[18%] rounded-[30px] border border-cyan-300/15 bg-[linear-gradient(180deg,rgba(14,19,142,0.98)_0%,rgba(9,11,110,0.99)_45%,rgba(6,8,82,1)_100%)] p-5 shadow-[0_28px_60px_rgba(0,0,0,0.4)]">
@@ -529,7 +603,10 @@ export function VipPage() {
               <div className="text-[1.9rem] font-extrabold tracking-[-0.04em] text-white">Reservation Confirmation</div>
               <button
                 className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white"
-                onClick={() => setReservationModalOpen(false)}
+                onClick={() => {
+                  setReservationModalOpen(false);
+                  setSecurityPasscode("");
+                }}
                 type="button"
               >
                 <X className="h-5 w-5" />
@@ -575,6 +652,22 @@ export function VipPage() {
                 </span>
               </div>
             </div>
+
+            <label className="mt-4 grid gap-2">
+              <span className="flex items-center gap-2 text-sm text-slate-300">
+                <KeyRound className="h-4 w-4 text-cyan-200" />
+                Security passcode
+              </span>
+              <input
+                className="rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-center text-[18px] font-semibold tracking-[0.28em] text-white outline-none"
+                inputMode="numeric"
+                maxLength={6}
+                placeholder="000000"
+                type="password"
+                value={securityPasscode}
+                onChange={(event) => setSecurityPasscode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+              />
+            </label>
 
             <button
               className="mt-6 w-full rounded-[22px] bg-cyan-300 px-4 py-4 text-[1.15rem] font-semibold text-[#032932] shadow-[0_14px_24px_rgba(39,231,212,0.28)] disabled:opacity-60"
@@ -782,6 +875,93 @@ export function VipPage() {
             </button>
           ))}
         </div>
+
+        {activeTab === "tasks" ? (
+          <section className="mt-5 space-y-5">
+            <section className="neon-panel relative overflow-hidden rounded-[30px] px-5 py-7 shadow-[0_24px_50px_rgba(20,18,120,0.45)]">
+              <div className="absolute inset-y-0 right-0 w-1/2 bg-[radial-gradient(circle_at_center,rgba(89,122,255,0.24),transparent_64%)]" />
+              <div className="relative z-10">
+                <div className="max-w-[18rem] text-[2rem] font-extrabold leading-[1.1] tracking-[-0.04em] text-white">
+                  Complete Tasks To Receive Benefits
+                </div>
+                <div className="mt-6 text-[1.1rem] font-semibold text-slate-300">Total Reward Overview</div>
+                <div className="mt-2 text-[1.6rem] font-extrabold text-amber-300">
+                  {formatMoneyValue(missionCenter.totalRewardAmount)} USDT
+                </div>
+              </div>
+            </section>
+
+            <div className="hide-scrollbar flex items-center gap-7 overflow-x-auto border-b border-white/10 px-1 pb-3 text-[15px]">
+              {missionCategoryTabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  className={`relative shrink-0 pb-1 transition ${missionCategory === tab.id ? "font-semibold text-white" : "text-white/35"}`}
+                  onClick={() => setMissionCategory(tab.id)}
+                  type="button"
+                >
+                  {tab.label}
+                  {missionCategory === tab.id ? (
+                    <span className="absolute -bottom-3 left-0 h-1 w-20 rounded-full bg-cyan-300 shadow-[0_0_14px_rgba(108,240,255,0.55)]" />
+                  ) : null}
+                </button>
+              ))}
+            </div>
+
+            <div className="space-y-4">
+              {visibleMissionTasks.length ? (
+                visibleMissionTasks.map((task) => {
+                  const progressPercent = Math.min((task.progress / Math.max(task.target, 1)) * 100, 100);
+                  const rewardAssetLabel = task.rewardAsset.startsWith("USDT") ? "USDT" : task.rewardAsset;
+
+                  return (
+                    <article
+                      key={task.id}
+                      className="overflow-hidden rounded-[28px] border border-cyan-300/20 bg-[linear-gradient(180deg,rgba(10,17,139,0.96)_0%,rgba(11,16,126,0.94)_100%)] shadow-[0_18px_34px_rgba(8,14,104,0.34)]"
+                    >
+                      <div className="h-14 bg-[#02053c]/92" />
+                      <div className="px-5 pb-5">
+                        <div className="-mt-2 h-2 overflow-hidden rounded-full bg-[#01032d]">
+                          <div
+                            className="h-full rounded-full bg-cyan-300 shadow-[0_0_14px_rgba(108,240,255,0.55)]"
+                            style={{ width: `${progressPercent}%` }}
+                          />
+                        </div>
+
+                        <div className="mt-5 flex items-start justify-between gap-4">
+                          <div className="min-w-0">
+                            <div className="text-[1rem] font-semibold text-white">{task.title}</div>
+                            <div className="mt-2 text-[13px] leading-5 text-slate-300">{task.description}</div>
+                            <div className="mt-4 text-[1rem] font-semibold text-white">
+                              <span className="text-slate-400">Reward:</span>{" "}
+                              <span className="text-cyan-100">{task.rewardAmount} {rewardAssetLabel}</span>
+                            </div>
+                          </div>
+                          <div className="shrink-0 text-[1rem] font-extrabold text-white">
+                            {Math.min(task.progress, task.target)}/{task.target}
+                          </div>
+                        </div>
+
+                        <div
+                          className={`mt-5 rounded-[20px] border px-4 py-3.5 text-center text-[1rem] font-semibold ${
+                            task.completed
+                              ? "border-emerald-300/25 bg-emerald-300/12 text-emerald-100"
+                              : "border-white/10 bg-white/8 text-slate-300"
+                          }`}
+                        >
+                          {task.completed ? (task.rewardClaimed ? "Reward Paid" : "Completed") : "Not Completed"}
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })
+              ) : (
+                <div className="neon-panel px-4 py-8 text-center text-sm text-white/45">
+                  {loadingMissionCenter ? "Loading mission tasks..." : "No mission tasks in this category."}
+                </div>
+              )}
+            </div>
+          </section>
+        ) : null}
 
         {activeTab === "strategy" ? (
           <div className="mt-5 space-y-4">
