@@ -18,6 +18,86 @@ const readPositiveInteger = (value: string | undefined, fallback: number) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
+const parseMailAddress = (value: string) => {
+  const trimmedValue = value.trim();
+  const match = trimmedValue.match(/^(.*?)\s*<([^>]+)>$/);
+  if (!match) {
+    return { email: trimmedValue };
+  }
+
+  const name = match[1].trim().replace(/^["']|["']$/g, "");
+  return {
+    email: match[2].trim(),
+    ...(name ? { name } : {})
+  };
+};
+
+const getSender = () => {
+  const senderEmail = process.env.BREVO_SENDER_EMAIL?.trim();
+  if (senderEmail) {
+    return {
+      email: senderEmail,
+      ...(process.env.BREVO_SENDER_NAME?.trim() ? { name: process.env.BREVO_SENDER_NAME.trim() } : {})
+    };
+  }
+
+  return parseMailAddress(
+    process.env.SMTP_FROM?.trim() || `${process.env.PLATFORM_NAME ?? "FNDK"} <no-reply@fndk.capital>`
+  );
+};
+
+const sendBrevoMail = async ({ to, subject, text, html }: SendMailInput): Promise<SendMailResult> => {
+  const apiKey = process.env.BREVO_API_KEY?.trim();
+  if (!apiKey) {
+    return { skipped: true };
+  }
+
+  const timeoutMs = readPositiveInteger(process.env.BREVO_API_TIMEOUT_MS, 10000);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "api-key": apiKey,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify({
+        sender: getSender(),
+        to: [{ email: to }],
+        subject,
+        textContent: text,
+        ...(html ? { htmlContent: html } : {})
+      }),
+      signal: controller.signal
+    });
+
+    const responseBody = (await response.text()).trim();
+    if (!response.ok) {
+      throw new Error(`Brevo email API failed with ${response.status}: ${responseBody || response.statusText}`);
+    }
+
+    let messageId: string | undefined;
+    if (responseBody) {
+      try {
+        const parsedBody = JSON.parse(responseBody) as { messageId?: unknown };
+        messageId = typeof parsedBody.messageId === "string" ? parsedBody.messageId : undefined;
+      } catch {
+        messageId = undefined;
+      }
+    }
+
+    return {
+      skipped: false,
+      messageId
+    };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
 const getSmtpTransport = () => {
   const host = process.env.SMTP_HOST?.trim();
   if (!host) {
@@ -40,9 +120,14 @@ const getSmtpTransport = () => {
 };
 
 export const sendMail = async ({ to, subject, text, html }: SendMailInput): Promise<SendMailResult> => {
+  const brevoResult = await sendBrevoMail({ to, subject, text, html });
+  if (!brevoResult.skipped) {
+    return brevoResult;
+  }
+
   const transport = getSmtpTransport();
   if (!transport) {
-    console.warn("[mail] SMTP_HOST is not configured; email delivery skipped.");
+    console.warn("[mail] BREVO_API_KEY and SMTP_HOST are not configured; email delivery skipped.");
     return { skipped: true };
   }
 

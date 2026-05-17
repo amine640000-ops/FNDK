@@ -66,8 +66,8 @@ export interface AuthSession {
 export class AuthService {
   private readonly emailVerificationPurpose = "email_verification";
   private readonly verificationCodeTtlMinutes = 15;
-  private readonly mailTimeoutMs = 8000;
-  private readonly eventPublishTimeoutMs = 3000;
+  private readonly mailTimeoutMs = this.readPositiveInteger(process.env.MAIL_SEND_TIMEOUT_MS, 8000);
+  private readonly eventPublishTimeoutMs = this.readPositiveInteger(process.env.EVENT_PUBLISH_TIMEOUT_MS, 3000);
 
   private readonly jwt = new JwtService({
     secret: process.env.JWT_ACCESS_SECRET ?? "dev-access-secret",
@@ -470,6 +470,11 @@ export class AuthService {
 
   private isUniqueViolation(error: unknown) {
     return typeof error === "object" && error !== null && (error as { code?: unknown }).code === "23505";
+  }
+
+  private readPositiveInteger(value: string | undefined, fallback: number) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
   }
 
   private async withTimeout<T>(operation: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
