@@ -13,13 +13,29 @@ type SendMailResult = {
 };
 
 const readBoolean = (value: string | undefined) => ["1", "true", "yes"].includes(value?.toLowerCase() ?? "");
+const readEnv = (value: string | undefined) => {
+  const trimmedValue = value?.trim();
+  if (!trimmedValue) {
+    return undefined;
+  }
+
+  if (
+    (trimmedValue.startsWith('"') && trimmedValue.endsWith('"')) ||
+    (trimmedValue.startsWith("'") && trimmedValue.endsWith("'"))
+  ) {
+    return trimmedValue.slice(1, -1).trim();
+  }
+
+  return trimmedValue;
+};
+
 const readPositiveInteger = (value: string | undefined, fallback: number) => {
-  const parsed = Number(value);
+  const parsed = Number(readEnv(value));
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
 const parseMailAddress = (value: string) => {
-  const trimmedValue = value.trim();
+  const trimmedValue = readEnv(value) ?? "";
   const match = trimmedValue.match(/^(.*?)\s*<([^>]+)>$/);
   if (!match) {
     return { email: trimmedValue };
@@ -33,21 +49,22 @@ const parseMailAddress = (value: string) => {
 };
 
 const getSender = () => {
-  const senderEmail = process.env.BREVO_SENDER_EMAIL?.trim();
+  const senderEmail = readEnv(process.env.BREVO_SENDER_EMAIL);
   if (senderEmail) {
+    const senderName = readEnv(process.env.BREVO_SENDER_NAME);
     return {
       email: senderEmail,
-      ...(process.env.BREVO_SENDER_NAME?.trim() ? { name: process.env.BREVO_SENDER_NAME.trim() } : {})
+      ...(senderName ? { name: senderName } : {})
     };
   }
 
   return parseMailAddress(
-    process.env.SMTP_FROM?.trim() || `${process.env.PLATFORM_NAME ?? "FNDK"} <no-reply@fndk.capital>`
+    readEnv(process.env.SMTP_FROM) || `${readEnv(process.env.PLATFORM_NAME) ?? "FNDK"} <no-reply@fndk.capital>`
   );
 };
 
 const sendBrevoMail = async ({ to, subject, text, html }: SendMailInput): Promise<SendMailResult> => {
-  const apiKey = process.env.BREVO_API_KEY?.trim();
+  const apiKey = readEnv(process.env.BREVO_API_KEY);
   if (!apiKey) {
     return { skipped: true };
   }
@@ -99,14 +116,14 @@ const sendBrevoMail = async ({ to, subject, text, html }: SendMailInput): Promis
 };
 
 const getSmtpTransport = () => {
-  const host = process.env.SMTP_HOST?.trim();
+  const host = readEnv(process.env.SMTP_HOST);
   if (!host) {
     return null;
   }
 
-  const port = Number(process.env.SMTP_PORT ?? 587);
-  const user = process.env.SMTP_USER?.trim();
-  const pass = process.env.SMTP_PASS;
+  const port = Number(readEnv(process.env.SMTP_PORT) ?? 587);
+  const user = readEnv(process.env.SMTP_USER);
+  const pass = readEnv(process.env.SMTP_PASS);
 
   return createTransport({
     host,
@@ -131,7 +148,7 @@ export const sendMail = async ({ to, subject, text, html }: SendMailInput): Prom
     return { skipped: true };
   }
 
-  const from = process.env.SMTP_FROM?.trim() || `${process.env.PLATFORM_NAME ?? "FNDK"} <no-reply@fndk.capital>`;
+  const from = readEnv(process.env.SMTP_FROM) || `${readEnv(process.env.PLATFORM_NAME) ?? "FNDK"} <no-reply@fndk.capital>`;
   const info = await transport.sendMail({ from, to, subject, text, html });
 
   return {

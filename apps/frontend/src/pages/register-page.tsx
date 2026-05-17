@@ -197,7 +197,7 @@ export function RegisterPage() {
     <form className={className} onSubmit={handleVerifyEmail}>
       <div className="rounded-[20px] border border-cyan-300/20 bg-cyan-300/10 px-4 py-4 text-sm leading-6 text-cyan-100">
         {verificationDeliveryFailed
-          ? "The account was created, but the verification email was not sent. Use Resend code after checking the SMTP settings."
+          ? "The account was created, but the verification email was not sent. Use Resend code after checking the email delivery settings."
           : "Enter the 6-digit code sent to "}
         {!verificationDeliveryFailed ? <span className="font-semibold text-white">{verificationEmail || email}</span> : null}
         {!verificationDeliveryFailed ? "." : null}

@@ -151,7 +151,7 @@ export class AuthService {
     return {
       message: verificationEmailSent
         ? "Registration created. Check your email for the verification code."
-        : "Registration created, but the verification email could not be sent. Try resend verification.",
+        : "Registration created, but the verification email could not be sent. Check email delivery settings and try resend verification.",
       userId: inserted.id,
       referralCode: inserted.referral_code,
       emailVerificationSent: verificationEmailSent
