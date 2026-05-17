@@ -16,6 +16,47 @@ type RegisterResponse = {
   emailVerificationSent: boolean;
 };
 
+const strongPasswordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
+const internationalPhonePattern = /^\+[1-9]\d{7,14}$/;
+
+const resolveApiErrorMessage = (error: unknown, fallback: string) => {
+  if (!axios.isAxiosError(error)) {
+    return error instanceof Error ? error.message : fallback;
+  }
+
+  if (!error.response) {
+    return "Identity service is unreachable. Check the API URL and service status.";
+  }
+
+  const responseData = error.response.data;
+  const responseMessage =
+    typeof responseData === "object" && responseData !== null
+      ? (responseData as { message?: unknown }).message
+      : undefined;
+
+  if (typeof responseMessage === "string") {
+    return responseMessage;
+  }
+
+  if (Array.isArray(responseMessage)) {
+    return responseMessage.filter((message): message is string => typeof message === "string").join(". ");
+  }
+
+  if (typeof responseData === "string" && /<html|<!doctype/i.test(responseData)) {
+    return "Identity service returned the web app instead of the API. Check VITE_IDENTITY_API_URL.";
+  }
+
+  return fallback;
+};
+
+const isRegisterResponse = (value: unknown): value is RegisterResponse =>
+  typeof value === "object" &&
+  value !== null &&
+  typeof (value as RegisterResponse).message === "string" &&
+  typeof (value as RegisterResponse).userId === "string" &&
+  typeof (value as RegisterResponse).referralCode === "string" &&
+  typeof (value as RegisterResponse).emailVerificationSent === "boolean";
+
 export function RegisterPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -23,6 +64,8 @@ export function RegisterPage() {
   const [verificationLoading, setVerificationLoading] = useState(false);
   const [resendingVerification, setResendingVerification] = useState(false);
   const [awaitingEmailVerification, setAwaitingEmailVerification] = useState(false);
+  const [verificationDeliveryFailed, setVerificationDeliveryFailed] = useState(false);
+  const [formError, setFormError] = useState("");
   const [verificationEmail, setVerificationEmail] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
   const [fullName, setFullName] = useState("");
@@ -33,26 +76,56 @@ export function RegisterPage() {
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setFormError("");
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedPhone = phone.trim().replace(/[^\d+]/g, "");
+    const trimmedFullName = fullName.trim();
+
+    if (!internationalPhonePattern.test(normalizedPhone)) {
+      const message = "Enter a valid phone number with country code, for example +21656109879.";
+      setFormError(message);
+      toast.error(message);
+      return;
+    }
+
+    if (!strongPasswordPattern.test(password)) {
+      const message = "Password must be at least 8 characters and include uppercase, lowercase, number, and symbol.";
+      setFormError(message);
+      toast.error(message);
+      return;
+    }
+
     setLoading(true);
 
     try {
-      const normalizedEmail = email.trim().toLowerCase();
       const response = await identityApi.post<RegisterResponse>("/auth/register", {
-        fullName,
-        phone,
+        fullName: trimmedFullName,
+        phone: normalizedPhone,
         email: normalizedEmail,
         password,
         ...(referralCode.trim() ? { referralCode: referralCode.trim() } : {})
       });
-      setVerificationEmail(normalizedEmail);
-      setAwaitingEmailVerification(true);
-      toast.success(response.data.emailVerificationSent ? "Account created. Check your email code." : response.data.message);
-    } catch (error) {
-      if (axios.isAxiosError(error) && typeof error.response?.data?.message === "string") {
-        toast.error(error.response.data.message);
-      } else {
-        toast.error("Registration failed. Check your referral code and input values.");
+
+      if (!isRegisterResponse(response.data)) {
+        const message = "Registration service returned an invalid response. Check VITE_IDENTITY_API_URL.";
+        setFormError(message);
+        toast.error(message);
+        return;
       }
+
+      setVerificationEmail(normalizedEmail);
+      setVerificationDeliveryFailed(!response.data.emailVerificationSent);
+      setAwaitingEmailVerification(true);
+      if (response.data.emailVerificationSent) {
+        toast.success("Account created. Check your email code.");
+      } else {
+        toast(response.data.message);
+      }
+    } catch (error) {
+      const message = resolveApiErrorMessage(error, "Registration failed. Check your referral code and input values.");
+      setFormError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -81,11 +154,7 @@ export function RegisterPage() {
       toast.success("Email verified. You can sign in now.");
       navigate("/login");
     } catch (error) {
-      if (axios.isAxiosError(error) && typeof error.response?.data?.message === "string") {
-        toast.error(error.response.data.message);
-      } else {
-        toast.error("Could not verify email code.");
-      }
+      toast.error(resolveApiErrorMessage(error, "Could not verify email code."));
     } finally {
       setVerificationLoading(false);
     }
@@ -104,22 +173,34 @@ export function RegisterPage() {
         "/auth/resend-email-verification",
         { email: targetEmail }
       );
-      toast.success(response.data.emailVerificationSent ? "Verification code sent." : response.data.message);
-    } catch (error) {
-      if (axios.isAxiosError(error) && typeof error.response?.data?.message === "string") {
-        toast.error(error.response.data.message);
+      setVerificationDeliveryFailed(!response.data.emailVerificationSent);
+      if (response.data.emailVerificationSent) {
+        toast.success("Verification code sent.");
       } else {
-        toast.error("Could not resend verification code.");
+        toast(response.data.message);
       }
+    } catch (error) {
+      toast.error(resolveApiErrorMessage(error, "Could not resend verification code."));
     } finally {
       setResendingVerification(false);
     }
   };
 
+  const renderFormError = () =>
+    formError ? (
+      <div className="rounded-[18px] border border-red-300/25 bg-red-500/10 px-4 py-3 text-sm leading-6 text-red-100" role="alert">
+        {formError}
+      </div>
+    ) : null;
+
   const renderVerificationForm = (className: string) => (
     <form className={className} onSubmit={handleVerifyEmail}>
       <div className="rounded-[20px] border border-cyan-300/20 bg-cyan-300/10 px-4 py-4 text-sm leading-6 text-cyan-100">
-        Enter the 6-digit code sent to <span className="font-semibold text-white">{verificationEmail || email}</span>.
+        {verificationDeliveryFailed
+          ? "The account was created, but the verification email was not sent. Use Resend code after checking the SMTP settings."
+          : "Enter the 6-digit code sent to "}
+        {!verificationDeliveryFailed ? <span className="font-semibold text-white">{verificationEmail || email}</span> : null}
+        {!verificationDeliveryFailed ? "." : null}
       </div>
       <input
         className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-center text-2xl font-semibold tracking-[0.32em] text-white outline-none transition focus:border-cyan-300/40"
@@ -191,8 +272,10 @@ export function RegisterPage() {
                 renderVerificationForm("mt-6 space-y-4")
               ) : (
                 <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
+                  {renderFormError()}
                   <input
                     className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
+                    autoComplete="name"
                     placeholder="Full name"
                     value={fullName}
                     onChange={(event) => setFullName(event.target.value)}
@@ -200,13 +283,17 @@ export function RegisterPage() {
                   />
                   <input
                     className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
+                    autoComplete="tel"
+                    inputMode="tel"
                     placeholder="Phone"
+                    type="tel"
                     value={phone}
                     onChange={(event) => setPhone(event.target.value)}
                     required
                   />
                   <input
                     className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
+                    autoComplete="email"
                     placeholder="Email"
                     type="email"
                     value={email}
@@ -215,6 +302,7 @@ export function RegisterPage() {
                   />
                   <input
                     className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
+                    autoComplete="new-password"
                     placeholder="Password"
                     type="password"
                     minLength={8}
@@ -222,6 +310,9 @@ export function RegisterPage() {
                     onChange={(event) => setPassword(event.target.value)}
                     required
                   />
+                  <p className="px-1 text-xs leading-5 text-cyan-100/70">
+                    Use 8+ characters with uppercase, lowercase, number, and symbol.
+                  </p>
                   <input
                     className="w-full rounded-[20px] border border-cyan-300/25 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
                     placeholder="Referral code"
@@ -310,7 +401,9 @@ export function RegisterPage() {
           <div className="flex items-center">
             <section className="neon-panel w-full p-8">
               <div className="text-sm uppercase tracking-[0.28em] text-cyan-200/70">Register</div>
-              <div className="mt-2 text-[2.5rem] font-extrabold text-white">Investor Onboarding</div>
+              <div className="mt-2 text-[2.5rem] font-extrabold text-white">
+                {awaitingEmailVerification ? "Verify Email" : "Investor Onboarding"}
+              </div>
               <div className="mt-3 text-sm leading-6 text-slate-300">
                 {awaitingEmailVerification
                   ? "Verify your email before signing in."
@@ -321,8 +414,10 @@ export function RegisterPage() {
                 renderVerificationForm("mt-8 space-y-4")
               ) : (
                 <form className="mt-8 space-y-4" onSubmit={handleSubmit}>
+                  {renderFormError()}
                   <input
                     className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
+                    autoComplete="name"
                     placeholder="Full name"
                     value={fullName}
                     onChange={(event) => setFullName(event.target.value)}
@@ -330,13 +425,17 @@ export function RegisterPage() {
                   />
                   <input
                     className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
+                    autoComplete="tel"
+                    inputMode="tel"
                     placeholder="Phone"
+                    type="tel"
                     value={phone}
                     onChange={(event) => setPhone(event.target.value)}
                     required
                   />
                   <input
                     className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
+                    autoComplete="email"
                     placeholder="Email"
                     type="email"
                     value={email}
@@ -345,6 +444,7 @@ export function RegisterPage() {
                   />
                   <input
                     className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
+                    autoComplete="new-password"
                     placeholder="Password"
                     type="password"
                     minLength={8}
@@ -352,6 +452,9 @@ export function RegisterPage() {
                     onChange={(event) => setPassword(event.target.value)}
                     required
                   />
+                  <p className="px-1 text-xs leading-5 text-cyan-100/70">
+                    Use 8+ characters with uppercase, lowercase, number, and symbol.
+                  </p>
                   <input
                     className="w-full rounded-[20px] border border-cyan-300/25 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
                     placeholder="Referral code"

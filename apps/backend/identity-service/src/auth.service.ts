@@ -66,6 +66,8 @@ export interface AuthSession {
 export class AuthService {
   private readonly emailVerificationPurpose = "email_verification";
   private readonly verificationCodeTtlMinutes = 15;
+  private readonly mailTimeoutMs = 8000;
+  private readonly eventPublishTimeoutMs = 3000;
 
   private readonly jwt = new JwtService({
     secret: process.env.JWT_ACCESS_SECRET ?? "dev-access-secret",
@@ -79,10 +81,26 @@ export class AuthService {
 
   async register(dto: RegisterDto) {
     const email = dto.email.trim().toLowerCase();
-    const existingUser = await getOne<Pick<IdentityUserRecord, "id">>("SELECT id FROM users WHERE email = $1", [email]);
+    const phone = this.normalizePhone(dto.phone);
+    const fullName = dto.fullName.trim();
+    const existingUser = await getOne<Pick<IdentityUserRecord, "id" | "email" | "phone">>(
+      `
+        SELECT id, email, phone
+        FROM users
+        WHERE LOWER(email) = LOWER($1)
+           OR regexp_replace(phone, '[^0-9+]', '', 'g') = $2
+        ORDER BY CASE WHEN LOWER(email) = LOWER($1) THEN 0 ELSE 1 END
+        LIMIT 1
+      `,
+      [email, phone]
+    );
 
     if (existingUser) {
-      throw new ConflictException("Email already registered");
+      if (existingUser.email.toLowerCase() === email) {
+        throw new ConflictException("Email already registered");
+      }
+
+      throw new ConflictException("Phone number already registered");
     }
 
     const userCount = await getOne<{ count: number }>("SELECT COUNT(*)::int AS count FROM users WHERE role = 'USER'");
@@ -109,55 +127,33 @@ export class AuthService {
       }
     }
 
-    const referralCode = createReferralCode(`${dto.fullName}${Date.now().toString(36)}`);
+    const referralCode = createReferralCode(`${fullName}${Date.now().toString(36)}`);
     const passwordHash = await bcrypt.hash(dto.password, 12);
 
-    const inserted = await getOne<Pick<IdentityUserRecord, "id" | "referral_code">>(
-      `
-        INSERT INTO users (
-          id,
-          email,
-          password_hash,
-          full_name,
-          phone,
-          referral_code,
-          referred_by,
-          kyc_status,
-          role,
-          email_verified_at
-        )
-        VALUES (
-          gen_random_uuid(),
-          $1,
-          $2,
-          $3,
-          $4,
-          $5,
-          $6,
-          'pending',
-          'USER',
-          NULL
-        )
-        RETURNING id, referral_code
-      `,
-      [email, passwordHash, dto.fullName, dto.phone, referralCode, referrer?.id ?? null]
-    );
-
-    const verificationEmailSent = await this.issueEmailVerificationCode(inserted!.id, email, dto.fullName);
-
-    await publishEvent("user.registered", {
-      userId: inserted!.id,
+    const inserted = await this.insertUser({
       email,
-      fullName: dto.fullName,
-      referralCode: inserted!.referral_code
+      passwordHash,
+      fullName,
+      phone,
+      referralCode,
+      referredBy: referrer?.id ?? null
+    });
+
+    const verificationEmailSent = await this.issueEmailVerificationCode(inserted.id, email, fullName);
+
+    this.publishRegistrationEvent({
+      userId: inserted.id,
+      email,
+      fullName,
+      referralCode: inserted.referral_code
     });
 
     return {
       message: verificationEmailSent
         ? "Registration created. Check your email for the verification code."
         : "Registration created, but the verification email could not be sent. Try resend verification.",
-      userId: inserted!.id,
-      referralCode: inserted!.referral_code,
+      userId: inserted.id,
+      referralCode: inserted.referral_code,
       emailVerificationSent: verificationEmailSent
     };
   }
@@ -399,6 +395,98 @@ export class AuthService {
     };
   }
 
+  private normalizePhone(phone: string) {
+    return phone.trim().replace(/[^\d+]/g, "");
+  }
+
+  private async insertUser(input: {
+    email: string;
+    passwordHash: string;
+    fullName: string;
+    phone: string;
+    referralCode: string;
+    referredBy: string | null;
+  }) {
+    try {
+      const inserted = await getOne<Pick<IdentityUserRecord, "id" | "referral_code">>(
+        `
+          INSERT INTO users (
+            id,
+            email,
+            password_hash,
+            full_name,
+            phone,
+            referral_code,
+            referred_by,
+            kyc_status,
+            role,
+            email_verified_at
+          )
+          VALUES (
+            gen_random_uuid(),
+            $1,
+            $2,
+            $3,
+            $4,
+            $5,
+            $6,
+            'pending',
+            'USER',
+            NULL
+          )
+          RETURNING id, referral_code
+        `,
+        [input.email, input.passwordHash, input.fullName, input.phone, input.referralCode, input.referredBy]
+      );
+
+      if (!inserted) {
+        throw new BadRequestException("Registration could not be created");
+      }
+
+      return inserted;
+    } catch (error) {
+      if (this.isUniqueViolation(error)) {
+        const constraint = String((error as { constraint?: unknown }).constraint ?? "");
+        if (constraint.includes("phone")) {
+          throw new ConflictException("Phone number already registered");
+        }
+
+        throw new ConflictException("Email already registered");
+      }
+
+      throw error;
+    }
+  }
+
+  private publishRegistrationEvent(payload: { userId: string; email: string; fullName: string; referralCode: string }) {
+    void this.withTimeout(
+      publishEvent("user.registered", payload),
+      this.eventPublishTimeoutMs,
+      "Publishing registration event timed out"
+    ).catch((error) => {
+      console.warn("[identity-service] failed to publish registration event", error);
+    });
+  }
+
+  private isUniqueViolation(error: unknown) {
+    return typeof error === "object" && error !== null && (error as { code?: unknown }).code === "23505";
+  }
+
+  private async withTimeout<T>(operation: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error(timeoutMessage)), timeoutMs);
+    });
+
+    try {
+      return await Promise.race([operation, timeout]);
+    } finally {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    }
+  }
+
   private async issueEmailVerificationCode(userId: string, email: string, fullName: string) {
     const code = createNumericVerificationCode();
 
@@ -429,27 +517,31 @@ export class AuthService {
 
     try {
       const platformName = process.env.PLATFORM_NAME ?? "FNDK";
-      await sendMail({
-        to: email,
-        subject: `${platformName} email verification code`,
-        text: [
-          `Hello ${fullName},`,
-          "",
-          `Your ${platformName} verification code is ${normalizeVerificationCode(code)}.`,
-          `It expires in ${this.verificationCodeTtlMinutes} minutes.`,
-          "",
-          "If you did not create this account, you can ignore this email."
-        ].join("\n"),
-        html: `
-          <p>Hello,</p>
-          <p>Your <strong>${platformName}</strong> verification code is:</p>
-          <p style="font-size:24px;font-weight:700;letter-spacing:4px;">${normalizeVerificationCode(code)}</p>
-          <p>This code expires in ${this.verificationCodeTtlMinutes} minutes.</p>
-          <p>If you did not create this account, you can ignore this email.</p>
-        `
-      });
+      const result = await this.withTimeout(
+        sendMail({
+          to: email,
+          subject: `${platformName} email verification code`,
+          text: [
+            `Hello ${fullName},`,
+            "",
+            `Your ${platformName} verification code is ${normalizeVerificationCode(code)}.`,
+            `It expires in ${this.verificationCodeTtlMinutes} minutes.`,
+            "",
+            "If you did not create this account, you can ignore this email."
+          ].join("\n"),
+          html: `
+            <p>Hello,</p>
+            <p>Your <strong>${platformName}</strong> verification code is:</p>
+            <p style="font-size:24px;font-weight:700;letter-spacing:4px;">${normalizeVerificationCode(code)}</p>
+            <p>This code expires in ${this.verificationCodeTtlMinutes} minutes.</p>
+            <p>If you did not create this account, you can ignore this email.</p>
+          `
+        }),
+        this.mailTimeoutMs,
+        "Verification email timed out"
+      );
 
-      return true;
+      return !result.skipped;
     } catch (error) {
       console.warn("[identity-service] failed to send verification email", error);
       return false;

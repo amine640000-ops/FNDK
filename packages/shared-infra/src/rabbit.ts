@@ -22,7 +22,11 @@ const buildConnection = async () => {
 };
 
 export const getRabbitConnection = () => {
-  connectionPromise ??= buildConnection();
+  connectionPromise ??= buildConnection().catch((error) => {
+    connectionPromise = undefined;
+    channelPromise = undefined;
+    throw error;
+  });
   return connectionPromise;
 };
 
@@ -32,7 +36,10 @@ export const getRabbitChannel = () => {
     const channel = await connection.createChannel();
     await channel.assertExchange(EXCHANGE_NAME, "topic", { durable: true });
     return channel;
-  })();
+  })().catch((error) => {
+    channelPromise = undefined;
+    throw error;
+  });
   return channelPromise;
 };
 

@@ -13,6 +13,10 @@ type SendMailResult = {
 };
 
 const readBoolean = (value: string | undefined) => ["1", "true", "yes"].includes(value?.toLowerCase() ?? "");
+const readPositiveInteger = (value: string | undefined, fallback: number) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
 
 const getSmtpTransport = () => {
   const host = process.env.SMTP_HOST?.trim();
@@ -28,6 +32,9 @@ const getSmtpTransport = () => {
     host,
     port,
     secure: readBoolean(process.env.SMTP_SECURE),
+    connectionTimeout: readPositiveInteger(process.env.SMTP_CONNECTION_TIMEOUT_MS, 8000),
+    greetingTimeout: readPositiveInteger(process.env.SMTP_GREETING_TIMEOUT_MS, 8000),
+    socketTimeout: readPositiveInteger(process.env.SMTP_SOCKET_TIMEOUT_MS, 10000),
     auth: user ? { user, pass } : undefined
   });
 };
