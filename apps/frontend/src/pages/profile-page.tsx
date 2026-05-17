@@ -29,6 +29,19 @@ type UploadFieldProps = {
   fileName?: string;
 };
 
+const resolveApiErrorMessage = (fallback: string, error: unknown) => {
+  if (!axios.isAxiosError(error)) {
+    return fallback;
+  }
+
+  const responseMessage = error.response?.data?.message;
+  if (Array.isArray(responseMessage)) {
+    return responseMessage.join(" ");
+  }
+
+  return typeof responseMessage === "string" ? responseMessage : fallback;
+};
+
 function UploadField({ title, description, onChange, fileName }: UploadFieldProps) {
   const inputId = useId();
 
@@ -138,12 +151,7 @@ export function ProfilePage() {
       setSubmissions((current) => [response.data, ...current]);
       toast.success("KYC submitted for admin review.");
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        const responseMessage = error.response?.data?.message;
-        toast.error(typeof responseMessage === "string" ? responseMessage : "KYC submission failed.");
-      } else {
-        toast.error("KYC submission failed.");
-      }
+      toast.error(resolveApiErrorMessage("KYC submission failed.", error));
     } finally {
       setSubmittingKyc(false);
     }

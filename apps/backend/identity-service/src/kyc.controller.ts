@@ -36,7 +36,12 @@ export class KycController {
     FileFieldsInterceptor(
       [
         { name: "idDocument", maxCount: 1 },
-        { name: "selfie", maxCount: 1 }
+        { name: "document", maxCount: 1 },
+        { name: "id_document", maxCount: 1 },
+        { name: "documentFile", maxCount: 1 },
+        { name: "selfie", maxCount: 1 },
+        { name: "selfieFile", maxCount: 1 },
+        { name: "selfie_file", maxCount: 1 }
       ],
       createDiskStorageOptions("kyc")
     )
@@ -47,7 +52,12 @@ export class KycController {
     @UploadedFiles()
     files: {
       idDocument?: Array<{ filename: string }>;
+      document?: Array<{ filename: string }>;
+      id_document?: Array<{ filename: string }>;
+      documentFile?: Array<{ filename: string }>;
       selfie?: Array<{ filename: string }>;
+      selfieFile?: Array<{ filename: string }>;
+      selfie_file?: Array<{ filename: string }>;
     }
   ) {
     return this.kycService.submit(user.sub, dto, files);

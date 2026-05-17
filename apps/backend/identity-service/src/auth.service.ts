@@ -83,7 +83,7 @@ export class AuthService {
     }
 
     const userCount = await getOne<{ count: number }>("SELECT COUNT(*)::int AS count FROM users WHERE role = 'USER'");
-    const inboundReferralCode = dto.referralCode?.trim().toUpperCase() ?? "";
+    const inboundReferralCode = dto.referralCode?.trim() ?? "";
     let referrer: Pick<IdentityUserRecord, "id"> | null = null;
 
     if (userCount?.count) {
@@ -92,7 +92,12 @@ export class AuthService {
       }
 
       referrer = await getOne<Pick<IdentityUserRecord, "id">>(
-        "SELECT id FROM users WHERE referral_code = $1",
+        `
+          SELECT id
+          FROM users
+          WHERE regexp_replace(UPPER(referral_code), '[^A-Z0-9]', '', 'g') =
+            regexp_replace(UPPER($1), '[^A-Z0-9]', '', 'g')
+        `,
         [inboundReferralCode]
       );
 

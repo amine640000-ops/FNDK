@@ -22,14 +22,19 @@ export class KycService {
     dto: SubmitKycDto,
     files: {
       idDocument?: Array<{ filename: string }>;
+      document?: Array<{ filename: string }>;
+      id_document?: Array<{ filename: string }>;
+      documentFile?: Array<{ filename: string }>;
       selfie?: Array<{ filename: string }>;
-    }
+      selfieFile?: Array<{ filename: string }>;
+      selfie_file?: Array<{ filename: string }>;
+    } = {}
   ) {
-    const documentFile = files.idDocument?.[0];
-    const selfieFile = files.selfie?.[0];
+    const documentFile = files.idDocument?.[0] ?? files.document?.[0] ?? files.id_document?.[0] ?? files.documentFile?.[0];
+    const selfieFile = files.selfie?.[0] ?? files.selfieFile?.[0] ?? files.selfie_file?.[0];
 
     if (!documentFile || !selfieFile) {
-      throw new BadRequestException("Both idDocument and selfie files are required");
+      throw new BadRequestException("Both ID document and selfie files are required");
     }
 
     const result = await dbQuery<KycSubmissionRow>(

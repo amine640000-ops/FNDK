@@ -1,4 +1,3 @@
-import { Transform } from "class-transformer";
 import { IsEmail, IsOptional, IsPhoneNumber, IsString, MinLength } from "class-validator";
 
 export class RegisterDto {
@@ -19,7 +18,6 @@ export class RegisterDto {
   @IsOptional()
   @IsString()
   @MinLength(3)
-  @Transform(({ value }) => value?.trim()?.toUpperCase())
   referralCode?: string;
 }
 

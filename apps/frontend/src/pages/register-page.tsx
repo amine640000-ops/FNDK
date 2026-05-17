@@ -29,7 +29,7 @@ export function RegisterPage() {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [referralCode, setReferralCode] = useState(searchParams.get("ref")?.toUpperCase() ?? "");
+  const [referralCode, setReferralCode] = useState(searchParams.get("ref") ?? "");
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -42,7 +42,7 @@ export function RegisterPage() {
         phone,
         email: normalizedEmail,
         password,
-        ...(referralCode.trim() ? { referralCode: referralCode.trim().toUpperCase() } : {})
+        ...(referralCode.trim() ? { referralCode: referralCode.trim() } : {})
       });
       setVerificationEmail(normalizedEmail);
       setAwaitingEmailVerification(true);
@@ -226,7 +226,7 @@ export function RegisterPage() {
                     className="w-full rounded-[20px] border border-cyan-300/25 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
                     placeholder="Referral code"
                     value={referralCode}
-                    onChange={(event) => setReferralCode(event.target.value.toUpperCase())}
+                    onChange={(event) => setReferralCode(event.target.value)}
                   />
 
                   <button
@@ -356,7 +356,7 @@ export function RegisterPage() {
                     className="w-full rounded-[20px] border border-cyan-300/25 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
                     placeholder="Referral code"
                     value={referralCode}
-                    onChange={(event) => setReferralCode(event.target.value.toUpperCase())}
+                    onChange={(event) => setReferralCode(event.target.value)}
                   />
 
                   <button
