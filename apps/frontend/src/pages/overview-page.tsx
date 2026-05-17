@@ -51,12 +51,12 @@ const shortcutItems = [
   {
     title: "Top Up",
     icon: Landmark,
-    to: "/app/wallet"
+    to: "/app/wallet/deposit"
   },
   {
     title: "Withdraw",
     icon: WalletCards,
-    to: "/app/wallet"
+    to: "/app/wallet/withdraw"
   },
   {
     title: "Mission\nCenter",
@@ -120,7 +120,7 @@ const defaultAdCarouselSlides: AdCarouselSlide[] = [
     title: "Top up and start.",
     description: "Deposit with crypto, bank instructions, or internal ledger routes configured by FNDK admin.",
     ctaLabel: "Deposit Funds",
-    ctaHref: "/app/deposit",
+    ctaHref: "/app/wallet/deposit",
     imageUrl: ""
   }
 ];

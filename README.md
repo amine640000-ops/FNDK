@@ -57,6 +57,14 @@ psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/004_ai_trading_act
 psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/005_seed_ai_trading_activations.sql
 psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/006_admin_access_and_giveaway_settings.sql
 psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/007_remove_dummy_data.sql
+psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/008_withdrawal_rules.sql
+psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/009_withdrawal_fee.sql
+psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/010_reservation_controls.sql
+psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/011_vip_roi_ranges.sql
+psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/012_ad_carousel_settings.sql
+psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/013_asset_route_settings.sql
+psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/014_verification_codes.sql
+psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/015_fix_deposit_carousel_cta.sql
 ```
 
 Initial admin login after running migrations:
@@ -70,7 +78,7 @@ This repo is scaffolded with representative controllers, services, routes, and d
 
 - refresh token persistence beyond stateless JWT re-issue
 - file upload handling for KYC and payment proofs
-- socket.io server wiring and email delivery implementation
+- socket.io server wiring
 - end-to-end tests and production hardening
 
 ## Implemented backend flow
@@ -83,4 +91,6 @@ This repo is scaffolded with representative controllers, services, routes, and d
 - `task-service` handles manual AI activations with tier-based daily click limits and timed completion, and it can still publish `profit.distributed`
 - `notification-service` persists notifications and consumes platform events
 - `admin-service` reads platform metrics from SQL and publishes approval events for deposits and withdrawals
+
+Local email is delivered to MailHog in Docker Compose at http://localhost:8025. For real email, set `SMTP_HOST`, `SMTP_PORT`, optional `SMTP_USER`/`SMTP_PASS`, and `SMTP_FROM` to an SMTP provider.
 # fndk

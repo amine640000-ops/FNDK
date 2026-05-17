@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
-import { Check, ChevronDown, Clock3, HandCoins, X } from "lucide-react";
+import { Check, ChevronDown, Clock3, HandCoins, MailCheck, X } from "lucide-react";
 import type { AssetType, WalletSummary } from "@nevo/shared-types";
 import { SUPPORTED_ASSETS, formatCurrency } from "@nevo/shared-utils";
 import { MobilePageHeader } from "@/components/mobile-page-header";
@@ -50,6 +50,9 @@ export function WithdrawPage() {
   const [asset, setAsset] = useState<AssetType>("USD");
   const [amount, setAmount] = useState("");
   const [destinationAddress, setDestinationAddress] = useState("");
+  const [verificationCode, setVerificationCode] = useState("");
+  const [verificationCodeSent, setVerificationCodeSent] = useState(false);
+  const [sendingVerificationCode, setSendingVerificationCode] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [withdrawalResponse, setWithdrawalResponse] = useState<WithdrawalResponse | null>(null);
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
@@ -88,27 +91,36 @@ export function WithdrawPage() {
     [summary.assets]
   );
 
-  const submitWithdrawal = async () => {
+  const validateWithdrawalForm = () => {
     const token = localStorage.getItem("nevo.accessToken");
     if (!token) {
       toast.error("Sign in first.");
-      return;
+      return null;
     }
 
     if (!parsedAmount || parsedAmount < 1) {
       toast.error("Enter a withdrawal amount of at least 1.");
-      return;
+      return null;
     }
 
     if (!destinationAddress.trim()) {
       toast.error("Enter a destination address.");
+      return null;
+    }
+
+    return token;
+  };
+
+  const requestWithdrawalCode = async () => {
+    const token = validateWithdrawalForm();
+    if (!token) {
       return;
     }
 
-    setSubmitting(true);
+    setSendingVerificationCode(true);
     try {
-      const response = await walletApi.post<WithdrawalResponse>(
-        "/wallet/withdrawals",
+      const response = await walletApi.post<{ message: string; emailVerificationSent: boolean; expiresInMinutes: number }>(
+        "/wallet/withdrawals/verification-code",
         {
           asset,
           amount: parsedAmount,
@@ -121,7 +133,51 @@ export function WithdrawPage() {
         }
       );
 
+      setVerificationCodeSent(response.data.emailVerificationSent);
+      toast.success(response.data.emailVerificationSent ? "Verification code sent to your email." : response.data.message);
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const responseMessage = error.response?.data?.message;
+        toast.error(typeof responseMessage === "string" ? responseMessage : "Could not send withdrawal code.");
+      } else {
+        toast.error("Could not send withdrawal code.");
+      }
+    } finally {
+      setSendingVerificationCode(false);
+    }
+  };
+
+  const submitWithdrawal = async () => {
+    const token = validateWithdrawalForm();
+    if (!token) {
+      return;
+    }
+
+    if (verificationCode.trim().length < 4) {
+      toast.error("Enter the email verification code.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const response = await walletApi.post<WithdrawalResponse>(
+        "/wallet/withdrawals",
+        {
+          asset,
+          amount: parsedAmount,
+          destinationAddress: destinationAddress.trim(),
+          verificationCode: verificationCode.trim()
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        }
+      );
+
       setWithdrawalResponse(response.data);
+      setVerificationCode("");
+      setVerificationCodeSent(false);
       toast.success(response.data.message);
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -177,6 +233,8 @@ export function WithdrawPage() {
                   }`}
                   onClick={() => {
                     setAsset(selectableAsset);
+                    setVerificationCode("");
+                    setVerificationCodeSent(false);
                     setAssetPickerOpen(false);
                   }}
                   type="button"
@@ -232,7 +290,11 @@ export function WithdrawPage() {
               step="0.01"
               type="number"
               value={amount}
-              onChange={(event) => setAmount(event.target.value)}
+              onChange={(event) => {
+                setAmount(event.target.value);
+                setVerificationCode("");
+                setVerificationCodeSent(false);
+              }}
             />
           </label>
 
@@ -242,9 +304,38 @@ export function WithdrawPage() {
               className="min-h-28 rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-[15px] text-white outline-none"
               placeholder="Wallet address, IBAN, or payout destination"
               value={destinationAddress}
-              onChange={(event) => setDestinationAddress(event.target.value)}
+              onChange={(event) => {
+                setDestinationAddress(event.target.value);
+                setVerificationCode("");
+                setVerificationCodeSent(false);
+              }}
             />
           </label>
+
+          <div className="grid gap-3">
+            <div className="flex items-center gap-3 rounded-[20px] border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-[13px] leading-5 text-cyan-100">
+              <MailCheck className="h-4 w-4 shrink-0" />
+              <span>Send a verification code to your account email before submitting this withdrawal.</span>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+              <input
+                className="rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-center text-[18px] font-semibold tracking-[0.28em] text-white outline-none"
+                inputMode="numeric"
+                maxLength={8}
+                placeholder="000000"
+                value={verificationCode}
+                onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, "").slice(0, 8))}
+              />
+              <button
+                className="rounded-[20px] border border-cyan-300/30 bg-white/5 px-4 py-4 text-[14px] font-semibold text-cyan-100 disabled:opacity-60"
+                disabled={sendingVerificationCode || submitting}
+                onClick={() => void requestWithdrawalCode()}
+                type="button"
+              >
+                {sendingVerificationCode ? "Sending..." : verificationCodeSent ? "Resend code" : "Send code"}
+              </button>
+            </div>
+          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-[20px] border border-white/10 bg-white/5 px-4 py-4">

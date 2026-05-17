@@ -33,4 +33,13 @@ export class LoginDto {
 export class VerifyEmailDto {
   @IsEmail()
   email!: string;
+
+  @IsString()
+  @MinLength(4)
+  code!: string;
+}
+
+export class ResendEmailVerificationDto {
+  @IsEmail()
+  email!: string;
 }

@@ -11,7 +11,7 @@ const items = [
 
 export function AppBottomNav() {
   return (
-    <div className="bottom-nav-glow z-20 border-t border-white/10 px-3 pb-4 pt-3">
+    <div className="bottom-nav-glow sticky bottom-0 z-20 shrink-0 border-t border-white/10 px-3 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3">
       <nav className="grid grid-cols-5 gap-1.5">
         {items.map(({ to, label, icon: Icon }) => (
           <NavLink

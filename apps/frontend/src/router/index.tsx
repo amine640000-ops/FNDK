@@ -3,6 +3,7 @@ import { AuthGuard } from "@/components/auth-guard";
 import { AdminLayout } from "@/layouts/admin-layout";
 import { DashboardLayout } from "@/layouts/dashboard-layout";
 import { AdminFinancePage } from "@/pages/admin-finance-page";
+import { AdminKycPage } from "@/pages/admin-kyc-page";
 import { AdminNotificationsPage } from "@/pages/admin-notifications-page";
 import { AdminOverviewPage } from "@/pages/admin-overview-page";
 import { AdminProfitPage } from "@/pages/admin-profit-page";
@@ -61,6 +62,7 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: <AdminOverviewPage /> },
           { path: "users", element: <AdminUsersPage /> },
+          { path: "kyc", element: <AdminKycPage /> },
           { path: "finance", element: <AdminFinancePage /> },
           { path: "profit", element: <AdminProfitPage /> },
           { path: "notifications", element: <AdminNotificationsPage /> },

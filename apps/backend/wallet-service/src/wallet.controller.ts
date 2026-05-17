@@ -18,7 +18,7 @@ import {
 } from "@nevo/shared-infra";
 import type { AccessTokenPayload } from "@nevo/shared-types";
 import { WalletService } from "./wallet.service";
-import { CreateDepositDto, CreateWithdrawalDto } from "./wallet.dto";
+import { CreateDepositDto, CreateWithdrawalDto, RequestWithdrawalCodeDto } from "./wallet.dto";
 
 @Controller("wallet")
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -59,5 +59,10 @@ export class WalletController {
   @Post("withdrawals")
   createWithdrawal(@CurrentUser() user: AccessTokenPayload, @Body() dto: CreateWithdrawalDto) {
     return this.walletService.createWithdrawal(user.sub, dto);
+  }
+
+  @Post("withdrawals/verification-code")
+  requestWithdrawalCode(@CurrentUser() user: AccessTokenPayload, @Body() dto: RequestWithdrawalCodeDto) {
+    return this.walletService.requestWithdrawalCode(user.sub, dto);
   }
 }

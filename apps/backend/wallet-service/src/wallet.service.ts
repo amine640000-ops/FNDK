@@ -4,9 +4,15 @@ import {
   OnModuleInit
 } from "@nestjs/common";
 import {
+  createNumericVerificationCode,
   dbQuery,
   getOne,
+  hashVerificationCode,
+  hashVerificationContext,
+  normalizeVerificationCode,
+  sendMail,
   subscribeToEvents,
+  toPublicUploadUrl,
   withTransaction
 } from "@nevo/shared-infra";
 import type {
@@ -20,8 +26,7 @@ import type {
 } from "@nevo/shared-types";
 import { DEFAULT_ASSET_LABELS, SUPPORTED_ASSETS } from "@nevo/shared-utils";
 import type { PoolClient } from "pg";
-import type { CreateDepositDto, CreateWithdrawalDto } from "./wallet.dto";
-import { toPublicUploadUrl } from "@nevo/shared-infra";
+import type { CreateDepositDto, CreateWithdrawalDto, RequestWithdrawalCodeDto } from "./wallet.dto";
 
 type WalletRow = {
   asset_type: AssetType;
@@ -44,6 +49,22 @@ type WithdrawalRulesRow = {
   withdrawals_this_month: number;
 };
 
+type WithdrawalContext = {
+  feeAmount: number;
+  netAmount: number;
+  rules: WithdrawalRulesRow | null;
+};
+
+type WithdrawalUserRow = {
+  email: string;
+  full_name: string;
+};
+
+type VerificationCodeRow = {
+  id: string;
+  code_hash: string;
+};
+
 type AdminSettingRow = {
   key: string;
   value: unknown;
@@ -53,6 +74,9 @@ const WITHDRAWAL_FEE_RATE = 0.05;
 
 @Injectable()
 export class WalletService implements OnModuleInit {
+  private readonly withdrawalVerificationPurpose = "withdrawal";
+  private readonly withdrawalCodeTtlMinutes = 10;
+
   async onModuleInit() {
     try {
       await subscribeToEvents("wallet-service", {
@@ -219,6 +243,104 @@ export class WalletService implements OnModuleInit {
   }
 
   async createWithdrawal(userId: string, dto: CreateWithdrawalDto) {
+    const { feeAmount, netAmount, rules } = await this.validateWithdrawalRequest(userId, dto);
+    const destinationAddress = dto.destinationAddress.trim();
+    const contextHash = this.createWithdrawalContextHash(dto.asset, dto.amount, destinationAddress);
+
+    const result = await withTransaction(async (client: PoolClient) => {
+      await this.consumeWithdrawalVerificationCode(client, userId, dto.verificationCode, contextHash);
+
+      const inserted = await client.query<{ id: string; release_at: string }>(
+        `
+          INSERT INTO transactions (id, user_id, type, asset, amount, fee_amount, status, destination_address, release_at)
+          VALUES (gen_random_uuid(), $1, 'withdrawal', $2, $3, $4, 'pending', $5, NOW() + INTERVAL '72 hours')
+          RETURNING id, release_at
+        `,
+        [userId, dto.asset, dto.amount, feeAmount, destinationAddress]
+      );
+
+      return inserted.rows[0];
+    });
+
+    return {
+      id: result!.id,
+      type: "withdrawal",
+      asset: dto.asset,
+      amount: dto.amount,
+      destinationAddress,
+      status: "pending",
+      feeAmount,
+      netAmount,
+      releaseAt: result!.release_at,
+      monthlyLimit: rules?.withdrawals_per_month_limit ?? 3,
+      monthlyUsed: (rules?.withdrawals_this_month ?? 0) + 1,
+      message: "Withdrawal request queued. A 5% fee applies and admin approval is available after the 72-hour holding period."
+    };
+  }
+
+  async requestWithdrawalCode(userId: string, dto: RequestWithdrawalCodeDto) {
+    await this.validateWithdrawalRequest(userId, dto);
+    const destinationAddress = dto.destinationAddress.trim();
+    const user = await getOne<WithdrawalUserRow>(
+      `
+        SELECT email, full_name
+        FROM users
+        WHERE id = $1
+      `,
+      [userId]
+    );
+
+    if (!user) {
+      throw new BadRequestException("User account was not found");
+    }
+
+    const code = createNumericVerificationCode();
+    const contextHash = this.createWithdrawalContextHash(dto.asset, dto.amount, destinationAddress);
+
+    await dbQuery(
+      `
+        UPDATE verification_codes
+        SET consumed_at = NOW()
+        WHERE user_id = $1
+          AND purpose = $2
+          AND consumed_at IS NULL
+      `,
+      [userId, this.withdrawalVerificationPurpose]
+    );
+
+    await dbQuery(
+      `
+        INSERT INTO verification_codes (id, user_id, email, purpose, code_hash, context_hash, expires_at)
+        VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, NOW() + ($6::int * INTERVAL '1 minute'))
+      `,
+      [
+        userId,
+        user.email,
+        this.withdrawalVerificationPurpose,
+        hashVerificationCode(code),
+        contextHash,
+        this.withdrawalCodeTtlMinutes
+      ]
+    );
+
+    const emailSent = await this.sendWithdrawalCodeEmail(user.email, user.full_name, code, dto.asset, dto.amount);
+
+    return {
+      message: emailSent ? "Withdrawal verification code sent" : "Withdrawal verification email could not be sent",
+      emailVerificationSent: emailSent,
+      expiresInMinutes: this.withdrawalCodeTtlMinutes
+    };
+  }
+
+  private async validateWithdrawalRequest(
+    userId: string,
+    dto: Pick<RequestWithdrawalCodeDto, "asset" | "amount" | "destinationAddress">
+  ): Promise<WithdrawalContext> {
+    const destinationAddress = dto.destinationAddress.trim();
+    if (!destinationAddress) {
+      throw new BadRequestException("Enter a destination address");
+    }
+
     const feeAmount = Number((dto.amount * WITHDRAWAL_FEE_RATE).toFixed(2));
     const netAmount = Number((dto.amount - feeAmount).toFixed(2));
 
@@ -260,27 +382,87 @@ export class WalletService implements OnModuleInit {
       throw new BadRequestException("Monthly withdrawal limit reached for this account");
     }
 
-    const result = await getOne<{ id: string; release_at: string }>(
+    return { feeAmount, netAmount, rules };
+  }
+
+  private async consumeWithdrawalVerificationCode(
+    client: PoolClient,
+    userId: string,
+    code: string,
+    contextHash: string
+  ) {
+    const candidate = await client.query<VerificationCodeRow>(
       `
-        INSERT INTO transactions (id, user_id, type, asset, amount, fee_amount, status, destination_address, release_at)
-        VALUES (gen_random_uuid(), $1, 'withdrawal', $2, $3, $4, 'pending', $5, NOW() + INTERVAL '72 hours')
-        RETURNING id, release_at
+        SELECT id, code_hash
+        FROM verification_codes
+        WHERE user_id = $1
+          AND purpose = $2
+          AND context_hash = $3
+          AND consumed_at IS NULL
+          AND expires_at > NOW()
+        ORDER BY created_at DESC
+        LIMIT 1
+        FOR UPDATE
       `,
-      [userId, dto.asset, dto.amount, feeAmount, dto.destinationAddress]
+      [userId, this.withdrawalVerificationPurpose, contextHash]
     );
 
-    return {
-      id: result!.id,
-      type: "withdrawal",
-      ...dto,
-      status: "pending",
-      feeAmount,
-      netAmount,
-      releaseAt: result!.release_at,
-      monthlyLimit: rules?.withdrawals_per_month_limit ?? 3,
-      monthlyUsed: (rules?.withdrawals_this_month ?? 0) + 1,
-      message: "Withdrawal request queued. A 5% fee applies and admin approval is available after the 72-hour holding period."
-    };
+    if (!candidate.rowCount) {
+      throw new BadRequestException("Withdrawal verification code is expired or not found");
+    }
+
+    if (candidate.rows[0].code_hash !== hashVerificationCode(code)) {
+      throw new BadRequestException("Invalid withdrawal verification code");
+    }
+
+    await client.query("UPDATE verification_codes SET consumed_at = NOW() WHERE id = $1", [candidate.rows[0].id]);
+  }
+
+  private createWithdrawalContextHash(asset: AssetType, amount: number, destinationAddress: string) {
+    return hashVerificationContext(
+      JSON.stringify({
+        asset,
+        amount: Number(amount).toFixed(2),
+        destinationAddress: destinationAddress.trim()
+      })
+    );
+  }
+
+  private async sendWithdrawalCodeEmail(
+    email: string,
+    fullName: string,
+    code: string,
+    asset: AssetType,
+    amount: number
+  ) {
+    try {
+      const platformName = process.env.PLATFORM_NAME ?? "FNDK";
+      await sendMail({
+        to: email,
+        subject: `${platformName} withdrawal verification code`,
+        text: [
+          `Hello ${fullName},`,
+          "",
+          `Your ${platformName} withdrawal verification code is ${normalizeVerificationCode(code)}.`,
+          `Request: ${amount} ${asset}.`,
+          `It expires in ${this.withdrawalCodeTtlMinutes} minutes.`,
+          "",
+          "If you did not request this withdrawal, contact support immediately."
+        ].join("\n"),
+        html: `
+          <p>Hello,</p>
+          <p>Your <strong>${platformName}</strong> withdrawal verification code is:</p>
+          <p style="font-size:24px;font-weight:700;letter-spacing:4px;">${normalizeVerificationCode(code)}</p>
+          <p>Request: ${amount} ${asset}. This code expires in ${this.withdrawalCodeTtlMinutes} minutes.</p>
+          <p>If you did not request this withdrawal, contact support immediately.</p>
+        `
+      });
+
+      return true;
+    } catch (error) {
+      console.warn("[wallet-service] failed to send withdrawal verification email", error);
+      return false;
+    }
   }
 
   private async ensureWallets(userId: string) {

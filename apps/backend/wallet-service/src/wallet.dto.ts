@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { IsIn, IsNumber, IsOptional, IsString, Min } from "class-validator";
+import { IsIn, IsNumber, IsOptional, IsString, Min, MinLength } from "class-validator";
 import type { AssetType } from "@nevo/shared-types";
 import { SUPPORTED_ASSETS } from "@nevo/shared-utils";
 
@@ -17,7 +17,7 @@ export class CreateDepositDto {
   proofUrl?: string;
 }
 
-export class CreateWithdrawalDto {
+export class RequestWithdrawalCodeDto {
   @IsIn(SUPPORTED_ASSETS)
   asset!: AssetType;
 
@@ -28,4 +28,10 @@ export class CreateWithdrawalDto {
 
   @IsString()
   destinationAddress!: string;
+}
+
+export class CreateWithdrawalDto extends RequestWithdrawalCodeDto {
+  @IsString()
+  @MinLength(4)
+  verificationCode!: string;
 }

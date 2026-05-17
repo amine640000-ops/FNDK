@@ -9,10 +9,22 @@ const identityApi = axios.create({
   baseURL: import.meta.env.VITE_IDENTITY_API_URL ?? "http://localhost:4001/api"
 });
 
+type RegisterResponse = {
+  message: string;
+  userId: string;
+  referralCode: string;
+  emailVerificationSent: boolean;
+};
+
 export function RegisterPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
+  const [verificationLoading, setVerificationLoading] = useState(false);
+  const [resendingVerification, setResendingVerification] = useState(false);
+  const [awaitingEmailVerification, setAwaitingEmailVerification] = useState(false);
+  const [verificationEmail, setVerificationEmail] = useState("");
+  const [verificationCode, setVerificationCode] = useState("");
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
@@ -24,21 +36,118 @@ export function RegisterPage() {
     setLoading(true);
 
     try {
-      await identityApi.post("/auth/register", {
+      const normalizedEmail = email.trim().toLowerCase();
+      const response = await identityApi.post<RegisterResponse>("/auth/register", {
         fullName,
         phone,
-        email,
+        email: normalizedEmail,
         password,
         ...(referralCode.trim() ? { referralCode: referralCode.trim().toUpperCase() } : {})
       });
-      toast.success("Account created. You can sign in now.");
-      navigate("/login");
-    } catch {
-      toast.error("Registration failed. Check your referral code and input values.");
+      setVerificationEmail(normalizedEmail);
+      setAwaitingEmailVerification(true);
+      toast.success(response.data.emailVerificationSent ? "Account created. Check your email code." : response.data.message);
+    } catch (error) {
+      if (axios.isAxiosError(error) && typeof error.response?.data?.message === "string") {
+        toast.error(error.response.data.message);
+      } else {
+        toast.error("Registration failed. Check your referral code and input values.");
+      }
     } finally {
       setLoading(false);
     }
   };
+
+  const handleVerifyEmail = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const targetEmail = verificationEmail || email.trim().toLowerCase();
+
+    if (!targetEmail) {
+      toast.error("Enter your email first.");
+      return;
+    }
+
+    if (verificationCode.trim().length < 4) {
+      toast.error("Enter the email verification code.");
+      return;
+    }
+
+    setVerificationLoading(true);
+    try {
+      await identityApi.post("/auth/verify-email", {
+        email: targetEmail,
+        code: verificationCode.trim()
+      });
+      toast.success("Email verified. You can sign in now.");
+      navigate("/login");
+    } catch (error) {
+      if (axios.isAxiosError(error) && typeof error.response?.data?.message === "string") {
+        toast.error(error.response.data.message);
+      } else {
+        toast.error("Could not verify email code.");
+      }
+    } finally {
+      setVerificationLoading(false);
+    }
+  };
+
+  const resendVerificationCode = async () => {
+    const targetEmail = verificationEmail || email.trim().toLowerCase();
+    if (!targetEmail) {
+      toast.error("Enter your email first.");
+      return;
+    }
+
+    setResendingVerification(true);
+    try {
+      const response = await identityApi.post<{ message: string; emailVerificationSent: boolean }>(
+        "/auth/resend-email-verification",
+        { email: targetEmail }
+      );
+      toast.success(response.data.emailVerificationSent ? "Verification code sent." : response.data.message);
+    } catch (error) {
+      if (axios.isAxiosError(error) && typeof error.response?.data?.message === "string") {
+        toast.error(error.response.data.message);
+      } else {
+        toast.error("Could not resend verification code.");
+      }
+    } finally {
+      setResendingVerification(false);
+    }
+  };
+
+  const renderVerificationForm = (className: string) => (
+    <form className={className} onSubmit={handleVerifyEmail}>
+      <div className="rounded-[20px] border border-cyan-300/20 bg-cyan-300/10 px-4 py-4 text-sm leading-6 text-cyan-100">
+        Enter the 6-digit code sent to <span className="font-semibold text-white">{verificationEmail || email}</span>.
+      </div>
+      <input
+        className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-center text-2xl font-semibold tracking-[0.32em] text-white outline-none transition focus:border-cyan-300/40"
+        inputMode="numeric"
+        maxLength={8}
+        placeholder="000000"
+        value={verificationCode}
+        onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, "").slice(0, 8))}
+        required
+      />
+      <button
+        className="flex w-full items-center justify-center gap-2 rounded-[22px] bg-cyan-400 px-4 py-4 text-lg font-semibold text-slate-950 disabled:opacity-70"
+        disabled={verificationLoading}
+        type="submit"
+      >
+        {verificationLoading ? "Verifying..." : "Verify email"}
+        <ArrowRight className="h-5 w-5" />
+      </button>
+      <button
+        className="w-full rounded-[20px] border border-white/10 px-4 py-3 text-center text-sm text-slate-300 disabled:opacity-60"
+        disabled={resendingVerification}
+        onClick={() => void resendVerificationCode()}
+        type="button"
+      >
+        {resendingVerification ? "Sending code..." : "Resend code"}
+      </button>
+    </form>
+  );
 
   return (
     <div className="text-white">
@@ -75,55 +184,61 @@ export function RegisterPage() {
 
             <section className="neon-panel mt-5 p-5">
               <div className="text-sm uppercase tracking-[0.28em] text-cyan-200/70">Register</div>
-              <div className="mt-2 text-[2rem] font-extrabold text-white">Investor Onboarding</div>
-              <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
-                <input
-                  className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
-                  placeholder="Full name"
-                  value={fullName}
-                  onChange={(event) => setFullName(event.target.value)}
-                  required
-                />
-                <input
-                  className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
-                  placeholder="Phone"
-                  value={phone}
-                  onChange={(event) => setPhone(event.target.value)}
-                  required
-                />
-                <input
-                  className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
-                  placeholder="Email"
-                  type="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  required
-                />
-                <input
-                  className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
-                  placeholder="Password"
-                  type="password"
-                  minLength={8}
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  required
-                />
-                <input
-                  className="w-full rounded-[20px] border border-cyan-300/25 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
-                  placeholder="Referral code"
-                  value={referralCode}
-                  onChange={(event) => setReferralCode(event.target.value.toUpperCase())}
-                />
+              <div className="mt-2 text-[2rem] font-extrabold text-white">
+                {awaitingEmailVerification ? "Verify Email" : "Investor Onboarding"}
+              </div>
+              {awaitingEmailVerification ? (
+                renderVerificationForm("mt-6 space-y-4")
+              ) : (
+                <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
+                  <input
+                    className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
+                    placeholder="Full name"
+                    value={fullName}
+                    onChange={(event) => setFullName(event.target.value)}
+                    required
+                  />
+                  <input
+                    className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
+                    placeholder="Phone"
+                    value={phone}
+                    onChange={(event) => setPhone(event.target.value)}
+                    required
+                  />
+                  <input
+                    className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
+                    placeholder="Email"
+                    type="email"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    required
+                  />
+                  <input
+                    className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
+                    placeholder="Password"
+                    type="password"
+                    minLength={8}
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    required
+                  />
+                  <input
+                    className="w-full rounded-[20px] border border-cyan-300/25 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
+                    placeholder="Referral code"
+                    value={referralCode}
+                    onChange={(event) => setReferralCode(event.target.value.toUpperCase())}
+                  />
 
-                <button
-                  className="flex w-full items-center justify-center gap-2 rounded-[22px] bg-cyan-400 px-4 py-4 text-lg font-semibold text-slate-950 disabled:opacity-70"
-                  disabled={loading}
-                  type="submit"
-                >
-                  {loading ? "Creating account..." : "Create account"}
-                  <ArrowRight className="h-5 w-5" />
-                </button>
-              </form>
+                  <button
+                    className="flex w-full items-center justify-center gap-2 rounded-[22px] bg-cyan-400 px-4 py-4 text-lg font-semibold text-slate-950 disabled:opacity-70"
+                    disabled={loading}
+                    type="submit"
+                  >
+                    {loading ? "Creating account..." : "Create account"}
+                    <ArrowRight className="h-5 w-5" />
+                  </button>
+                </form>
+              )}
 
               <div className="mt-4 flex gap-3">
                 <Link
@@ -196,56 +311,64 @@ export function RegisterPage() {
             <section className="neon-panel w-full p-8">
               <div className="text-sm uppercase tracking-[0.28em] text-cyan-200/70">Register</div>
               <div className="mt-2 text-[2.5rem] font-extrabold text-white">Investor Onboarding</div>
-              <div className="mt-3 text-sm leading-6 text-slate-300">Create a new account and continue to login.</div>
+              <div className="mt-3 text-sm leading-6 text-slate-300">
+                {awaitingEmailVerification
+                  ? "Verify your email before signing in."
+                  : "Create a new account and verify your email."}
+              </div>
 
-              <form className="mt-8 space-y-4" onSubmit={handleSubmit}>
-                <input
-                  className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
-                  placeholder="Full name"
-                  value={fullName}
-                  onChange={(event) => setFullName(event.target.value)}
-                  required
-                />
-                <input
-                  className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
-                  placeholder="Phone"
-                  value={phone}
-                  onChange={(event) => setPhone(event.target.value)}
-                  required
-                />
-                <input
-                  className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
-                  placeholder="Email"
-                  type="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  required
-                />
-                <input
-                  className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
-                  placeholder="Password"
-                  type="password"
-                  minLength={8}
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  required
-                />
-                <input
-                  className="w-full rounded-[20px] border border-cyan-300/25 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
-                  placeholder="Referral code"
-                  value={referralCode}
-                  onChange={(event) => setReferralCode(event.target.value.toUpperCase())}
-                />
+              {awaitingEmailVerification ? (
+                renderVerificationForm("mt-8 space-y-4")
+              ) : (
+                <form className="mt-8 space-y-4" onSubmit={handleSubmit}>
+                  <input
+                    className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
+                    placeholder="Full name"
+                    value={fullName}
+                    onChange={(event) => setFullName(event.target.value)}
+                    required
+                  />
+                  <input
+                    className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
+                    placeholder="Phone"
+                    value={phone}
+                    onChange={(event) => setPhone(event.target.value)}
+                    required
+                  />
+                  <input
+                    className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
+                    placeholder="Email"
+                    type="email"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    required
+                  />
+                  <input
+                    className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
+                    placeholder="Password"
+                    type="password"
+                    minLength={8}
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    required
+                  />
+                  <input
+                    className="w-full rounded-[20px] border border-cyan-300/25 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
+                    placeholder="Referral code"
+                    value={referralCode}
+                    onChange={(event) => setReferralCode(event.target.value.toUpperCase())}
+                  />
 
-                <button
-                  className="flex w-full items-center justify-center gap-2 rounded-[22px] bg-cyan-400 px-4 py-4 text-lg font-semibold text-slate-950 disabled:opacity-70"
-                  disabled={loading}
-                  type="submit"
-                >
-                  {loading ? "Creating account..." : "Create account"}
-                  <ArrowRight className="h-5 w-5" />
-                </button>
-              </form>
+                  <button
+                    className="flex w-full items-center justify-center gap-2 rounded-[22px] bg-cyan-400 px-4 py-4 text-lg font-semibold text-slate-950 disabled:opacity-70"
+                    disabled={loading}
+                    type="submit"
+                  >
+                    {loading ? "Creating account..." : "Create account"}
+                    <ArrowRight className="h-5 w-5" />
+                  </button>
+                </form>
+              )}
 
               <div className="mt-4">
                 <Link

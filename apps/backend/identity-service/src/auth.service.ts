@@ -8,7 +8,16 @@ import {
 } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import bcrypt from "bcrypt";
-import { dbQuery, getOne, publishEvent } from "@nevo/shared-infra";
+import {
+  createNumericVerificationCode,
+  dbQuery,
+  getOne,
+  hashVerificationCode,
+  normalizeVerificationCode,
+  publishEvent,
+  sendMail,
+  withTransaction
+} from "@nevo/shared-infra";
 import type { KycStatus, UserRole } from "@nevo/shared-types";
 import { createReferralCode } from "@nevo/shared-utils";
 import type { LoginDto, RegisterDto } from "./auth.dto";
@@ -25,6 +34,12 @@ interface IdentityUserRecord {
   role: UserRole;
   email_verified_at: string | null;
 }
+
+type VerificationCodeRecord = {
+  id: string;
+  user_id: string;
+  code_hash: string;
+};
 
 export interface IdentityUser {
   id: string;
@@ -46,6 +61,9 @@ export interface AuthSession {
 
 @Injectable()
 export class AuthService {
+  private readonly emailVerificationPurpose = "email_verification";
+  private readonly verificationCodeTtlMinutes = 15;
+
   private readonly jwt = new JwtService({
     secret: process.env.JWT_ACCESS_SECRET ?? "dev-access-secret",
     signOptions: { expiresIn: "15m" }
@@ -110,12 +128,14 @@ export class AuthService {
           $6,
           'pending',
           'USER',
-          NOW()
+          NULL
         )
         RETURNING id, referral_code
       `,
       [email, passwordHash, dto.fullName, dto.phone, referralCode, referrer?.id ?? null]
     );
+
+    const verificationEmailSent = await this.issueEmailVerificationCode(inserted!.id, email, dto.fullName);
 
     await publishEvent("user.registered", {
       userId: inserted!.id,
@@ -125,30 +145,93 @@ export class AuthService {
     });
 
     return {
-      message: "Registration created. Your account is ready to sign in.",
+      message: verificationEmailSent
+        ? "Registration created. Check your email for the verification code."
+        : "Registration created, but the verification email could not be sent. Try resend verification.",
       userId: inserted!.id,
-      referralCode: inserted!.referral_code
+      referralCode: inserted!.referral_code,
+      emailVerificationSent: verificationEmailSent
     };
   }
 
-  async verifyEmail(email: string) {
-    const result = await dbQuery<{ id: string }>(
+  async verifyEmail(email: string, code: string) {
+    const normalizedEmail = email.trim().toLowerCase();
+    const codeHash = hashVerificationCode(code);
+
+    const verified = await withTransaction(async (client) => {
+      const candidate = await client.query<VerificationCodeRecord>(
+        `
+          SELECT id, user_id, code_hash
+          FROM verification_codes
+          WHERE email = $1
+            AND purpose = $2
+            AND consumed_at IS NULL
+            AND expires_at > NOW()
+          ORDER BY created_at DESC
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [normalizedEmail, this.emailVerificationPurpose]
+      );
+
+      if (!candidate.rowCount) {
+        throw new BadRequestException("Verification code is expired or not found");
+      }
+
+      const verificationCode = candidate.rows[0];
+      if (verificationCode.code_hash !== codeHash) {
+        throw new BadRequestException("Invalid verification code");
+      }
+
+      await client.query("UPDATE verification_codes SET consumed_at = NOW() WHERE id = $1", [verificationCode.id]);
+
+      const result = await client.query<{ id: string }>(
+        `
+          UPDATE users
+          SET email_verified_at = COALESCE(email_verified_at, NOW())
+          WHERE id = $1
+          RETURNING id
+        `,
+        [verificationCode.user_id]
+      );
+
+      return result.rows[0];
+    });
+
+    return {
+      message: "Email verified",
+      userId: verified.id
+    };
+  }
+
+  async resendEmailVerification(email: string) {
+    const user = await getOne<Pick<IdentityUserRecord, "id" | "email" | "full_name" | "email_verified_at">>(
       `
-        UPDATE users
-        SET email_verified_at = NOW()
+        SELECT id, email, full_name, email_verified_at
+        FROM users
         WHERE email = $1
-        RETURNING id
       `,
       [email.trim().toLowerCase()]
     );
 
-    if (!result.rowCount) {
+    if (!user) {
       throw new NotFoundException("User not found");
     }
 
+    if (user.email_verified_at) {
+      return {
+        message: "Email already verified",
+        emailVerificationSent: false,
+        alreadyVerified: true
+      };
+    }
+
+    const verificationEmailSent = await this.issueEmailVerificationCode(user.id, user.email, user.full_name);
+
     return {
-      message: "Email verified",
-      userId: result.rows[0].id
+      message: verificationEmailSent ? "Verification code sent" : "Verification email could not be sent",
+      emailVerificationSent: verificationEmailSent,
+      alreadyVerified: false
     };
   }
 
@@ -254,5 +337,62 @@ export class AuthService {
       role: user.role,
       emailVerifiedAt: user.email_verified_at
     };
+  }
+
+  private async issueEmailVerificationCode(userId: string, email: string, fullName: string) {
+    const code = createNumericVerificationCode();
+
+    await dbQuery(
+      `
+        UPDATE verification_codes
+        SET consumed_at = NOW()
+        WHERE user_id = $1
+          AND purpose = $2
+          AND consumed_at IS NULL
+      `,
+      [userId, this.emailVerificationPurpose]
+    );
+
+    await dbQuery(
+      `
+        INSERT INTO verification_codes (id, user_id, email, purpose, code_hash, expires_at)
+        VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW() + ($5::int * INTERVAL '1 minute'))
+      `,
+      [
+        userId,
+        email,
+        this.emailVerificationPurpose,
+        hashVerificationCode(code),
+        this.verificationCodeTtlMinutes
+      ]
+    );
+
+    try {
+      const platformName = process.env.PLATFORM_NAME ?? "FNDK";
+      await sendMail({
+        to: email,
+        subject: `${platformName} email verification code`,
+        text: [
+          `Hello ${fullName},`,
+          "",
+          `Your ${platformName} verification code is ${normalizeVerificationCode(code)}.`,
+          `It expires in ${this.verificationCodeTtlMinutes} minutes.`,
+          "",
+          "If you did not create this account, you can ignore this email."
+        ].join("\n"),
+        html: `
+          <p>Hello,</p>
+          <p>Your <strong>${platformName}</strong> verification code is:</p>
+          <p style="font-size:24px;font-weight:700;letter-spacing:4px;">${normalizeVerificationCode(code)}</p>
+          <p>This code expires in ${this.verificationCodeTtlMinutes} minutes.</p>
+          <p>If you did not create this account, you can ignore this email.</p>
+        `
+      });
+
+      return true;
+    } catch (error) {
+      console.warn("[identity-service] failed to send verification email", error);
+      return false;
+    }
   }
 }

@@ -1,6 +1,7 @@
 import {
   BellRing,
   Coins,
+  IdCard,
   LayoutDashboard,
   ReceiptText,
   Settings,
@@ -13,6 +14,7 @@ import { SidebarNav } from "@/components/sidebar-nav";
 const items = [
   { to: "/admin", label: "Overview", icon: LayoutDashboard },
   { to: "/admin/users", label: "Users", icon: Users },
+  { to: "/admin/kyc", label: "KYC Review", icon: IdCard },
   { to: "/admin/finance", label: "Deposits & Withdrawals", icon: ReceiptText },
   { to: "/admin/profit", label: "VIP & Profit", icon: Coins },
   { to: "/admin/notifications", label: "Notifications", icon: BellRing },

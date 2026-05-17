@@ -20,6 +20,13 @@ services:
       - "5672:5672"
       - "15672:15672"
 
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
   frontend:
     build:
       context: .
@@ -44,6 +51,7 @@ services:
     depends_on:
       - postgres
       - rabbitmq
+      - mailhog
 
   wallet-service:
     build:
@@ -56,6 +64,7 @@ services:
     depends_on:
       - postgres
       - rabbitmq
+      - mailhog
 
   vip-service:
     build:
@@ -107,4 +116,3 @@ services:
 
 volumes:
   postgres-data:
-

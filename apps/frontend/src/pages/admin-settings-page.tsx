@@ -42,7 +42,7 @@ const defaultAdCarouselSlides: AdCarouselSlide[] = [
     title: "Top up and start.",
     description: "Deposit with crypto, bank instructions, or internal ledger routes configured by FNDK admin.",
     ctaLabel: "Deposit Funds",
-    ctaHref: "/app/deposit",
+    ctaHref: "/app/wallet/deposit",
     imageUrl: ""
   }
 ];
