@@ -125,6 +125,10 @@ type KycSubmissionRow = {
   user_id: string;
   full_name: string;
   document_type: string | null;
+  nationality: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  document_number: string | null;
   document_url: string;
   selfie_url: string;
   status: string;
@@ -319,6 +323,10 @@ export class AdminService {
           ks.user_id,
           u.full_name,
           ks.document_type,
+          ks.nationality,
+          ks.first_name,
+          ks.last_name,
+          ks.document_number,
           ks.document_url,
           ks.selfie_url,
           ks.status,
@@ -338,6 +346,10 @@ export class AdminService {
       userId: submission.user_id,
       fullName: submission.full_name,
       documentType: submission.document_type,
+      nationality: submission.nationality,
+      firstName: submission.first_name,
+      lastName: submission.last_name,
+      documentNumber: submission.document_number,
       documentUrl: submission.document_url,
       selfieUrl: submission.selfie_url,
       status: submission.status,

@@ -350,6 +350,8 @@ export class AuthService {
         FROM users
         WHERE LOWER(email) = LOWER($1)
            OR LOWER(full_name) = LOWER($1)
+           OR regexp_replace(phone, '[^0-9]', '', 'g') =
+              regexp_replace($1, '[^0-9]', '', 'g')
            OR regexp_replace(UPPER(referral_code), '[^A-Z0-9]', '', 'g') =
               regexp_replace(UPPER($1), '[^A-Z0-9]', '', 'g')
         ORDER BY created_at ASC

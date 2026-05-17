@@ -7,6 +7,10 @@ type KycSubmissionRow = {
   id: string;
   user_id: string;
   document_type: string | null;
+  nationality: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  document_number: string | null;
   document_url: string;
   selfie_url: string;
   status: string;
@@ -43,6 +47,10 @@ export class KycService {
           id,
           user_id,
           document_type,
+          nationality,
+          first_name,
+          last_name,
+          document_number,
           document_url,
           selfie_url,
           status,
@@ -54,6 +62,10 @@ export class KycService {
           $2,
           $3,
           $4,
+          $5,
+          $6,
+          $7,
+          $8,
           'pending',
           NOW()
         )
@@ -61,6 +73,10 @@ export class KycService {
           id,
           user_id,
           document_type,
+          nationality,
+          first_name,
+          last_name,
+          document_number,
           document_url,
           selfie_url,
           status,
@@ -71,6 +87,10 @@ export class KycService {
       [
         userId,
         dto.documentType ?? "government-id",
+        dto.nationality?.trim() || null,
+        dto.firstName?.trim() || null,
+        dto.lastName?.trim() || null,
+        dto.documentNumber?.trim() || null,
         toPublicUploadUrl("kyc", documentFile.filename),
         toPublicUploadUrl("kyc", selfieFile.filename)
       ]
@@ -88,6 +108,10 @@ export class KycService {
           id,
           user_id,
           document_type,
+          nationality,
+          first_name,
+          last_name,
+          document_number,
           document_url,
           selfie_url,
           status,
@@ -109,6 +133,10 @@ export class KycService {
       id: submission.id,
       userId: submission.user_id,
       documentType: submission.document_type,
+      nationality: submission.nationality,
+      firstName: submission.first_name,
+      lastName: submission.last_name,
+      documentNumber: submission.document_number,
       documentUrl: submission.document_url,
       selfieUrl: submission.selfie_url,
       status: submission.status,

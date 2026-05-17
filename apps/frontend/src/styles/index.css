@@ -71,6 +71,142 @@ body {
     radial-gradient(circle at top left, rgba(63, 90, 255, 0.18), transparent 24%);
 }
 
+.fndk-auth-bg {
+  min-height: 100vh;
+  background:
+    linear-gradient(90deg, rgba(2, 5, 38, 0.96) 0%, rgba(5, 14, 67, 0.82) 18%, rgba(7, 14, 72, 0.86) 82%, rgba(2, 5, 38, 0.96) 100%),
+    linear-gradient(180deg, #030327 0%, #070957 48%, #07064b 100%);
+}
+
+.fndk-device-shell {
+  position: relative;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(8, 10, 83, 0.98) 0%, rgba(5, 7, 70, 0.99) 48%, rgba(6, 7, 72, 1) 100%);
+  border: 1px solid rgba(159, 180, 230, 0.6);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.1),
+    0 28px 70px rgba(0, 0, 0, 0.56),
+    inset 0 1px 0 rgba(174, 214, 255, 0.13);
+}
+
+.fndk-device-shell::before,
+.fndk-device-shell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.fndk-device-shell::before {
+  background:
+    radial-gradient(circle at 79% 21%, rgba(104, 234, 255, 0.18), transparent 13%),
+    radial-gradient(circle at 66% 36%, rgba(64, 101, 255, 0.18), transparent 15%),
+    linear-gradient(rgba(105, 144, 255, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(105, 144, 255, 0.07) 1px, transparent 1px);
+  background-size: auto, auto, 44px 44px, 44px 44px;
+}
+
+.fndk-device-shell::after {
+  background:
+    linear-gradient(90deg, transparent 0%, rgba(114, 163, 255, 0.04) 50%, transparent 100%),
+    repeating-linear-gradient(180deg, transparent 0 10px, rgba(98, 126, 255, 0.035) 10px 12px);
+  opacity: 0.62;
+}
+
+.fndk-auth-input {
+  width: 100%;
+  border-radius: 16px;
+  border: 1px solid rgba(58, 82, 188, 0.78);
+  background:
+    linear-gradient(180deg, rgba(15, 23, 126, 0.98) 0%, rgba(9, 15, 100, 0.98) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(145, 180, 255, 0.14),
+    inset 0 0 22px rgba(67, 97, 255, 0.32),
+    0 0 18px rgba(47, 84, 255, 0.22);
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 700;
+  outline: none;
+  padding: 1rem 1.25rem;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.fndk-auth-input::placeholder {
+  color: rgba(214, 221, 255, 0.48);
+}
+
+.fndk-auth-input:focus {
+  border-color: rgba(103, 232, 255, 0.78);
+  box-shadow:
+    inset 0 1px 0 rgba(145, 180, 255, 0.16),
+    inset 0 0 22px rgba(67, 97, 255, 0.36),
+    0 0 22px rgba(103, 232, 255, 0.24);
+}
+
+.fndk-primary-action {
+  border-radius: 8px;
+  border: 1px solid rgba(143, 178, 255, 0.18);
+  background:
+    linear-gradient(180deg, rgba(39, 57, 145, 0.98) 0%, rgba(26, 42, 126, 0.98) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(169, 202, 255, 0.14),
+    0 0 18px rgba(43, 78, 255, 0.2);
+  color: #ffffff;
+  font-size: 0.98rem;
+  font-weight: 800;
+  min-height: 3.35rem;
+  padding: 0.85rem 1rem;
+  text-align: center;
+  transition: transform 160ms ease, filter 160ms ease;
+}
+
+.fndk-primary-action:hover {
+  filter: brightness(1.08);
+}
+
+.fndk-primary-action:active {
+  transform: translateY(1px);
+}
+
+.fndk-profile-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px;
+  border: 1px solid rgba(67, 95, 214, 0.62);
+  background:
+    linear-gradient(180deg, rgba(20, 31, 137, 0.98) 0%, rgba(12, 21, 111, 0.96) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(171, 204, 255, 0.12),
+    0 0 24px rgba(51, 86, 255, 0.22);
+}
+
+.fndk-profile-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(rgba(116, 151, 255, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(116, 151, 255, 0.08) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+
+.fndk-profile-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.fndk-settings-card {
+  border-radius: 12px;
+  border: 1px solid rgba(67, 95, 214, 0.62);
+  background:
+    linear-gradient(180deg, rgba(15, 24, 128, 0.98) 0%, rgba(8, 15, 102, 0.98) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(171, 204, 255, 0.1),
+    0 0 26px rgba(47, 83, 255, 0.2);
+}
+
 .neon-panel {
   border-radius: 30px;
   border: 1px solid rgba(103, 133, 255, 0.64);

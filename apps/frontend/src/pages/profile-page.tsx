@@ -1,11 +1,30 @@
-import { ChangeEvent, useEffect, useId, useState } from "react";
+import { ChangeEvent, useEffect, useId, useMemo, useState } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
-import { ChevronRight, ExternalLink, FileText, KeyRound, ShieldCheck, Upload, UserRound } from "lucide-react";
-import { MobilePageHeader } from "@/components/mobile-page-header";
+import {
+  Activity,
+  ArrowLeftRight,
+  Award,
+  Camera,
+  ChevronLeft,
+  ChevronRight,
+  CircleAlert,
+  CreditCard,
+  FileText,
+  IdCard,
+  KeyRound,
+  Languages,
+  LockKeyhole,
+  Mail,
+  ShieldCheck,
+  Smartphone,
+  UserRound,
+  WalletCards,
+  type LucideIcon
+} from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 const identityApiBase = import.meta.env.VITE_IDENTITY_API_URL ?? "http://localhost:4001/api";
-const identityUploadsBase = identityApiBase.replace(/\/api\/?$/, "");
 
 const identityApi = axios.create({
   baseURL: identityApiBase
@@ -14,6 +33,10 @@ const identityApi = axios.create({
 type KycSubmission = {
   id: string;
   documentType: string | null;
+  nationality?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  documentNumber?: string | null;
   documentUrl: string;
   selfieUrl: string;
   status: "pending" | "verified" | "rejected";
@@ -22,12 +45,36 @@ type KycSubmission = {
   reviewedAt?: string | null;
 };
 
+type StoredUser = {
+  fullName?: string;
+  email?: string;
+  phone?: string;
+  kycStatus?: "pending" | "verified" | "rejected";
+  hasSecurityPasscode?: boolean;
+};
+
+type ProfileScreen = "settings" | "security" | "real-name-details" | "real-name-upload";
+
 type UploadFieldProps = {
   title: string;
-  description: string;
-  onChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  helper: string;
   fileName?: string;
+  onChange: (event: ChangeEvent<HTMLInputElement>) => void;
 };
+
+type SettingsRowProps = {
+  icon: LucideIcon;
+  label: string;
+  onClick?: () => void;
+};
+
+type SecurityRowProps = SettingsRowProps & {
+  status: string;
+  active?: boolean;
+};
+
+const fieldClass =
+  "w-full rounded-[8px] border border-[#263eaa] bg-[#091279]/95 px-4 py-3.5 text-[15px] font-semibold text-white outline-none shadow-[inset_0_0_18px_rgba(67,99,255,0.28)] transition placeholder:text-slate-300/55 focus:border-cyan-300/70";
 
 const resolveApiErrorMessage = (fallback: string, error: unknown) => {
   if (!axios.isAxiosError(error)) {
@@ -42,32 +89,132 @@ const resolveApiErrorMessage = (fallback: string, error: unknown) => {
   return typeof responseMessage === "string" ? responseMessage : fallback;
 };
 
-function UploadField({ title, description, onChange, fileName }: UploadFieldProps) {
+const readStoredUser = (): StoredUser => {
+  try {
+    const storedUser = localStorage.getItem("nevo.user");
+    return storedUser ? JSON.parse(storedUser) : {};
+  } catch {
+    return {};
+  }
+};
+
+function ScreenHeader({ title, onBack }: { title: string; onBack: () => void }) {
+  return (
+    <header className="sticky top-0 z-20 border-b border-cyan-200/10 bg-[#06074c]/95 px-4 py-4 backdrop-blur-md">
+      <div className="grid grid-cols-[42px_minmax(0,1fr)_42px] items-center">
+        <button
+          aria-label="Back"
+          className="flex h-10 w-10 items-center justify-center rounded-full text-white/85 transition hover:bg-white/5 hover:text-white"
+          onClick={onBack}
+          type="button"
+        >
+          <ChevronLeft className="h-6 w-6" />
+        </button>
+        <div className="truncate text-center text-[1.15rem] font-extrabold tracking-[-0.02em] text-white">{title}</div>
+        <div />
+      </div>
+    </header>
+  );
+}
+
+function SettingsRow({ icon: Icon, label, onClick }: SettingsRowProps) {
+  return (
+    <button
+      className="flex min-h-[54px] w-full items-center justify-between gap-3 border-b border-cyan-200/10 px-4 py-3.5 text-left text-white last:border-b-0 transition hover:bg-cyan-300/5"
+      onClick={onClick}
+      type="button"
+    >
+      <span className="flex min-w-0 items-center gap-3">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-cyan-300/[0.08] text-cyan-200">
+          <Icon className="h-[18px] w-[18px]" />
+        </span>
+        <span className="truncate text-[0.96rem] font-semibold">{label}</span>
+      </span>
+      <ChevronRight className="h-5 w-5 shrink-0 text-slate-400" />
+    </button>
+  );
+}
+
+function SecurityRow({ icon: Icon, label, status, active, onClick }: SecurityRowProps) {
+  return (
+    <button
+      className={`grid min-h-[94px] w-full grid-cols-[minmax(0,1fr)_70px] items-center gap-4 border-b border-cyan-200/10 px-4 py-4 text-left last:border-b-0 transition hover:bg-cyan-300/5 ${
+        active ? "bg-cyan-300/5 shadow-[inset_0_0_0_1px_rgba(255,78,90,0.55)]" : ""
+      }`}
+      onClick={onClick}
+      type="button"
+    >
+      <span className="min-w-0">
+        <span className="block truncate text-[1.02rem] font-extrabold text-white">{label}</span>
+        <span className="mt-3 inline-flex max-w-full items-center rounded-[6px] border border-cyan-300/10 bg-[#050a4f] px-3 py-1.5 text-[0.78rem] font-semibold text-slate-300">
+          {status}
+        </span>
+      </span>
+      <span className="flex h-14 w-14 items-center justify-center rounded-[14px] border border-cyan-300/20 bg-[#0d1680] text-cyan-200 shadow-[0_0_20px_rgba(59,104,255,0.25)]">
+        <Icon className="h-7 w-7" />
+      </span>
+    </button>
+  );
+}
+
+function VerificationProgress({ step }: { step: 1 | 2 }) {
+  return (
+    <div className="h-1.5 overflow-hidden rounded-full bg-[#0c155d] shadow-[inset_0_0_0_1px_rgba(102,143,255,0.15)]">
+      <div
+        className="h-full rounded-full bg-cyan-300 shadow-[0_0_18px_rgba(103,232,255,0.75)] transition-all"
+        style={{ width: step === 1 ? "50%" : "100%" }}
+      />
+    </div>
+  );
+}
+
+function VerificationNotice() {
+  return (
+    <div className="mt-4 flex gap-2 text-[0.77rem] font-medium leading-5 text-slate-300">
+      <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 fill-amber-300 text-[#5b4300]" />
+      <span>After clicking real-name authentication, upload documents for approval. Add the document name and keep the document photo clear.</span>
+    </div>
+  );
+}
+
+function ReminderPanel() {
+  return (
+    <section className="mt-7 rounded-[12px] border border-cyan-300/20 bg-[#111d92]/[0.82] p-4 shadow-[inset_0_1px_0_rgba(157,218,255,0.16),0_0_24px_rgba(54,89,255,0.25)]">
+      <div className="text-[1rem] font-extrabold text-cyan-200">Real-Name Authentication Reminder</div>
+      <ol className="mt-3 list-decimal space-y-1 pl-5 text-[0.78rem] font-semibold leading-5 text-white">
+        <li>Government-issued identification documents.</li>
+        <li>Original, full-sized, uploaded photo.</li>
+        <li>Photo without mirror, border, watermark, and stray items.</li>
+        <li>Align the document with the viewfinder when taking the photo.</li>
+      </ol>
+    </section>
+  );
+}
+
+function VerificationUploadField({ title, helper, fileName, onChange }: UploadFieldProps) {
   const inputId = useId();
 
   return (
-    <div className="min-w-0 overflow-hidden rounded-[20px] border border-dashed border-white/15 bg-white/5">
-      <label className="block cursor-pointer px-4 py-4" htmlFor={inputId}>
-        <div className="flex min-w-0 items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="text-[14px] font-medium text-white">{title}</div>
-            <div className="mt-1 text-[13px] text-slate-400">{description}</div>
+    <div className="space-y-3">
+      <div className="text-[1rem] font-extrabold text-white">{title}</div>
+      <label
+        className="block cursor-pointer overflow-hidden rounded-[10px] border border-[#263eaa] bg-[#0b147a] shadow-[inset_0_0_24px_rgba(48,78,220,0.32)]"
+        htmlFor={inputId}
+      >
+        <div className="relative mx-auto my-3 flex min-h-[168px] w-[86%] max-w-[330px] flex-col items-center justify-center rounded-[8px] bg-[linear-gradient(180deg,rgba(15,27,137,0.98),rgba(9,18,105,0.98))] px-5 text-center">
+          <div className="absolute inset-x-5 top-5 h-9 rounded-t-[14px] border-t-4 border-[#263dbe]" />
+          <div className="relative flex h-24 w-44 items-center justify-center overflow-hidden rounded-[8px] bg-[#132092] shadow-[inset_0_0_18px_rgba(42,76,255,0.28)]">
+            <UserRound className="h-16 w-16 text-[#f1cf9d]" />
+            <span className="absolute right-8 top-7 flex h-14 w-14 items-center justify-center rounded-full bg-cyan-300 text-[#06115d] shadow-[0_0_18px_rgba(103,232,255,0.75)]">
+              <Camera className="h-7 w-7" />
+            </span>
           </div>
-          <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-cyan-300/20 bg-cyan-300/10 text-cyan-100">
-            <Upload className="h-4 w-4" />
+          <div className="mt-3 max-w-[280px] text-[0.8rem] font-extrabold leading-5 text-white">{helper}</div>
+          <div className="mt-2 max-w-full truncate text-[0.72rem] font-semibold text-cyan-200">
+            {fileName ?? "Tap to upload"}
           </div>
-        </div>
-
-        <div className="mt-4 flex min-w-0 items-center gap-3">
-          <span className="inline-flex shrink-0 rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-1.5 text-[12px] font-semibold text-cyan-100">
-            Choose file
-          </span>
-          <span className="min-w-0 truncate text-[12px] text-slate-300">
-            {fileName ?? "No file selected"}
-          </span>
         </div>
       </label>
-
       <input
         accept="image/png,image/jpeg,image/webp,application/pdf"
         className="sr-only"
@@ -79,16 +226,15 @@ function UploadField({ title, description, onChange, fileName }: UploadFieldProp
   );
 }
 
-const resolveKycUploadUrl = (url: string) => {
-  if (url.startsWith("http://") || url.startsWith("https://")) {
-    return url;
-  }
-
-  return `${identityUploadsBase}${url}`;
-};
-
 export function ProfilePage() {
-  const [documentType, setDocumentType] = useState("");
+  const navigate = useNavigate();
+  const [screen, setScreen] = useState<ProfileScreen>("settings");
+  const [storedUser] = useState<StoredUser>(() => readStoredUser());
+  const [documentType, setDocumentType] = useState("Passport");
+  const [nationality, setNationality] = useState("America");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [documentNumber, setDocumentNumber] = useState("");
   const [documentFile, setDocumentFile] = useState<File>();
   const [selfieFile, setSelfieFile] = useState<File>();
   const [submittingKyc, setSubmittingKyc] = useState(false);
@@ -96,14 +242,8 @@ export function ProfilePage() {
   const [securityPasscode, setSecurityPasscode] = useState("");
   const [securityPasscodeConfirm, setSecurityPasscodeConfirm] = useState("");
   const [savingSecurityPasscode, setSavingSecurityPasscode] = useState(false);
-  const [hasSecurityPasscode, setHasSecurityPasscode] = useState(() => {
-    try {
-      const storedUser = localStorage.getItem("nevo.user");
-      return storedUser ? Boolean(JSON.parse(storedUser).hasSecurityPasscode) : false;
-    } catch {
-      return false;
-    }
-  });
+  const [showPasscodeEditor, setShowPasscodeEditor] = useState(false);
+  const [hasSecurityPasscode, setHasSecurityPasscode] = useState(Boolean(storedUser.hasSecurityPasscode));
 
   useEffect(() => {
     const token = localStorage.getItem("nevo.accessToken");
@@ -136,6 +276,36 @@ export function ProfilePage() {
     };
   }, []);
 
+  const latestSubmission = submissions[0];
+
+  const realNameStatus = useMemo(() => {
+    if (latestSubmission?.status === "verified" || storedUser.kycStatus === "verified") {
+      return "Verified";
+    }
+
+    if (latestSubmission?.status === "pending") {
+      return "Under Review";
+    }
+
+    if (latestSubmission?.status === "rejected" || storedUser.kycStatus === "rejected") {
+      return "Rejected";
+    }
+
+    return "Go To Verify";
+  }, [latestSubmission?.status, storedUser.kycStatus]);
+
+  const displayName = storedUser.fullName?.trim() || "FNDK User";
+  const displayEmail = storedUser.email?.trim() || "email not set";
+
+  const validateRealNameDetails = () => {
+    if (!nationality.trim() || !lastName.trim() || !firstName.trim() || !documentNumber.trim()) {
+      toast.error("Complete all real-name verification fields.");
+      return false;
+    }
+
+    return true;
+  };
+
   const submitKyc = async () => {
     const token = localStorage.getItem("nevo.accessToken");
     if (!token) {
@@ -143,13 +313,22 @@ export function ProfilePage() {
       return;
     }
 
+    if (!validateRealNameDetails()) {
+      setScreen("real-name-details");
+      return;
+    }
+
     if (!documentFile || !selfieFile) {
-      toast.error("Upload both your ID document and selfie.");
+      toast.error("Upload the front of the document and holding document photo.");
       return;
     }
 
     const formData = new FormData();
-    formData.append("documentType", documentType.trim() || "government-id");
+    formData.append("documentType", documentType.trim() || "Passport");
+    formData.append("nationality", nationality.trim());
+    formData.append("firstName", firstName.trim());
+    formData.append("lastName", lastName.trim());
+    formData.append("documentNumber", documentNumber.trim());
     formData.append("idDocument", documentFile);
     formData.append("selfie", selfieFile);
 
@@ -160,9 +339,10 @@ export function ProfilePage() {
       });
 
       setSubmissions((current) => [response.data, ...current]);
-      toast.success("KYC submitted for admin review.");
+      setScreen("security");
+      toast.success("Real-name verification submitted for review.");
     } catch (error) {
-      toast.error(resolveApiErrorMessage("KYC submission failed.", error));
+      toast.error(resolveApiErrorMessage("Real-name verification failed.", error));
     } finally {
       setSubmittingKyc(false);
     }
@@ -176,12 +356,12 @@ export function ProfilePage() {
     }
 
     if (!/^\d{6}$/.test(securityPasscode)) {
-      toast.error("Security passcode must be exactly 6 digits.");
+      toast.error("Transaction password must be exactly 6 digits.");
       return;
     }
 
     if (securityPasscode !== securityPasscodeConfirm) {
-      toast.error("Security passcodes do not match.");
+      toast.error("Transaction passwords do not match.");
       return;
     }
 
@@ -193,205 +373,254 @@ export function ProfilePage() {
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      const storedUser = localStorage.getItem("nevo.user");
-      if (storedUser) {
-        localStorage.setItem("nevo.user", JSON.stringify({ ...JSON.parse(storedUser), hasSecurityPasscode: true }));
-      }
+      const currentUser = readStoredUser();
+      localStorage.setItem("nevo.user", JSON.stringify({ ...currentUser, hasSecurityPasscode: true }));
 
       setHasSecurityPasscode(true);
       setSecurityPasscode("");
       setSecurityPasscodeConfirm("");
-      toast.success("Security passcode saved.");
+      setShowPasscodeEditor(false);
+      toast.success("Transaction password saved.");
     } catch (error) {
-      toast.error(resolveApiErrorMessage("Could not save security passcode.", error));
+      toast.error(resolveApiErrorMessage("Could not save transaction password.", error));
     } finally {
       setSavingSecurityPasscode(false);
     }
   };
 
-  return (
-    <div className="pb-6">
-      <MobilePageHeader title="My Profile" subtitle="account settings" />
+  const handleLogout = () => {
+    localStorage.removeItem("nevo.accessToken");
+    localStorage.removeItem("nevo.refreshToken");
+    localStorage.removeItem("nevo.user");
+    navigate("/login", { replace: true });
+  };
 
-      <div className="px-4 pt-5">
-        <section className="neon-panel p-5">
-          <div className="flex items-center gap-3">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-cyan-300/10 text-cyan-200">
-              <UserRound className="h-7 w-7" />
+  const renderSettings = () => (
+    <div className="px-4 pb-4 pt-6">
+      <section className="fndk-profile-card p-4">
+        <div className="flex items-center gap-4">
+          <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full border-[6px] border-lime-300 bg-[#efffff] text-[#070b52] shadow-[0_0_26px_rgba(124,255,139,0.28)]">
+            <UserRound className="h-10 w-10" />
+          </div>
+          <div className="min-w-0">
+            <div className="truncate text-[1.05rem] font-extrabold text-white"># {displayName}</div>
+            <div className="mt-2 flex flex-wrap gap-2 text-[0.68rem] font-semibold text-slate-300">
+              <span className="rounded-full bg-cyan-300/10 px-2 py-1 text-cyan-200">VIP0</span>
+              <span className="rounded-full bg-white/5 px-2 py-1">{realNameStatus}</span>
             </div>
-            <div>
-              <div className="text-[1.35rem] font-bold text-white">Investor Profile</div>
-              <div className="mt-1 text-[13px] text-slate-300">
-                Update your identity details, security preferences, and KYC materials.
-              </div>
-            </div>
+            <div className="mt-2 truncate text-[0.76rem] font-medium text-slate-300">{displayEmail}</div>
           </div>
-        </section>
+        </div>
+      </section>
 
-        <section className="neon-soft-panel mt-5 p-5">
-          <div className="text-sm uppercase tracking-[0.26em] text-cyan-200/75">Personal information</div>
-          <div className="mt-4 grid gap-3">
-            <input
-              className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-[15px] text-white outline-none transition focus:border-cyan-300/40"
-              placeholder="Full name"
-            />
-            <input
-              className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-[15px] text-white outline-none transition focus:border-cyan-300/40"
-              placeholder="Email address"
-            />
-            <input
-              className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-[15px] text-white outline-none transition focus:border-cyan-300/40"
-              placeholder="Phone number"
-            />
-            <button className="mt-1 rounded-[20px] bg-cyan-400 px-4 py-4 text-[15px] font-semibold text-slate-950">
-              Save Profile
-            </button>
-          </div>
-        </section>
+      <section className="fndk-settings-card mt-5 overflow-hidden">
+        <SettingsRow icon={UserRound} label="Personal Information" />
+        <SettingsRow icon={CreditCard} label="Manage Your Card" />
+        <SettingsRow icon={ArrowLeftRight} label="Asset Transfer" />
+        <SettingsRow icon={Award} label="My Mission" />
+        <SettingsRow icon={FileText} label="Department Order" />
+        <SettingsRow icon={LockKeyhole} label="Login Password" />
+        <SettingsRow icon={ShieldCheck} label="Security Center" onClick={() => setScreen("security")} />
+        <SettingsRow icon={Activity} label="Activity Information" />
+        <SettingsRow icon={Languages} label="Language" />
+      </section>
 
-        <section className="neon-soft-panel mt-5 p-5">
-          <div className="flex items-center gap-2 text-cyan-200">
-            <ShieldCheck className="h-4 w-4" />
-            <span className="text-sm uppercase tracking-[0.24em]">Security center</span>
-          </div>
+      <button
+        className="mt-6 w-full rounded-[8px] bg-cyan-300 px-4 py-3.5 text-center text-[0.95rem] font-extrabold text-[#03104c] shadow-[0_0_22px_rgba(103,232,255,0.45)]"
+        onClick={handleLogout}
+        type="button"
+      >
+        Logout
+      </button>
+    </div>
+  );
 
-          <div className="mt-4 rounded-[22px] border border-emerald-400/20 bg-emerald-400/10 px-4 py-4 text-[14px] leading-6 text-emerald-200">
-            KYC status will update after your first submission review.
-          </div>
-
-          <div className="mt-4 space-y-3">
-            <div className="rounded-[22px] border border-cyan-300/15 bg-cyan-300/10 px-4 py-4">
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-2 text-cyan-100">
-                  <KeyRound className="h-4 w-4 shrink-0" />
-                  <span className="text-sm font-semibold uppercase tracking-[0.2em]">Security passcode</span>
-                </div>
-                <span className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] ${
-                  hasSecurityPasscode ? "bg-emerald-300/12 text-emerald-100" : "bg-amber-300/12 text-amber-100"
-                }`}>
-                  {hasSecurityPasscode ? "Set" : "Missing"}
-                </span>
-              </div>
-
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <input
-                  className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-center text-[18px] font-semibold tracking-[0.28em] text-white outline-none transition focus:border-cyan-300/40"
-                  inputMode="numeric"
-                  maxLength={6}
-                  placeholder="000000"
-                  type="password"
-                  value={securityPasscode}
-                  onChange={(event) => setSecurityPasscode(event.target.value.replace(/\D/g, "").slice(0, 6))}
-                />
-                <input
-                  className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-center text-[18px] font-semibold tracking-[0.28em] text-white outline-none transition focus:border-cyan-300/40"
-                  inputMode="numeric"
-                  maxLength={6}
-                  placeholder="Confirm"
-                  type="password"
-                  value={securityPasscodeConfirm}
-                  onChange={(event) => setSecurityPasscodeConfirm(event.target.value.replace(/\D/g, "").slice(0, 6))}
-                />
-              </div>
-              <button
-                className="mt-3 w-full rounded-[20px] bg-cyan-400 px-4 py-3.5 text-[15px] font-semibold text-slate-950 disabled:opacity-60"
-                disabled={savingSecurityPasscode}
-                onClick={() => void saveSecurityPasscode()}
-                type="button"
-              >
-                {savingSecurityPasscode ? "Saving..." : hasSecurityPasscode ? "Update passcode" : "Set passcode"}
-              </button>
-            </div>
-            <button
-              className="flex w-full items-center justify-between rounded-[20px] border border-white/10 bg-white/5 px-4 py-4 text-left text-[15px] text-white"
-              type="button"
-            >
-              <span>Change password</span>
-              <ChevronRight className="h-5 w-5 text-slate-400" />
-            </button>
-            <button
-              className="flex w-full items-center justify-between rounded-[20px] border border-white/10 bg-white/5 px-4 py-4 text-left text-[15px] text-white"
-              type="button"
-            >
-              <span>Enable TOTP 2FA</span>
-              <ChevronRight className="h-5 w-5 text-slate-400" />
-            </button>
-          </div>
-        </section>
-
-        <section className="neon-panel mt-5 overflow-hidden p-5">
-          <div className="flex items-center gap-2 text-cyan-200">
-            <FileText className="h-4 w-4" />
-            <span className="text-sm uppercase tracking-[0.24em]">KYC submission</span>
-          </div>
-
-          <div className="mt-4 grid min-w-0 gap-3">
-            <input
-              className="w-full min-w-0 max-w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-[15px] text-white outline-none transition focus:border-cyan-300/40"
-              placeholder="Document type"
-              value={documentType}
-              onChange={(event) => setDocumentType(event.target.value)}
-            />
-
-            <UploadField
-              description="Passport, national ID, or driver&apos;s license"
-              fileName={documentFile?.name}
-              onChange={(event) => setDocumentFile(event.target.files?.[0])}
-              title="Upload ID document"
-            />
-
-            <UploadField
-              description="Clear face photo with good lighting"
-              fileName={selfieFile?.name}
-              onChange={(event) => setSelfieFile(event.target.files?.[0])}
-              title="Upload selfie"
-            />
-
-            <button
-              className="mt-1 w-full min-w-0 max-w-full rounded-[20px] bg-cyan-400 px-4 py-4 text-[15px] font-semibold text-slate-950 disabled:opacity-60"
-              disabled={submittingKyc}
-              onClick={() => void submitKyc()}
-              type="button"
-            >
-              {submittingKyc ? "Submitting..." : "Submit KYC"}
-            </button>
-
-            {submissions.length ? (
-              <div className="mt-2 grid gap-3">
-                {submissions.slice(0, 3).map((submission) => (
-                  <div key={submission.id} className="rounded-[20px] border border-white/10 bg-white/5 px-4 py-4 text-[13px] text-slate-300">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <span className="font-semibold text-white">{submission.documentType ?? "government-id"}</span>
-                      <span className="uppercase tracking-[0.18em] text-cyan-200">{submission.status}</span>
-                    </div>
-                    <div className="mt-2">{new Date(submission.submittedAt).toLocaleString("en-GB")}</div>
-                    <div className="mt-3 flex flex-wrap gap-3">
-                      <a
-                        className="inline-flex items-center gap-2 text-cyan-200"
-                        href={resolveKycUploadUrl(submission.documentUrl)}
-                        rel="noreferrer"
-                        target="_blank"
-                      >
-                        ID document
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </a>
-                      <a
-                        className="inline-flex items-center gap-2 text-cyan-200"
-                        href={resolveKycUploadUrl(submission.selfieUrl)}
-                        rel="noreferrer"
-                        target="_blank"
-                      >
-                        Selfie
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </a>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        </section>
+  const renderPasscodeEditor = () => (
+    <section className="mt-4 rounded-[10px] border border-cyan-300/15 bg-[#0b1479]/90 p-4 shadow-[0_0_22px_rgba(49,94,255,0.18)]">
+      <div className="flex items-center gap-2 text-[0.92rem] font-extrabold text-cyan-200">
+        <KeyRound className="h-4 w-4" />
+        Transaction Password
       </div>
+      <div className="mt-4 grid gap-3">
+        <input
+          className={`${fieldClass} text-center tracking-[0.28em]`}
+          inputMode="numeric"
+          maxLength={6}
+          placeholder="000000"
+          type="password"
+          value={securityPasscode}
+          onChange={(event) => setSecurityPasscode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+        />
+        <input
+          className={`${fieldClass} text-center tracking-[0.28em]`}
+          inputMode="numeric"
+          maxLength={6}
+          placeholder="Confirm"
+          type="password"
+          value={securityPasscodeConfirm}
+          onChange={(event) => setSecurityPasscodeConfirm(event.target.value.replace(/\D/g, "").slice(0, 6))}
+        />
+        <button
+          className="rounded-[8px] bg-cyan-300 px-4 py-3 text-[0.9rem] font-extrabold text-[#03104c] disabled:opacity-60"
+          disabled={savingSecurityPasscode}
+          onClick={() => void saveSecurityPasscode()}
+          type="button"
+        >
+          {savingSecurityPasscode ? "Saving..." : hasSecurityPasscode ? "Update Password" : "Set Password"}
+        </button>
+      </div>
+    </section>
+  );
+
+  const renderSecurity = () => (
+    <div className="pb-5">
+      <ScreenHeader title="Security Center" onBack={() => setScreen("settings")} />
+      <div className="px-4 pt-6">
+        <section className="fndk-settings-card overflow-hidden">
+          <SecurityRow icon={WalletCards} label="Withdrawal Address" status="Go To Setting" />
+          <SecurityRow
+            active
+            icon={IdCard}
+            label="Real-Name Verification"
+            status={realNameStatus}
+            onClick={() => setScreen("real-name-details")}
+          />
+          <SecurityRow icon={Smartphone} label="Phone Number" status="Go To Setting" />
+          <SecurityRow icon={Mail} label="Email" status="Go To Setting" />
+          <SecurityRow icon={LockKeyhole} label="Login Password" status="Go To Setting" />
+          <SecurityRow
+            icon={KeyRound}
+            label="Transaction Password"
+            status={hasSecurityPasscode ? "Already Set" : "Go To Setting"}
+            onClick={() => setShowPasscodeEditor((current) => !current)}
+          />
+        </section>
+        {showPasscodeEditor ? renderPasscodeEditor() : null}
+      </div>
+    </div>
+  );
+
+  const renderRealNameDetails = () => (
+    <div className="pb-6">
+      <ScreenHeader title="Real-Name Verification" onBack={() => setScreen("security")} />
+      <div className="px-5 pt-6">
+        <VerificationProgress step={1} />
+        <VerificationNotice />
+
+        <form
+          className="mt-6 space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (validateRealNameDetails()) {
+              setScreen("real-name-upload");
+            }
+          }}
+        >
+          <label className="block">
+            <span className="mb-2 block text-[0.9rem] font-extrabold text-white">Nationality</span>
+            <select className={fieldClass} value={nationality} onChange={(event) => setNationality(event.target.value)}>
+              <option>America</option>
+              <option>Tunisia</option>
+              <option>Germany</option>
+              <option>France</option>
+              <option>United Kingdom</option>
+              <option>United Arab Emirates</option>
+            </select>
+          </label>
+
+          <label className="block">
+            <span className="mb-2 block text-[0.9rem] font-extrabold text-white">Last Name</span>
+            <input
+              className={fieldClass}
+              placeholder="Please enter last name"
+              value={lastName}
+              onChange={(event) => setLastName(event.target.value)}
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-2 block text-[0.9rem] font-extrabold text-white">First Name</span>
+            <input
+              className={fieldClass}
+              placeholder="Please enter first name"
+              value={firstName}
+              onChange={(event) => setFirstName(event.target.value)}
+            />
+          </label>
+
+          <label className="block">
+            <span className="mb-2 block text-[0.9rem] font-extrabold text-white">Document Type</span>
+            <select className={fieldClass} value={documentType} onChange={(event) => setDocumentType(event.target.value)}>
+              <option>Passport</option>
+              <option>National ID</option>
+              <option>Driver License</option>
+              <option>Residence Permit</option>
+            </select>
+          </label>
+
+          <label className="block">
+            <span className="mb-2 block text-[0.9rem] font-extrabold text-white">Document Number</span>
+            <input
+              className={fieldClass}
+              placeholder="Please fill correct number"
+              value={documentNumber}
+              onChange={(event) => setDocumentNumber(event.target.value)}
+            />
+          </label>
+
+          <button className="fndk-primary-action w-full" type="submit">
+            Next Step
+          </button>
+        </form>
+
+        <ReminderPanel />
+      </div>
+    </div>
+  );
+
+  const renderRealNameUpload = () => (
+    <div className="pb-6">
+      <ScreenHeader title="Real-Name Verification" onBack={() => setScreen("real-name-details")} />
+      <div className="px-5 pt-6">
+        <VerificationProgress step={2} />
+        <VerificationNotice />
+
+        <div className="mt-6 space-y-6">
+          <VerificationUploadField
+            fileName={documentFile?.name}
+            helper="Please upload JPG, JPEG, PNG format file less than 3M."
+            onChange={(event) => setDocumentFile(event.target.files?.[0])}
+            title="Front Of Document"
+          />
+
+          <VerificationUploadField
+            fileName={selfieFile?.name}
+            helper="Please upload JPG, JPEG, PNG format file less than 3M."
+            onChange={(event) => setSelfieFile(event.target.files?.[0])}
+            title="Holding Document"
+          />
+
+          <button
+            className="fndk-primary-action w-full disabled:opacity-60"
+            disabled={submittingKyc}
+            onClick={() => void submitKyc()}
+            type="button"
+          >
+            {submittingKyc ? "Submitting..." : "Submit For Review"}
+          </button>
+        </div>
+
+        <ReminderPanel />
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="min-h-full pb-2">
+      {screen === "settings" ? renderSettings() : null}
+      {screen === "security" ? renderSecurity() : null}
+      {screen === "real-name-details" ? renderRealNameDetails() : null}
+      {screen === "real-name-upload" ? renderRealNameUpload() : null}
     </div>
   );
 }

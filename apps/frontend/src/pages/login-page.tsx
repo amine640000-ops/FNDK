@@ -1,18 +1,23 @@
 import { useState } from "react";
 import axios from "axios";
-import { ArrowRight, ShieldCheck } from "lucide-react";
+import { Eye, Headphones, Loader2, Mail, Phone, ShieldQuestion } from "lucide-react";
 import toast from "react-hot-toast";
 import { Link, useNavigate } from "react-router-dom";
-import { BrandMark } from "@/components/brand-mark";
+import { FndkLogo } from "@/components/brand-mark";
 
 const identityApi = axios.create({
   baseURL: import.meta.env.VITE_IDENTITY_API_URL ?? "http://localhost:4001/api"
 });
 
+type LoginMode = "phone" | "email";
+
 export function LoginPage() {
   const navigate = useNavigate();
-  const [email, setEmail] = useState("");
+  const [loginMode, setLoginMode] = useState<LoginMode>("email");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberAccount, setRememberAccount] = useState(true);
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -20,7 +25,10 @@ export function LoginPage() {
     setLoading(true);
 
     try {
-      const response = await identityApi.post("/auth/login", { email: email.trim(), password });
+      const response = await identityApi.post("/auth/login", {
+        email: identifier.trim(),
+        password
+      });
       localStorage.setItem("nevo.accessToken", response.data.accessToken);
       localStorage.setItem("nevo.refreshToken", response.data.refreshToken);
       localStorage.setItem("nevo.user", JSON.stringify(response.data.user));
@@ -40,158 +48,150 @@ export function LoginPage() {
   };
 
   return (
-    <div className="text-white">
-      <div className="app-mobile-bg min-h-screen px-4 py-6 lg:hidden">
-        <div className="mx-auto flex min-h-screen max-w-[430px] flex-col sm:px-4 sm:py-6">
-          <div className="phone-shell flex min-h-screen flex-1 flex-col px-4 pb-6 pt-5 sm:min-h-[880px] sm:rounded-[38px]">
-            <BrandMark subtitle="access portal" />
+    <div className="fndk-auth-bg min-h-screen text-white">
+      <div className="mx-auto flex min-h-screen w-full max-w-[480px] flex-col sm:px-5 sm:py-6 lg:max-w-[520px]">
+        <div className="fndk-device-shell flex min-h-screen flex-1 flex-col px-7 pb-8 pt-7 sm:min-h-[860px] sm:rounded-[42px] sm:px-9">
+          <header className="relative z-10 flex items-center justify-between border-b border-cyan-200/20 pb-6">
+            <div className="flex items-center gap-2.5">
+              <FndkLogo className="h-8 w-8 text-cyan-300 drop-shadow-[0_0_12px_rgba(84,239,255,0.45)]" />
+              <span className="text-[1.45rem] font-extrabold tracking-[0.08em] text-cyan-100">FNDK</span>
+            </div>
+            <div className="flex items-center gap-4 text-cyan-300">
+              <button
+                aria-label="Help"
+                className="flex h-9 w-9 items-center justify-center rounded-full text-cyan-300 transition hover:bg-cyan-300/10"
+                type="button"
+              >
+                <ShieldQuestion className="h-6 w-6" />
+              </button>
+              <button
+                aria-label="Support"
+                className="flex h-9 w-9 items-center justify-center rounded-full text-cyan-300 transition hover:bg-cyan-300/10"
+                type="button"
+              >
+                <Headphones className="h-6 w-6" />
+              </button>
+            </div>
+          </header>
 
-            <section className="concept-banner mt-5 px-4 py-5">
-              <div className="relative z-10 max-w-[64%]">
-                <div className="text-[11px] uppercase tracking-[0.34em] text-cyan-200/80">Direct access</div>
-                <h1 className="mt-2 text-[2rem] font-extrabold leading-[1.04] text-[#ffe0a8]">
-                  Enter the investor app.
-                </h1>
-                <p className="mt-3 text-sm leading-6 text-slate-200/80">
-                  Sign in against the live identity service to access investor and admin areas.
-                </p>
+          <main className="relative z-10 flex-1 pt-16">
+            <h1 className="text-[2.05rem] font-extrabold tracking-[-0.02em] text-white">Login</h1>
+
+            <form className="mt-11 space-y-7" onSubmit={handleSubmit}>
+              <div className="grid grid-cols-2 items-end gap-4">
+                <button
+                  className={`relative flex items-center justify-center gap-2 pb-4 text-[1rem] font-bold transition ${
+                    loginMode === "phone" ? "text-white" : "text-slate-400"
+                  }`}
+                  onClick={() => setLoginMode("phone")}
+                  type="button"
+                >
+                  <Phone className="h-4 w-4" />
+                  Phone Number
+                  {loginMode === "phone" ? (
+                    <span className="absolute bottom-0 h-1 w-14 rounded-full bg-cyan-300 shadow-[0_0_16px_rgba(103,232,255,0.7)]" />
+                  ) : null}
+                </button>
+                <button
+                  className={`relative flex items-center justify-center gap-2 pb-4 text-[1rem] font-bold transition ${
+                    loginMode === "email" ? "text-white" : "text-slate-400"
+                  }`}
+                  onClick={() => setLoginMode("email")}
+                  type="button"
+                >
+                  <Mail className="h-4 w-4" />
+                  Email
+                  {loginMode === "email" ? (
+                    <span className="absolute bottom-0 h-1 w-14 rounded-full bg-cyan-300 shadow-[0_0_16px_rgba(103,232,255,0.7)]" />
+                  ) : null}
+                </button>
               </div>
 
-            </section>
+              <label className="block">
+                <span className="sr-only">{loginMode === "email" ? "Email" : "Phone number"}</span>
+                <input
+                  className="fndk-auth-input"
+                  autoComplete={loginMode === "email" ? "email" : "tel"}
+                  inputMode={loginMode === "email" ? "email" : "tel"}
+                  placeholder={loginMode === "email" ? "Enter email" : "Enter phone number"}
+                  type={loginMode === "email" ? "email" : "tel"}
+                  value={identifier}
+                  onChange={(event) => setIdentifier(event.target.value)}
+                  required
+                />
+              </label>
 
-            <section className="neon-panel mt-5 p-5">
-              <div className="text-sm uppercase tracking-[0.28em] text-cyan-200/70">Live login</div>
-              <div className="mt-2 text-[2rem] font-extrabold text-white">Account Access</div>
-              <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
-                <div className="space-y-2">
-                  <label className="text-sm text-slate-300">Username or email</label>
+              <label className="block">
+                <span className="mb-4 block text-[1.15rem] font-extrabold text-white">Password</span>
+                <span className="relative block">
                   <input
-                    className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
-                    placeholder="Username, name, or email"
-                    type="text"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm text-slate-300">Password</label>
-                  <input
-                    className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
+                    className="fndk-auth-input pr-14"
+                    autoComplete="current-password"
+                    minLength={8}
                     placeholder="Enter password"
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
+                    required
                   />
-                </div>
+                  <button
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    className="absolute right-4 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full text-white/85 transition hover:bg-white/5"
+                    onClick={() => setShowPassword((current) => !current)}
+                    type="button"
+                  >
+                    <Eye className="h-5 w-5" />
+                  </button>
+                </span>
+              </label>
 
-                <button
-                  className="flex w-full items-center justify-center gap-2 rounded-[22px] bg-cyan-400 px-4 py-4 text-lg font-semibold text-slate-950 disabled:opacity-70"
-                  disabled={loading}
-                  type="submit"
-                >
-                  {loading ? "Signing in..." : "Sign in"}
-                  <ArrowRight className="h-5 w-5" />
-                </button>
-              </form>
-
-              <div className="mt-4">
-                <Link
-                  to="/register"
-                  className="block rounded-[20px] border border-white/10 px-4 py-3 text-center text-sm text-slate-300"
-                >
-                  Create account
-                </Link>
-              </div>
-            </section>
-          </div>
-        </div>
-      </div>
-
-      <div className="app-mobile-bg hidden min-h-screen px-8 py-8 lg:block">
-        <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-7xl grid-cols-[minmax(0,1.15fr)_minmax(420px,480px)] gap-8">
-          <section className="relative overflow-hidden rounded-[40px] border border-white/10 bg-[linear-gradient(145deg,rgba(4,8,58,0.96)_0%,rgba(8,16,93,0.92)_55%,rgba(12,31,108,0.9)_100%)] px-10 py-10 shadow-[0_30px_80px_rgba(0,0,0,0.32)]">
-            <BrandMark subtitle="access portal" />
-
-            <div className="relative z-10 mt-20 max-w-2xl">
-              <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/10 px-4 py-2 text-[12px] font-semibold uppercase tracking-[0.28em] text-cyan-100">
-                <ShieldCheck className="h-4 w-4" />
-                Direct access
-              </div>
-              <h1 className="mt-6 text-[4.2rem] font-extrabold leading-[0.94] tracking-[-0.06em] text-white">
-                Enter the investor app.
-              </h1>
-              <p className="mt-6 max-w-xl text-lg leading-8 text-slate-200/78">
-                Use live credentials to access the investor workspace and the protected admin tools.
-              </p>
-            </div>
-
-            <div className="relative z-10 mt-12 grid max-w-2xl gap-4">
-              <div className="flex items-start gap-4 rounded-[24px] border border-white/10 bg-white/5 px-5 py-4">
-                <div className="mt-1 rounded-2xl bg-cyan-300/10 p-2 text-cyan-200">
-                  <ShieldCheck className="h-5 w-5" />
-                </div>
-                <div>
-                  <div className="text-base font-semibold text-white">Live identity login</div>
-                  <div className="mt-1 text-sm leading-6 text-slate-300">
-                    Sign in against the running auth service and route investors and admins automatically.
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="pointer-events-none absolute -right-12 top-24 h-72 w-72 rounded-full bg-cyan-300/10 blur-3xl" />
-          </section>
-
-          <div className="flex items-center">
-            <section className="neon-panel w-full p-8">
-              <div className="text-sm uppercase tracking-[0.28em] text-cyan-200/70">Live login</div>
-              <div className="mt-2 text-[2.5rem] font-extrabold text-white">Account Access</div>
-              <div className="mt-3 text-sm leading-6 text-slate-300">
-                Sign in with your existing account.
-              </div>
-
-              <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
-                <div className="space-y-2">
-                  <label className="text-sm text-slate-300">Username or email</label>
+              <div className="flex items-center justify-between gap-4 text-[0.95rem] font-bold">
+                <label className="flex min-w-0 cursor-pointer items-center gap-3 text-white">
+                  <span
+                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px] border ${
+                      rememberAccount
+                        ? "border-cyan-300 bg-cyan-300 text-[#03084a]"
+                        : "border-[#3042a7] bg-[#080c65]"
+                    }`}
+                  >
+                    {rememberAccount ? <span className="h-2.5 w-2.5 rounded-[3px] bg-[#03084a]" /> : null}
+                  </span>
                   <input
-                    className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
-                    placeholder="Username, name, or email"
-                    type="text"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
+                    checked={rememberAccount}
+                    className="sr-only"
+                    onChange={(event) => setRememberAccount(event.target.checked)}
+                    type="checkbox"
                   />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm text-slate-300">Password</label>
-                  <input
-                    className="w-full rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-lg text-white outline-none transition focus:border-cyan-300/40"
-                    placeholder="Enter password"
-                    type="password"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                  />
-                </div>
-
-                <button
-                  className="flex w-full items-center justify-center gap-2 rounded-[22px] bg-cyan-400 px-4 py-4 text-lg font-semibold text-slate-950 disabled:opacity-70"
-                  disabled={loading}
-                  type="submit"
-                >
-                  {loading ? "Signing in..." : "Sign in"}
-                  <ArrowRight className="h-5 w-5" />
+                  <span className="truncate">Remember Account</span>
+                </label>
+                <button className="shrink-0 text-cyan-300" type="button">
+                  Forget Password
                 </button>
-              </form>
-
-              <div className="mt-4">
-                <Link
-                  to="/register"
-                  className="block rounded-[20px] border border-white/10 px-4 py-3 text-center text-sm text-slate-300"
-                >
-                  Create account
-                </Link>
               </div>
-            </section>
-          </div>
+
+              <button
+                className="fndk-primary-action mt-6 flex w-full items-center justify-center gap-2 disabled:opacity-60"
+                disabled={loading}
+                type="submit"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    Login
+                  </>
+                ) : (
+                  "Login"
+                )}
+              </button>
+            </form>
+
+            <div className="mt-8 text-center text-[1rem] font-extrabold">
+              <span className="text-white">No Account Yet? </span>
+              <Link className="text-cyan-300" to="/register">
+                Register Now
+              </Link>
+            </div>
+          </main>
         </div>
       </div>
     </div>

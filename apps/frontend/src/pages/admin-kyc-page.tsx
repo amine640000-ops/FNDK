@@ -17,6 +17,10 @@ type KycSubmission = {
   userId: string;
   fullName: string;
   documentType: string | null;
+  nationality?: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  documentNumber?: string | null;
   documentUrl: string;
   selfieUrl: string;
   status: "pending" | "verified" | "rejected";
@@ -178,6 +182,17 @@ export function AdminKycPage() {
                     <span>Submission ID</span>
                     <span className="max-w-[60%] truncate text-right text-white">{submission.id}</span>
                   </div>
+                  {submission.firstName || submission.lastName || submission.nationality || submission.documentNumber ? (
+                    <div className="rounded-2xl border border-white/10 bg-[#06083e] px-3 py-3 text-sm text-slate-300">
+                      <div className="font-semibold text-white">
+                        {[submission.firstName, submission.lastName].filter(Boolean).join(" ") || "Real-name details"}
+                      </div>
+                      <div className="mt-1">
+                        {submission.nationality ? `${submission.nationality} - ` : ""}
+                        {submission.documentNumber ?? "No document number"}
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="flex flex-wrap gap-3">
                     <a
                       className="inline-flex items-center gap-2 text-cyan-300 hover:text-cyan-200"
