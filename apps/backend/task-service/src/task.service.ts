@@ -519,14 +519,7 @@ export class TaskService {
       activation_limit_per_day: number;
     }>(
       `
-        WITH latest_tier AS (
-          SELECT DISTINCT ON (uv.user_id)
-            uv.user_id,
-            uv.tier_id
-          FROM user_vip uv
-          ORDER BY uv.user_id, uv.assigned_at DESC
-        ),
-        active_positions AS (
+        WITH active_positions AS (
           SELECT
             user_id,
             COALESCE(SUM(balance), 0)::float8 AS active_investment
@@ -540,15 +533,14 @@ export class TaskService {
           ata.asset,
           ata.strategy,
           ata.duration_minutes,
-          ap.active_investment,
+          COALESCE(ap.active_investment, 0)::float8 AS active_investment,
           ata.reservation_amount::float8 AS reservation_amount,
           vt.daily_roi_min::float8 AS daily_roi_min,
           vt.daily_roi_max::float8 AS daily_roi_max,
           vt.activation_limit_per_day
         FROM ai_trading_activations ata
-        JOIN latest_tier lt ON lt.user_id = ata.user_id
-        JOIN vip_tiers vt ON vt.id = lt.tier_id
-        JOIN active_positions ap ON ap.user_id = ata.user_id
+        JOIN vip_tiers vt ON vt.id = ata.tier_id
+        LEFT JOIN active_positions ap ON ap.user_id = ata.user_id
         WHERE ata.status = 'running'
           AND ata.ends_at <= NOW()
           AND ($1::uuid IS NULL OR ata.user_id = $1::uuid)

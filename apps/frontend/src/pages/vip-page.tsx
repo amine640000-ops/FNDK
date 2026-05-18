@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import toast from "react-hot-toast";
 import {
@@ -192,6 +192,7 @@ export function VipPage() {
   const [securityPasscode, setSecurityPasscode] = useState("");
   const [failedReservation, setFailedReservation] = useState<StartActivationResponse | null>(null);
   const [vipListOpen, setVipListOpen] = useState(false);
+  const completionRefreshInFlight = useRef<string | null>(null);
 
   const fallbackActivationState = useMemo<ActivationState>(
     () => ({
@@ -341,6 +342,44 @@ export function VipPage() {
   const countdownSeconds = runningActivation
     ? Math.max(Math.ceil((new Date(runningActivation.endsAt).getTime() - now) / 1000), 0)
     : 0;
+
+  useEffect(() => {
+    if (!runningActivation || countdownSeconds > 0 || completionRefreshInFlight.current === runningActivation.id) {
+      return;
+    }
+
+    const token = localStorage.getItem("nevo.accessToken");
+    if (!token) {
+      return;
+    }
+
+    let active = true;
+    completionRefreshInFlight.current = runningActivation.id;
+
+    taskApi
+      .get<ActivationState>("/tasks/activations/me", {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      })
+      .then((response) => {
+        if (active) {
+          setActivationState(response.data);
+        }
+      })
+      .catch(() => {
+        // The regular polling loop will retry state refresh if this request fails.
+      })
+      .finally(() => {
+        if (active) {
+          completionRefreshInFlight.current = null;
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [countdownSeconds, runningActivation]);
 
   const completedHistory = useMemo(
     () => liveState.history.filter((activation) => activation.status === "completed"),
