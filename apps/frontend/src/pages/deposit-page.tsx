@@ -215,7 +215,7 @@ export function DepositPage() {
           <label className="grid gap-2">
             <span className="text-sm text-slate-300">Asset</span>
             <button
-              className="flex items-center justify-between rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-left text-[15px] text-white outline-none"
+              className="fndk-app-input flex items-center justify-between text-left"
               onClick={() => setAssetPickerOpen(true)}
               type="button"
             >
@@ -227,7 +227,7 @@ export function DepositPage() {
           <label className="grid gap-2">
             <span className="text-sm text-slate-300">Amount</span>
             <input
-              className="rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-[15px] text-white outline-none"
+              className="fndk-app-input"
               inputMode="decimal"
               min="1"
               step="0.01"
@@ -257,7 +257,7 @@ export function DepositPage() {
           ) : null}
 
           <button
-            className="rounded-[20px] bg-cyan-400 px-4 py-4 text-[15px] font-semibold text-slate-950 disabled:opacity-60"
+            className="fndk-primary-action disabled:opacity-60"
             disabled={submitting || !selectedAssetSetting}
             onClick={submitDeposit}
             type="button"

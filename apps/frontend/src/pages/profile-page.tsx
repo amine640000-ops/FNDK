@@ -74,7 +74,7 @@ type SecurityRowProps = SettingsRowProps & {
 };
 
 const fieldClass =
-  "w-full rounded-[8px] border border-[#263eaa] bg-[#091279]/95 px-4 py-3.5 text-[15px] font-semibold text-white outline-none shadow-[inset_0_0_18px_rgba(67,99,255,0.28)] transition placeholder:text-slate-300/55 focus:border-cyan-300/70";
+  "fndk-app-input";
 
 const resolveApiErrorMessage = (fallback: string, error: unknown) => {
   if (!axios.isAxiosError(error)) {
@@ -426,7 +426,7 @@ export function ProfilePage() {
       </section>
 
       <button
-        className="mt-6 w-full rounded-[8px] bg-cyan-300 px-4 py-3.5 text-center text-[0.95rem] font-extrabold text-[#03104c] shadow-[0_0_22px_rgba(103,232,255,0.45)]"
+        className="fndk-primary-action mt-6 w-full"
         onClick={handleLogout}
         type="button"
       >
@@ -461,7 +461,7 @@ export function ProfilePage() {
           onChange={(event) => setSecurityPasscodeConfirm(event.target.value.replace(/\D/g, "").slice(0, 6))}
         />
         <button
-          className="rounded-[8px] bg-cyan-300 px-4 py-3 text-[0.9rem] font-extrabold text-[#03104c] disabled:opacity-60"
+          className="fndk-primary-action disabled:opacity-60"
           disabled={savingSecurityPasscode}
           onClick={() => void saveSecurityPasscode()}
           type="button"

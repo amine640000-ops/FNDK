@@ -48,6 +48,27 @@ export class ResendEmailVerificationDto {
   email!: string;
 }
 
+export class RequestPasswordResetDto {
+  @IsEmail()
+  email!: string;
+}
+
+export class ConfirmPasswordResetDto {
+  @IsEmail()
+  email!: string;
+
+  @IsString()
+  @MinLength(4)
+  code!: string;
+
+  @IsString()
+  @MinLength(8, { message: "Password must be at least 8 characters" })
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/, {
+    message: "Password must include uppercase, lowercase, number, and symbol"
+  })
+  password!: string;
+}
+
 export class SetSecurityPasscodeDto {
   @IsString()
   @Matches(/^\d{6}$/, { message: "Security passcode must be exactly 6 digits" })

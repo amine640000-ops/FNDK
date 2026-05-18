@@ -4,6 +4,17 @@
 @tailwind utilities;
 
 :root {
+  --fndk-bg: #040541;
+  --fndk-bg-deep: #020326;
+  --fndk-panel: #0b137d;
+  --fndk-panel-deep: #06094f;
+  --fndk-panel-soft: #121f9d;
+  --fndk-line: rgba(87, 125, 255, 0.58);
+  --fndk-line-soft: rgba(103, 232, 255, 0.18);
+  --fndk-cyan: #67f2ff;
+  --fndk-mint: #77f6c9;
+  --fndk-muted: #8f96c8;
+  --fndk-gold: #f7b944;
   color: #ecf3ff;
   background:
     radial-gradient(circle at top center, rgba(62, 125, 255, 0.28), transparent 20%),
@@ -25,6 +36,7 @@ body {
     radial-gradient(circle at bottom center, rgba(62, 229, 255, 0.08), transparent 20%),
     linear-gradient(180deg, #040434 0%, #06095d 38%, #070745 100%);
   color: #ecf3ff;
+  -webkit-font-smoothing: antialiased;
 }
 
 * {
@@ -32,7 +44,15 @@ body {
 }
 
 .glass-panel {
-  @apply rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl shadow-glass;
+  border-radius: 18px;
+  border: 1px solid rgba(70, 100, 218, 0.56);
+  background:
+    linear-gradient(180deg, rgba(18, 31, 157, 0.92) 0%, rgba(7, 11, 92, 0.95) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(185, 212, 255, 0.12),
+    inset 0 0 28px rgba(51, 88, 255, 0.18),
+    0 0 24px rgba(47, 83, 255, 0.2);
+  backdrop-filter: blur(18px);
 }
 
 .metric-value {
@@ -45,8 +65,12 @@ body {
 .app-mobile-bg {
   min-height: 100vh;
   background:
-    radial-gradient(circle at top center, rgba(72, 127, 255, 0.18), transparent 24%),
-    linear-gradient(180deg, #020223 0%, #07074d 18%, #09095b 100%);
+    linear-gradient(rgba(91, 136, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(91, 136, 255, 0.06) 1px, transparent 1px),
+    radial-gradient(circle at 74% 12%, rgba(103, 242, 255, 0.14), transparent 18%),
+    radial-gradient(circle at top center, rgba(72, 127, 255, 0.16), transparent 24%),
+    linear-gradient(180deg, var(--fndk-bg-deep) 0%, #05054b 18%, var(--fndk-bg) 100%);
+  background-size: 44px 44px, 44px 44px, auto, auto;
 }
 
 .phone-shell {
@@ -54,9 +78,10 @@ body {
   min-height: 100vh;
   overflow: hidden;
   background:
-    linear-gradient(180deg, rgba(12, 14, 96, 0.96) 0%, rgba(7, 9, 79, 0.98) 38%, rgba(4, 8, 58, 1) 100%);
+    linear-gradient(180deg, rgba(8, 10, 82, 0.98) 0%, rgba(6, 8, 76, 0.99) 40%, rgba(4, 7, 58, 1) 100%);
+  border: 1px solid rgba(126, 154, 228, 0.46);
   box-shadow:
-    0 0 0 1px rgba(113, 151, 255, 0.14),
+    0 0 0 1px rgba(113, 151, 255, 0.16),
     0 30px 60px rgba(0, 0, 0, 0.42),
     inset 0 1px 0 rgba(167, 198, 255, 0.12);
 }
@@ -74,8 +99,11 @@ body {
 .fndk-auth-bg {
   min-height: 100vh;
   background:
+    linear-gradient(rgba(91, 136, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(91, 136, 255, 0.045) 1px, transparent 1px),
     linear-gradient(90deg, rgba(2, 5, 38, 0.96) 0%, rgba(5, 14, 67, 0.82) 18%, rgba(7, 14, 72, 0.86) 82%, rgba(2, 5, 38, 0.96) 100%),
     linear-gradient(180deg, #030327 0%, #070957 48%, #07064b 100%);
+  background-size: 44px 44px, 44px 44px, auto, auto;
 }
 
 .fndk-device-shell {
@@ -116,19 +144,19 @@ body {
 
 .fndk-auth-input {
   width: 100%;
-  border-radius: 16px;
-  border: 1px solid rgba(58, 82, 188, 0.78);
+  border-radius: 10px;
+  border: 1px solid rgba(73, 104, 224, 0.82);
   background:
-    linear-gradient(180deg, rgba(15, 23, 126, 0.98) 0%, rgba(9, 15, 100, 0.98) 100%);
+    linear-gradient(180deg, rgba(16, 26, 141, 0.98) 0%, rgba(8, 14, 100, 0.98) 100%);
   box-shadow:
     inset 0 1px 0 rgba(145, 180, 255, 0.14),
-    inset 0 0 22px rgba(67, 97, 255, 0.32),
-    0 0 18px rgba(47, 84, 255, 0.22);
+    inset 0 0 24px rgba(67, 97, 255, 0.34),
+    0 0 18px rgba(47, 84, 255, 0.24);
   color: #ffffff;
   font-size: 1rem;
   font-weight: 700;
   outline: none;
-  padding: 1rem 1.25rem;
+  padding: 0.95rem 1.1rem;
   transition: border-color 160ms ease, box-shadow 160ms ease;
 }
 
@@ -144,15 +172,44 @@ body {
     0 0 22px rgba(103, 232, 255, 0.24);
 }
 
+.fndk-app-input {
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid rgba(73, 104, 224, 0.72);
+  background:
+    linear-gradient(180deg, rgba(14, 23, 127, 0.96) 0%, rgba(7, 12, 92, 0.96) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(145, 180, 255, 0.12),
+    inset 0 0 20px rgba(67, 97, 255, 0.24);
+  color: #ffffff;
+  font-size: 0.95rem;
+  font-weight: 700;
+  outline: none;
+  padding: 0.95rem 1rem;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.fndk-app-input::placeholder {
+  color: rgba(214, 221, 255, 0.48);
+}
+
+.fndk-app-input:focus {
+  border-color: rgba(103, 232, 255, 0.74);
+  box-shadow:
+    inset 0 1px 0 rgba(145, 180, 255, 0.16),
+    inset 0 0 22px rgba(67, 97, 255, 0.34),
+    0 0 18px rgba(103, 232, 255, 0.2);
+}
+
 .fndk-primary-action {
   border-radius: 8px;
-  border: 1px solid rgba(143, 178, 255, 0.18);
+  border: 1px solid rgba(182, 255, 243, 0.58);
   background:
-    linear-gradient(180deg, rgba(39, 57, 145, 0.98) 0%, rgba(26, 42, 126, 0.98) 100%);
+    linear-gradient(90deg, #69f2ff 0%, #75f6c8 100%);
   box-shadow:
-    inset 0 1px 0 rgba(169, 202, 255, 0.14),
-    0 0 18px rgba(43, 78, 255, 0.2);
-  color: #ffffff;
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    0 0 24px rgba(103, 232, 255, 0.34);
+  color: #031052;
   font-size: 0.98rem;
   font-weight: 800;
   min-height: 3.35rem;
@@ -162,7 +219,7 @@ body {
 }
 
 .fndk-primary-action:hover {
-  filter: brightness(1.08);
+  filter: brightness(1.04);
 }
 
 .fndk-primary-action:active {
@@ -207,25 +264,84 @@ body {
     0 0 26px rgba(47, 83, 255, 0.2);
 }
 
+.fndk-secondary-action {
+  border-radius: 8px;
+  border: 1px solid rgba(103, 232, 255, 0.18);
+  background:
+    linear-gradient(180deg, rgba(16, 28, 126, 0.9) 0%, rgba(8, 14, 91, 0.96) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(169, 202, 255, 0.11),
+    0 0 18px rgba(43, 78, 255, 0.16);
+  color: #bdf8ff;
+  font-weight: 800;
+  min-height: 3.1rem;
+  padding: 0.8rem 1rem;
+  text-align: center;
+  transition: border-color 160ms ease, filter 160ms ease;
+}
+
+.fndk-secondary-action:hover {
+  border-color: rgba(103, 232, 255, 0.34);
+  filter: brightness(1.08);
+}
+
+.fndk-info-panel {
+  border-radius: 10px;
+  border: 1px solid rgba(103, 232, 255, 0.18);
+  background:
+    linear-gradient(180deg, rgba(16, 31, 146, 0.78) 0%, rgba(8, 15, 99, 0.88) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(169, 202, 255, 0.11),
+    inset 0 0 20px rgba(67, 97, 255, 0.2);
+}
+
+.fndk-tab-rail {
+  border-bottom: 1px solid rgba(103, 121, 255, 0.2);
+}
+
+.fndk-tab-active {
+  color: #ffffff;
+}
+
+.fndk-tab-active::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  left: 50%;
+  width: 3.8rem;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--fndk-cyan);
+  box-shadow: 0 0 16px rgba(103, 232, 255, 0.7);
+  transform: translateX(-50%);
+}
+
 .neon-panel {
-  border-radius: 30px;
+  position: relative;
+  overflow: hidden;
+  border-radius: 24px;
   border: 1px solid rgba(103, 133, 255, 0.64);
   background:
-    linear-gradient(180deg, rgba(17, 26, 132, 0.98) 0%, rgba(8, 12, 100, 0.94) 100%);
+    radial-gradient(circle at 82% 26%, rgba(103, 232, 255, 0.12), transparent 16%),
+    linear-gradient(180deg, rgba(18, 31, 157, 0.98) 0%, rgba(8, 12, 100, 0.96) 100%);
   box-shadow:
     inset 0 1px 0 rgba(173, 201, 255, 0.12),
+    inset 0 0 32px rgba(59, 97, 255, 0.18),
     0 0 0 1px rgba(78, 126, 255, 0.28),
     0 0 30px rgba(58, 108, 255, 0.25);
 }
 
 .neon-soft-panel {
-  border-radius: 24px;
+  position: relative;
+  overflow: hidden;
+  border-radius: 20px;
   border: 1px solid rgba(82, 121, 255, 0.42);
   background:
-    linear-gradient(180deg, rgba(13, 18, 109, 0.88) 0%, rgba(7, 11, 86, 0.88) 100%);
+    linear-gradient(180deg, rgba(13, 18, 109, 0.92) 0%, rgba(7, 11, 86, 0.9) 100%);
   box-shadow:
     inset 0 1px 0 rgba(173, 201, 255, 0.08),
-    0 0 22px rgba(49, 94, 255, 0.14);
+    inset 0 0 24px rgba(55, 88, 255, 0.16),
+    0 0 22px rgba(49, 94, 255, 0.16);
 }
 
 .neon-outline {
@@ -243,10 +359,11 @@ body {
 
 .bottom-nav-glow {
   background:
-    linear-gradient(180deg, rgba(8, 11, 84, 0.92) 0%, rgba(4, 7, 61, 0.98) 100%);
+    linear-gradient(180deg, rgba(8, 10, 78, 0.96) 0%, rgba(4, 6, 55, 0.99) 100%);
   box-shadow:
-    0 -1px 0 rgba(112, 142, 255, 0.2),
-    0 -14px 40px rgba(0, 0, 0, 0.38);
+    inset 0 1px 0 rgba(93, 227, 255, 0.12),
+    0 -1px 0 rgba(112, 142, 255, 0.18),
+    0 -14px 34px rgba(0, 0, 0, 0.42);
 }
 
 .text-neon {

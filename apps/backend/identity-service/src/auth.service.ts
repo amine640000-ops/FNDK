@@ -65,6 +65,7 @@ export interface AuthSession {
 @Injectable()
 export class AuthService {
   private readonly emailVerificationPurpose = "email_verification";
+  private readonly passwordResetPurpose = "password_reset";
   private readonly verificationCodeTtlMinutes = 15;
   private readonly mailTimeoutMs = this.readPositiveInteger(process.env.MAIL_SEND_TIMEOUT_MS, 8000);
   private readonly eventPublishTimeoutMs = this.readPositiveInteger(process.env.EVENT_PUBLISH_TIMEOUT_MS, 3000);
@@ -236,6 +237,85 @@ export class AuthService {
       message: verificationEmailSent ? "Verification code sent" : "Verification email could not be sent",
       emailVerificationSent: verificationEmailSent,
       alreadyVerified: false
+    };
+  }
+
+  async requestPasswordReset(email: string) {
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await getOne<Pick<IdentityUserRecord, "id" | "email" | "full_name">>(
+      `
+        SELECT id, email, full_name
+        FROM users
+        WHERE email = $1
+      `,
+      [normalizedEmail]
+    );
+
+    if (!user) {
+      return {
+        message: "If the email exists, a reset code will be sent."
+      };
+    }
+
+    await this.issuePasswordResetCode(user.id, user.email, user.full_name);
+
+    return {
+      message: "If the email exists, a reset code will be sent."
+    };
+  }
+
+  async confirmPasswordReset(email: string, code: string, password: string) {
+    const normalizedEmail = email.trim().toLowerCase();
+    const codeHash = hashVerificationCode(code);
+    const passwordHash = await bcrypt.hash(password, 12);
+
+    const reset = await withTransaction(async (client) => {
+      const candidate = await client.query<VerificationCodeRecord>(
+        `
+          SELECT id, user_id, code_hash
+          FROM verification_codes
+          WHERE email = $1
+            AND purpose = $2
+            AND consumed_at IS NULL
+            AND expires_at > NOW()
+          ORDER BY created_at DESC
+          LIMIT 1
+          FOR UPDATE
+        `,
+        [normalizedEmail, this.passwordResetPurpose]
+      );
+
+      if (!candidate.rowCount) {
+        throw new BadRequestException("Password reset code is expired or not found");
+      }
+
+      const verificationCode = candidate.rows[0];
+      if (verificationCode.code_hash !== codeHash) {
+        throw new BadRequestException("Invalid password reset code");
+      }
+
+      await client.query("UPDATE verification_codes SET consumed_at = NOW() WHERE id = $1", [verificationCode.id]);
+
+      const result = await client.query<{ id: string }>(
+        `
+          UPDATE users
+          SET password_hash = $2
+          WHERE id = $1
+          RETURNING id
+        `,
+        [verificationCode.user_id, passwordHash]
+      );
+
+      if (!result.rowCount) {
+        throw new BadRequestException("Password reset code is expired or not found");
+      }
+
+      return result.rows[0];
+    });
+
+    return {
+      message: "Password reset successful",
+      userId: reset.id
     };
   }
 
@@ -551,6 +631,67 @@ export class AuthService {
       return !result.skipped;
     } catch (error) {
       console.warn("[identity-service] failed to send verification email", error);
+      return false;
+    }
+  }
+
+  private async issuePasswordResetCode(userId: string, email: string, fullName: string) {
+    const code = createNumericVerificationCode();
+
+    await dbQuery(
+      `
+        UPDATE verification_codes
+        SET consumed_at = NOW()
+        WHERE user_id = $1
+          AND purpose = $2
+          AND consumed_at IS NULL
+      `,
+      [userId, this.passwordResetPurpose]
+    );
+
+    await dbQuery(
+      `
+        INSERT INTO verification_codes (id, user_id, email, purpose, code_hash, expires_at)
+        VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW() + ($5::int * INTERVAL '1 minute'))
+      `,
+      [
+        userId,
+        email,
+        this.passwordResetPurpose,
+        hashVerificationCode(code),
+        this.verificationCodeTtlMinutes
+      ]
+    );
+
+    try {
+      const platformName = process.env.PLATFORM_NAME ?? "FNDK";
+      const result = await this.withTimeout(
+        sendMail({
+          to: email,
+          subject: `${platformName} password reset code`,
+          text: [
+            `Hello ${fullName},`,
+            "",
+            `Your ${platformName} password reset code is ${normalizeVerificationCode(code)}.`,
+            `It expires in ${this.verificationCodeTtlMinutes} minutes.`,
+            "",
+            "If you did not request this reset, you can ignore this email."
+          ].join("\n"),
+          html: `
+            <p>Hello,</p>
+            <p>Your <strong>${platformName}</strong> password reset code is:</p>
+            <p style="font-size:24px;font-weight:700;letter-spacing:4px;">${normalizeVerificationCode(code)}</p>
+            <p>This code expires in ${this.verificationCodeTtlMinutes} minutes.</p>
+            <p>If you did not request this reset, you can ignore this email.</p>
+          `
+        }),
+        this.mailTimeoutMs,
+        "Password reset email timed out"
+      );
+
+      return !result.skipped;
+    } catch (error) {
+      console.warn("[identity-service] failed to send password reset email", error);
       return false;
     }
   }

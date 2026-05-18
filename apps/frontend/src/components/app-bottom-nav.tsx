@@ -11,22 +11,26 @@ const items = [
 
 export function AppBottomNav() {
   return (
-    <div className="bottom-nav-glow sticky bottom-0 z-20 shrink-0 border-t border-white/10 px-3 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-3">
-      <nav className="grid grid-cols-5 gap-1.5">
+    <div className="bottom-nav-glow sticky bottom-0 z-20 shrink-0 border-t border-cyan-300/15 px-3 pb-[calc(0.85rem+env(safe-area-inset-bottom))] pt-2.5">
+      <nav className="grid grid-cols-5 gap-1">
         {items.map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
             className={({ isActive }) =>
-              `flex flex-col items-center gap-1.5 rounded-[18px] px-1.5 py-2.5 text-[10px] font-medium transition ${
+              `flex flex-col items-center gap-1 rounded-[10px] px-1 py-1.5 text-[11px] font-semibold transition ${
                 isActive
-                  ? "bg-cyan-400/10 text-cyan-200 shadow-[inset_0_0_0_1px_rgba(110,233,255,0.18)]"
-                  : "text-slate-500 hover:text-white"
+                  ? "text-cyan-300"
+                  : "text-[#7d84bd] hover:text-white"
               }`
             }
           >
-            <Icon className="h-[18px] w-[18px]" />
-            <span className="text-center leading-tight">{label}</span>
+            {({ isActive }) => (
+              <>
+                <Icon className={`h-6 w-6 ${isActive ? "drop-shadow-[0_0_10px_rgba(103,232,255,0.65)]" : ""}`} />
+                <span className="text-center leading-tight">{label}</span>
+              </>
+            )}
           </NavLink>
         ))}
       </nav>

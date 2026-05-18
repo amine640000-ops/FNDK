@@ -10,6 +10,7 @@ import { AdminProfitPage } from "@/pages/admin-profit-page";
 import { AdminSettingsPage } from "@/pages/admin-settings-page";
 import { AdminUsersPage } from "@/pages/admin-users-page";
 import { DepositPage } from "@/pages/deposit-page";
+import { ForgotPasswordPage } from "@/pages/forgot-password-page";
 import { LoginPage } from "@/pages/login-page";
 import { OverviewPage } from "@/pages/overview-page";
 import { ProfilePage } from "@/pages/profile-page";
@@ -32,6 +33,10 @@ export const router = createBrowserRouter([
   {
     path: "/register",
     element: <RegisterPage />
+  },
+  {
+    path: "/forgot-password",
+    element: <ForgotPasswordPage />
   },
   {
     path: "/app",

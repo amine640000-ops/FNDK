@@ -196,7 +196,7 @@ export function RegisterPage() {
 
   const renderVerificationForm = () => (
     <form className="mt-10 space-y-6" onSubmit={handleVerifyEmail}>
-      <div className="rounded-[8px] border border-cyan-300/20 bg-cyan-300/10 px-4 py-3.5 text-sm font-semibold leading-6 text-cyan-100">
+      <div className="fndk-info-panel px-4 py-3.5 text-sm font-semibold leading-6 text-cyan-100">
         {verificationDeliveryFailed
           ? "The account was created, but the verification email was not sent. Use Resend code after checking the email delivery settings."
           : "Enter the 6-digit code sent to "}
@@ -227,7 +227,7 @@ export function RegisterPage() {
         )}
       </button>
       <button
-        className="w-full rounded-[8px] border border-cyan-300/15 bg-[#081061]/75 px-4 py-3 text-center text-sm font-extrabold text-cyan-200 disabled:opacity-60"
+        className="fndk-secondary-action w-full disabled:opacity-60"
         disabled={resendingVerification}
         onClick={() => void resendVerificationCode()}
         type="button"

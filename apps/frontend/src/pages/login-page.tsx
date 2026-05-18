@@ -164,9 +164,9 @@ export function LoginPage() {
                   />
                   <span className="truncate">Remember Account</span>
                 </label>
-                <button className="shrink-0 text-cyan-300" type="button">
-                  Forget Password
-                </button>
+                <Link className="shrink-0 text-cyan-300 transition hover:text-cyan-100" to="/forgot-password">
+                  Forgot Password
+                </Link>
               </div>
 
               <button

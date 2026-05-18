@@ -8,6 +8,7 @@ import {
   YAxis
 } from "recharts";
 import { formatCurrency } from "@nevo/shared-utils";
+import { MobilePageHeader } from "@/components/mobile-page-header";
 import { SectionCard } from "@/components/section-card";
 import { useDashboardStore } from "@/store/use-dashboard-store";
 
@@ -16,55 +17,63 @@ export function TradeHistoryPage() {
   const series = useDashboardStore((state) => state.profitSeries);
 
   return (
-    <div className="grid gap-6">
-      <SectionCard title="Daily Earnings Curve" subtitle="Daily realized profit from the AI trading engine.">
-        <div className="h-80">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={series}>
-              <CartesianGrid stroke="rgba(255,255,255,0.08)" vertical={false} />
-              <XAxis dataKey="date" stroke="#94a3b8" />
-              <YAxis stroke="#94a3b8" />
-              <Tooltip />
-              <Line type="monotone" dataKey="profit" stroke="#00D4FF" strokeWidth={3} dot={false} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </SectionCard>
+    <div className="pb-6">
+      <MobilePageHeader title="Trade History" subtitle="records" />
 
-      <SectionCard title="Trade Logs" subtitle="Simulated execution records, filterable by asset and strategy.">
-        <div className="space-y-3">
-          {trades.map((trade) => (
-            <div
-              key={trade.id}
-              className="grid gap-3 rounded-3xl border border-white/10 bg-white/5 p-5 md:grid-cols-5"
-            >
-              <div>
-                <div className="text-sm text-slate-400">Asset</div>
-                <div className="font-medium text-white">{trade.asset}</div>
-              </div>
-              <div>
-                <div className="text-sm text-slate-400">Strategy</div>
-                <div className="font-medium text-white">{trade.strategy}</div>
-              </div>
-              <div>
-                <div className="text-sm text-slate-400">Entry / Exit</div>
-                <div className="font-medium text-white">
-                  {trade.entryPrice} / {trade.exitPrice}
+      <div className="grid gap-5 px-4 pt-5">
+        <SectionCard title="Daily Earnings Curve" subtitle="Daily realized profit from the AI trading engine.">
+          <div className="h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={series}>
+                <CartesianGrid stroke="rgba(103,232,255,0.08)" vertical={false} />
+                <XAxis dataKey="date" stroke="#7d84bd" />
+                <YAxis stroke="#7d84bd" />
+                <Tooltip />
+                <Line type="monotone" dataKey="profit" stroke="#6ee9ff" strokeWidth={3} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </SectionCard>
+
+        <SectionCard title="Trade Logs" subtitle="Simulated execution records, filterable by asset and strategy.">
+          <div className="space-y-3">
+            {trades.map((trade) => (
+              <div
+                key={trade.id}
+                className="grid gap-3 rounded-[18px] border border-cyan-300/15 bg-[#050747]/70 p-4"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-sm text-[#7d84bd]">Asset</div>
+                    <div className="font-semibold text-white">{trade.asset}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-sm text-[#7d84bd]">Profit</div>
+                    <div className="font-semibold text-cyan-200">{formatCurrency(trade.profit)}</div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <div className="text-[#7d84bd]">Strategy</div>
+                    <div className="font-medium text-white">{trade.strategy}</div>
+                  </div>
+                  <div>
+                    <div className="text-[#7d84bd]">Entry / Exit</div>
+                    <div className="font-medium text-white">
+                      {trade.entryPrice} / {trade.exitPrice}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-cyan-300/10 pt-3 text-sm font-medium text-white/70">
+                  {new Date(trade.executedAt).toLocaleString()}
                 </div>
               </div>
-              <div>
-                <div className="text-sm text-slate-400">Profit</div>
-                <div className="font-medium text-emerald-300">{formatCurrency(trade.profit)}</div>
-              </div>
-              <div>
-                <div className="text-sm text-slate-400">Timestamp</div>
-                <div className="font-medium text-white">{new Date(trade.executedAt).toLocaleString()}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </SectionCard>
+            ))}
+          </div>
+        </SectionCard>
+      </div>
     </div>
   );
 }
-

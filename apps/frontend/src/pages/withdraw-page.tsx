@@ -275,7 +275,7 @@ export function WithdrawPage() {
           <label className="grid gap-2">
             <span className="text-sm text-slate-300">Asset</span>
             <button
-              className="flex items-center justify-between rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-left text-[15px] text-white outline-none disabled:opacity-60"
+              className="fndk-app-input flex items-center justify-between text-left disabled:opacity-60"
               disabled={loadingSummary}
               onClick={() => setAssetPickerOpen(true)}
               type="button"
@@ -292,7 +292,7 @@ export function WithdrawPage() {
           <label className="grid gap-2">
             <span className="text-sm text-slate-300">Amount</span>
             <input
-              className="rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-[15px] text-white outline-none"
+              className="fndk-app-input"
               inputMode="decimal"
               min="1"
               step="0.01"
@@ -309,7 +309,7 @@ export function WithdrawPage() {
           <label className="grid gap-2">
             <span className="text-sm text-slate-300">Destination address</span>
             <textarea
-              className="min-h-28 rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-[15px] text-white outline-none"
+              className="fndk-app-input min-h-28 resize-none"
               placeholder="Wallet address, IBAN, or payout destination"
               value={destinationAddress}
               onChange={(event) => {
@@ -327,7 +327,7 @@ export function WithdrawPage() {
             </div>
             <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
               <input
-                className="rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-center text-[18px] font-semibold tracking-[0.28em] text-white outline-none"
+                className="fndk-app-input text-center text-[18px] tracking-[0.28em]"
                 inputMode="numeric"
                 maxLength={8}
                 placeholder="000000"
@@ -351,7 +351,7 @@ export function WithdrawPage() {
               Security passcode
             </span>
             <input
-              className="rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-center text-[18px] font-semibold tracking-[0.28em] text-white outline-none"
+              className="fndk-app-input text-center text-[18px] tracking-[0.28em]"
               inputMode="numeric"
               maxLength={6}
               placeholder="000000"
@@ -373,7 +373,7 @@ export function WithdrawPage() {
           </div>
 
           <button
-            className="rounded-[20px] bg-cyan-400 px-4 py-4 text-[15px] font-semibold text-slate-950 disabled:opacity-60"
+            className="fndk-primary-action disabled:opacity-60"
             disabled={submitting || loadingSummary}
             onClick={submitWithdrawal}
             type="button"

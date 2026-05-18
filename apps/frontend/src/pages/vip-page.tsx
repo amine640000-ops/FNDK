@@ -795,7 +795,7 @@ export function VipPage() {
                                 ? "bg-cyan-300/15 text-cyan-100"
                                 : unlocked
                                   ? "bg-emerald-300/12 text-emerald-100"
-                                  : "bg-white/8 text-white/60"
+                                  : "bg-white/[0.08] text-white/60"
                             }`}
                           >
                             {isCurrentTier ? "Current" : unlocked ? "Unlocked" : "Locked"}
@@ -945,7 +945,7 @@ export function VipPage() {
                           className={`mt-5 rounded-[20px] border px-4 py-3.5 text-center text-[1rem] font-semibold ${
                             task.completed
                               ? "border-emerald-300/25 bg-emerald-300/12 text-emerald-100"
-                              : "border-white/10 bg-white/8 text-slate-300"
+                              : "border-white/10 bg-white/[0.08] text-slate-300"
                           }`}
                         >
                           {task.completed ? (task.rewardClaimed ? "Reward Paid" : "Completed") : "Not Completed"}
@@ -1171,7 +1171,7 @@ export function VipPage() {
                           ? "bg-cyan-300/12 text-cyan-100"
                           : activation.status === "running"
                             ? "bg-amber-300/12 text-amber-100"
-                            : "bg-white/8 text-white/65"
+                            : "bg-white/[0.08] text-white/65"
                       }`}
                     >
                       {activation.status}

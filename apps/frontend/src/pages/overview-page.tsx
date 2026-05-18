@@ -692,7 +692,7 @@ export function OverviewPage() {
             <div />
           </div>
 
-          <div className="divide-y divide-white/6">
+          <div className="divide-y divide-white/[0.06]">
             {marketFeedLoading ? (
               <div className="py-8 text-center text-sm text-white/45">Loading market feed...</div>
             ) : displayedMarkets.length ? (
