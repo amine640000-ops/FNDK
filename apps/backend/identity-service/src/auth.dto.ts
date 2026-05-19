@@ -74,3 +74,27 @@ export class SetSecurityPasscodeDto {
   @Matches(/^\d{6}$/, { message: "Security passcode must be exactly 6 digits" })
   passcode!: string;
 }
+
+export class UpdateProfileDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(2, { message: "Full name must be at least 2 characters" })
+  fullName?: string;
+
+  @IsOptional()
+  @IsPhoneNumber(undefined, { message: "Enter a valid phone number with country code, for example +21656109879" })
+  phone?: string;
+}
+
+export class ChangePasswordDto {
+  @IsString()
+  @MinLength(8)
+  currentPassword!: string;
+
+  @IsString()
+  @MinLength(8, { message: "Password must be at least 8 characters" })
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/, {
+    message: "Password must include uppercase, lowercase, number, and symbol"
+  })
+  password!: string;
+}

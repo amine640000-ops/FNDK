@@ -21,7 +21,7 @@ import {
 } from "@nevo/shared-infra";
 import type { KycStatus, UserRole } from "@nevo/shared-types";
 import { createReferralCode } from "@nevo/shared-utils";
-import type { LoginDto, RegisterDto } from "./auth.dto";
+import type { LoginDto, RegisterDto, UpdateProfileDto } from "./auth.dto";
 
 interface IdentityUserRecord {
   id: string;
@@ -382,6 +382,90 @@ export class AuthService {
       message: "Security passcode saved",
       hasSecurityPasscode: true
     };
+  }
+
+  async changePassword(userId: string, currentPassword: string, password: string) {
+    const user = await getOne<IdentityUserRecord>(
+      `
+        SELECT
+          id,
+          email,
+          password_hash,
+          full_name,
+          phone,
+          referral_code,
+          referred_by,
+          kyc_status,
+          role,
+          email_verified_at,
+          security_passcode_hash
+        FROM users
+        WHERE id = $1
+      `,
+      [userId]
+    );
+
+    if (!user) {
+      throw new NotFoundException("User not found");
+    }
+
+    const currentPasswordValid = await bcrypt.compare(currentPassword, user.password_hash);
+    if (!currentPasswordValid) {
+      throw new UnauthorizedException("Current password is incorrect");
+    }
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    await dbQuery("UPDATE users SET password_hash = $2 WHERE id = $1", [userId, passwordHash]);
+
+    return {
+      message: "Password updated"
+    };
+  }
+
+  async updateProfile(userId: string, dto: UpdateProfileDto) {
+    const fullName = dto.fullName?.trim();
+    const phone = dto.phone?.trim();
+
+    if (!fullName && !phone) {
+      return this.getProfile(userId);
+    }
+
+    try {
+      const user = await getOne<IdentityUserRecord>(
+        `
+          UPDATE users
+          SET
+            full_name = COALESCE($2, full_name),
+            phone = COALESCE($3, phone)
+          WHERE id = $1
+          RETURNING
+            id,
+            email,
+            password_hash,
+            full_name,
+            phone,
+            referral_code,
+            referred_by,
+            kyc_status,
+            role,
+            email_verified_at,
+            security_passcode_hash
+        `,
+        [userId, fullName || null, phone || null]
+      );
+
+      if (!user) {
+        throw new NotFoundException("User not found");
+      }
+
+      return this.toPublicUser(user);
+    } catch (error) {
+      if (typeof error === "object" && error && "code" in error && error.code === "23505") {
+        throw new ConflictException("Phone number is already in use");
+      }
+
+      throw error;
+    }
   }
 
   private async getUserByEmail(email: string) {

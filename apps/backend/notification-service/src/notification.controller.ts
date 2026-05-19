@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Patch, Post, UseGuards } from "@nestjs/common";
 import {
   AdminGuard,
   CurrentUser,
@@ -19,6 +19,11 @@ export class NotificationController {
   @Get()
   list(@CurrentUser() user: AccessTokenPayload) {
     return this.notificationService.list(user.sub);
+  }
+
+  @Patch("read")
+  markRead(@CurrentUser() user: AccessTokenPayload, @Body() dto: { id?: string }) {
+    return this.notificationService.markRead(user.sub, dto.id);
   }
 
   @Post("send")

@@ -85,6 +85,36 @@ export class NotificationService implements OnModuleInit {
     };
   }
 
+  async markRead(userId: string, notificationId?: string) {
+    if (notificationId) {
+      const result = await dbQuery(
+        `
+          UPDATE notifications
+          SET is_read = TRUE
+          WHERE user_id = $1 AND id = $2
+        `,
+        [userId, notificationId]
+      );
+
+      return {
+        updated: result.rowCount ?? 0
+      };
+    }
+
+    const result = await dbQuery(
+      `
+        UPDATE notifications
+        SET is_read = TRUE
+        WHERE user_id = $1 AND is_read = FALSE
+      `,
+      [userId]
+    );
+
+    return {
+      updated: result.rowCount ?? 0
+    };
+  }
+
   private async insertNotification(userId: string, title: string, message: string) {
     const result = await getOne<NotificationRow>(
       `

@@ -1,14 +1,16 @@
-import { Body, Controller, Get, Headers, Inject, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Headers, Inject, Patch, Post, UseGuards } from "@nestjs/common";
 import { CurrentUser, JwtAuthGuard } from "@nevo/shared-infra";
 import type { AccessTokenPayload } from "@nevo/shared-types";
 import { AuthService } from "./auth.service";
 import {
   ConfirmPasswordResetDto,
+  ChangePasswordDto,
   LoginDto,
   RegisterDto,
   RequestPasswordResetDto,
   ResendEmailVerificationDto,
   SetSecurityPasscodeDto,
+  UpdateProfileDto,
   VerifyEmailDto
 } from "./auth.dto";
 
@@ -57,9 +59,21 @@ export class AuthController {
     return this.authService.setSecurityPasscode(user.sub, dto.passcode);
   }
 
+  @Post("password")
+  @UseGuards(JwtAuthGuard)
+  changePassword(@CurrentUser() user: AccessTokenPayload, @Body() dto: ChangePasswordDto) {
+    return this.authService.changePassword(user.sub, dto.currentPassword, dto.password);
+  }
+
   @Get("me")
   @UseGuards(JwtAuthGuard)
   me(@CurrentUser() user: AccessTokenPayload) {
     return this.authService.getProfile(user.sub);
+  }
+
+  @Patch("me")
+  @UseGuards(JwtAuthGuard)
+  updateMe(@CurrentUser() user: AccessTokenPayload, @Body() dto: UpdateProfileDto) {
+    return this.authService.updateProfile(user.sub, dto);
   }
 }
