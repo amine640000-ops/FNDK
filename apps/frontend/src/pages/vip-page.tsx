@@ -95,6 +95,8 @@ const missionCategoryTabs: Array<{ id: MissionTaskCategory; label: string }> = [
 
 const formatMoneyValue = (value: number) => formatCurrency(value).replace("$", "");
 
+const formatUsdtRange = (min: number, max: number) => `${min.toFixed(4)} ~ ${max.toFixed(4)} USDT`;
+
 const formatCountdown = (seconds: number) => {
   const safe = Math.max(seconds, 0);
   const hours = String(Math.floor(safe / 3600)).padStart(2, "0");
@@ -721,57 +723,56 @@ export function VipPage() {
       ) : null}
 
       {failedReservation ? (
-        <div className="fixed inset-0 z-40 bg-[#020223]/78 backdrop-blur-sm">
+        <div className="fixed inset-0 z-40 bg-[#020223]/82 backdrop-blur-[2px]">
           <button
             aria-label="Close failed reservation"
             className="absolute inset-0"
             onClick={() => setFailedReservation(null)}
             type="button"
           />
-          <div className="absolute inset-x-4 top-[14%] rounded-[30px] border border-cyan-300/15 bg-[linear-gradient(180deg,rgba(14,19,142,0.98)_0%,rgba(9,11,110,0.99)_45%,rgba(6,8,82,1)_100%)] p-5 shadow-[0_28px_60px_rgba(0,0,0,0.4)]">
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-[1.9rem] font-extrabold tracking-[-0.04em] text-white">Reservation Failed</div>
+          <div className="absolute inset-x-5 top-[23%] overflow-hidden rounded-[22px] border border-cyan-300/10 bg-[linear-gradient(180deg,#0608a8_0%,#05098c_54%,#050775_100%)] px-5 pb-5 pt-6 shadow-[0_30px_70px_rgba(0,0,0,0.58),inset_0_1px_0_rgba(169,205,255,0.12)]">
+            <div className="flex items-start justify-between gap-3">
+              <div className="text-[1.45rem] font-extrabold tracking-[-0.02em] text-white">Reservation Failed</div>
               <button
-                className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white"
+                aria-label="Close failed reservation"
+                className="flex h-9 w-9 items-center justify-center rounded-full text-white/90 transition hover:bg-white/5"
                 onClick={() => setFailedReservation(null)}
                 type="button"
               >
-                <X className="h-5 w-5" />
+                <X className="h-7 w-7" />
               </button>
             </div>
 
-            <div className="mt-8 flex justify-center">
-              <div className="flex h-28 w-28 items-center justify-center rounded-full bg-gradient-to-br from-amber-300 to-rose-500 text-[#050505] shadow-[0_20px_30px_rgba(255,136,0,0.28)]">
-                <X className="h-14 w-14" />
+            <div className="relative mt-14 flex justify-center">
+              <div className="absolute left-[34%] top-[-1.3rem] text-[2rem] font-extrabold text-[#ff9a24]">+</div>
+              <div className="absolute left-[32%] top-[1.4rem] h-5 w-5 rounded-full border-[5px] border-[#ff9627]" />
+              <div className="absolute left-[43%] top-[-0.35rem] h-3 w-3 rounded-full bg-[#ff8c2c]" />
+              <div className="absolute bottom-0 h-5 w-36 rounded-full bg-[#151170]/55 blur-[2px]" />
+              <div className="relative flex h-28 w-28 items-center justify-center rounded-full bg-[linear-gradient(135deg,#ffcf42_0%,#ff8a2e_48%,#ff4f61_100%)] text-[#040526] shadow-[0_22px_36px_rgba(255,114,36,0.26)]">
+                <X className="h-16 w-16 stroke-[5]" />
               </div>
             </div>
 
-            <div className="mt-6 rounded-[26px] border border-white/10 bg-[#04073d]/88 p-5 text-center">
+            <div className="mt-12 rounded-[14px] border border-cyan-200/10 bg-[#03043c]/88 px-5 pb-5 pt-9 text-center shadow-[inset_0_1px_0_rgba(169,205,255,0.08),0_0_22px_rgba(35,64,255,0.28)]">
               <div className="flex justify-center">
-                <div className="flex -space-x-3">
-                  <AssetBadge asset={failedReservation.activation.asset} className="border-4 border-[#11176d]" />
-                  <AssetBadge asset="USDT_TRC20" className="border-4 border-[#11176d]" />
+                <div className="flex -space-x-4">
+                  <AssetBadge asset={failedReservation.activation.asset} className="h-14 w-14 border-4 border-[#05075b]" />
+                  <AssetBadge asset="USDT_TRC20" className="h-14 w-14 border-4 border-[#05075b]" />
                 </div>
               </div>
-              <div className="mt-4 text-[2rem] font-extrabold text-white">{failedReservation.activation.asset}</div>
-              <div className="mt-5 grid gap-3 border-t border-white/10 pt-5 text-left text-[15px]">
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-white/45">Reservation Amount</span>
-                  <span className="font-semibold text-white">{formatCurrency(failedReservation.activation.reservationAmount)}</span>
-                </div>
-                <div className="flex items-center justify-between gap-4">
-                  <span className="text-white/45">Expected Income</span>
-                  <span className="font-semibold text-cyan-100">
-                    {formatCurrency(failedReservation.expectedIncomeMin)} - {formatCurrency(failedReservation.expectedIncomeMax)}
-                  </span>
-                </div>
+              <div className="mt-5 text-[1.45rem] font-semibold text-white">{failedReservation.activation.asset}</div>
+              <div className="mt-6 flex items-center justify-between gap-4 border-t border-cyan-100/10 pt-5 text-left text-[0.95rem]">
+                <span className="text-white/55">Expected Income</span>
+                <span className="text-right font-semibold text-[#636dff]">
+                  {formatUsdtRange(failedReservation.expectedIncomeMin, failedReservation.expectedIncomeMax)}
+                </span>
               </div>
             </div>
 
-            <div className="mt-5 h-3 rounded-full bg-cyan-300 shadow-[0_0_18px_rgba(39,231,212,0.5)]" />
+            <div className="mt-5 h-3 rounded-full bg-[linear-gradient(90deg,#63efff_0%,#75f7c9_100%)] shadow-[0_0_18px_rgba(103,232,255,0.58)]" />
 
             <button
-              className="mt-5 w-full rounded-[22px] bg-cyan-300 px-4 py-4 text-[1.15rem] font-semibold text-[#032932] shadow-[0_14px_24px_rgba(39,231,212,0.28)]"
+              className="mt-7 w-full rounded-[12px] bg-[linear-gradient(90deg,#69f2ff_0%,#75f6c8_100%)] px-4 py-4 text-[1.1rem] font-semibold text-[#073133] shadow-[0_14px_24px_rgba(39,231,212,0.28)]"
               onClick={() => setFailedReservation(null)}
               type="button"
             >
