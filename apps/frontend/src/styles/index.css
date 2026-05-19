@@ -64,7 +64,6 @@ body {
 
 .app-mobile-bg {
   min-height: 100vh;
-  --fndk-browser-top-clearance: 5.25rem;
   background:
     linear-gradient(rgba(91, 136, 255, 0.06) 1px, transparent 1px),
     linear-gradient(90deg, rgba(91, 136, 255, 0.06) 1px, transparent 1px),
@@ -74,17 +73,11 @@ body {
   background-size: 44px 44px, 44px 44px, auto, auto;
 }
 
-@media (min-width: 640px) {
-  .app-mobile-bg {
-    --fndk-browser-top-clearance: 0px;
-  }
-}
-
 .phone-shell {
   position: relative;
   min-height: 100vh;
   overflow: hidden;
-  padding-top: max(env(safe-area-inset-top, 0px), var(--fndk-browser-top-clearance));
+  padding-top: env(safe-area-inset-top, 0px);
   background:
     linear-gradient(180deg, rgba(8, 10, 82, 0.98) 0%, rgba(6, 8, 76, 0.99) 40%, rgba(4, 7, 58, 1) 100%);
   border: 1px solid rgba(126, 154, 228, 0.46);

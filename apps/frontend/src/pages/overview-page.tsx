@@ -447,7 +447,7 @@ export function OverviewPage() {
   };
 
   return (
-    <div className="relative px-4 pb-6 pt-5">
+    <div className="relative px-4 pb-6">
       <header className="sticky top-0 z-30 -mx-4 border-b border-cyan-300/10 bg-[#050849]/94 px-4 py-4 backdrop-blur-md">
         <div className="flex items-center justify-between">
           <BrandMark
