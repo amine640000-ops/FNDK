@@ -108,7 +108,7 @@ export function ReferralsPage() {
               onClick={() => toast("No team alerts yet.")}
               type="button"
             >
-              <Bell className="h-4.5 w-4.5" />
+              <Bell className="h-[18px] w-[18px]" />
             </button>
             <button
               aria-label="Language"
@@ -116,7 +116,7 @@ export function ReferralsPage() {
               onClick={toggleLanguage}
               type="button"
             >
-              <Globe className="h-4.5 w-4.5" />
+              <Globe className="h-[18px] w-[18px]" />
             </button>
             <button
               aria-label="Support"
@@ -126,7 +126,7 @@ export function ReferralsPage() {
               }}
               type="button"
             >
-              <Headset className="h-4.5 w-4.5" />
+              <Headset className="h-[18px] w-[18px]" />
             </button>
           </div>
         </div>

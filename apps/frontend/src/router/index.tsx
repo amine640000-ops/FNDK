@@ -1,25 +1,39 @@
+import { lazy, Suspense, type ReactNode } from "react";
 import { Navigate, createBrowserRouter } from "react-router-dom";
 import { AuthGuard } from "@/components/auth-guard";
 import { AdminLayout } from "@/layouts/admin-layout";
 import { DashboardLayout } from "@/layouts/dashboard-layout";
-import { AdminFinancePage } from "@/pages/admin-finance-page";
-import { AdminKycPage } from "@/pages/admin-kyc-page";
-import { AdminNotificationsPage } from "@/pages/admin-notifications-page";
-import { AdminOverviewPage } from "@/pages/admin-overview-page";
-import { AdminProfitPage } from "@/pages/admin-profit-page";
-import { AdminSettingsPage } from "@/pages/admin-settings-page";
-import { AdminUsersPage } from "@/pages/admin-users-page";
-import { DepositPage } from "@/pages/deposit-page";
-import { ForgotPasswordPage } from "@/pages/forgot-password-page";
-import { LoginPage } from "@/pages/login-page";
-import { OverviewPage } from "@/pages/overview-page";
-import { ProfilePage } from "@/pages/profile-page";
-import { RegisterPage } from "@/pages/register-page";
-import { ReferralsPage } from "@/pages/referrals-page";
-import { TradeHistoryPage } from "@/pages/trade-history-page";
-import { VipPage } from "@/pages/vip-page";
-import { WalletPage } from "@/pages/wallet-page";
-import { WithdrawPage } from "@/pages/withdraw-page";
+
+const AdminFinancePage = lazy(() => import("@/pages/admin-finance-page").then(({ AdminFinancePage }) => ({ default: AdminFinancePage })));
+const AdminKycPage = lazy(() => import("@/pages/admin-kyc-page").then(({ AdminKycPage }) => ({ default: AdminKycPage })));
+const AdminNotificationsPage = lazy(() =>
+  import("@/pages/admin-notifications-page").then(({ AdminNotificationsPage }) => ({ default: AdminNotificationsPage }))
+);
+const AdminOverviewPage = lazy(() => import("@/pages/admin-overview-page").then(({ AdminOverviewPage }) => ({ default: AdminOverviewPage })));
+const AdminProfitPage = lazy(() => import("@/pages/admin-profit-page").then(({ AdminProfitPage }) => ({ default: AdminProfitPage })));
+const AdminSettingsPage = lazy(() => import("@/pages/admin-settings-page").then(({ AdminSettingsPage }) => ({ default: AdminSettingsPage })));
+const AdminUsersPage = lazy(() => import("@/pages/admin-users-page").then(({ AdminUsersPage }) => ({ default: AdminUsersPage })));
+const DepositPage = lazy(() => import("@/pages/deposit-page").then(({ DepositPage }) => ({ default: DepositPage })));
+const ForgotPasswordPage = lazy(() => import("@/pages/forgot-password-page").then(({ ForgotPasswordPage }) => ({ default: ForgotPasswordPage })));
+const LoginPage = lazy(() => import("@/pages/login-page").then(({ LoginPage }) => ({ default: LoginPage })));
+const OverviewPage = lazy(() => import("@/pages/overview-page").then(({ OverviewPage }) => ({ default: OverviewPage })));
+const ProfilePage = lazy(() => import("@/pages/profile-page").then(({ ProfilePage }) => ({ default: ProfilePage })));
+const RegisterPage = lazy(() => import("@/pages/register-page").then(({ RegisterPage }) => ({ default: RegisterPage })));
+const ReferralsPage = lazy(() => import("@/pages/referrals-page").then(({ ReferralsPage }) => ({ default: ReferralsPage })));
+const TradeHistoryPage = lazy(() => import("@/pages/trade-history-page").then(({ TradeHistoryPage }) => ({ default: TradeHistoryPage })));
+const VipPage = lazy(() => import("@/pages/vip-page").then(({ VipPage }) => ({ default: VipPage })));
+const WalletPage = lazy(() => import("@/pages/wallet-page").then(({ WalletPage }) => ({ default: WalletPage })));
+const WithdrawPage = lazy(() => import("@/pages/withdraw-page").then(({ WithdrawPage }) => ({ default: WithdrawPage })));
+
+function RouteFallback() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-[#050849] px-4 text-sm font-semibold text-cyan-100">
+      Loading...
+    </div>
+  );
+}
+
+const withSuspense = (element: ReactNode) => <Suspense fallback={<RouteFallback />}>{element}</Suspense>;
 
 export const router = createBrowserRouter([
   {
@@ -28,15 +42,15 @@ export const router = createBrowserRouter([
   },
   {
     path: "/login",
-    element: <LoginPage />
+    element: withSuspense(<LoginPage />)
   },
   {
     path: "/register",
-    element: <RegisterPage />
+    element: withSuspense(<RegisterPage />)
   },
   {
     path: "/forgot-password",
-    element: <ForgotPasswordPage />
+    element: withSuspense(<ForgotPasswordPage />)
   },
   {
     path: "/app",
@@ -45,16 +59,16 @@ export const router = createBrowserRouter([
       {
         element: <DashboardLayout />,
         children: [
-          { index: true, element: <OverviewPage /> },
-          { path: "wallet", element: <WalletPage /> },
-          { path: "wallet/deposit", element: <DepositPage /> },
-          { path: "wallet/withdraw", element: <WithdrawPage /> },
-          { path: "mission", element: <VipPage /> },
-          { path: "strategy", element: <VipPage /> },
-          { path: "vip", element: <VipPage /> },
-          { path: "trades", element: <TradeHistoryPage /> },
-          { path: "referrals", element: <ReferralsPage /> },
-          { path: "profile", element: <ProfilePage /> }
+          { index: true, element: withSuspense(<OverviewPage />) },
+          { path: "wallet", element: withSuspense(<WalletPage />) },
+          { path: "wallet/deposit", element: withSuspense(<DepositPage />) },
+          { path: "wallet/withdraw", element: withSuspense(<WithdrawPage />) },
+          { path: "mission", element: withSuspense(<VipPage />) },
+          { path: "strategy", element: withSuspense(<VipPage />) },
+          { path: "vip", element: withSuspense(<VipPage />) },
+          { path: "trades", element: withSuspense(<TradeHistoryPage />) },
+          { path: "referrals", element: withSuspense(<ReferralsPage />) },
+          { path: "profile", element: withSuspense(<ProfilePage />) }
         ]
       }
     ]
@@ -66,13 +80,13 @@ export const router = createBrowserRouter([
       {
         element: <AdminLayout />,
         children: [
-          { index: true, element: <AdminOverviewPage /> },
-          { path: "users", element: <AdminUsersPage /> },
-          { path: "kyc", element: <AdminKycPage /> },
-          { path: "finance", element: <AdminFinancePage /> },
-          { path: "profit", element: <AdminProfitPage /> },
-          { path: "notifications", element: <AdminNotificationsPage /> },
-          { path: "settings", element: <AdminSettingsPage /> }
+          { index: true, element: withSuspense(<AdminOverviewPage />) },
+          { path: "users", element: withSuspense(<AdminUsersPage />) },
+          { path: "kyc", element: withSuspense(<AdminKycPage />) },
+          { path: "finance", element: withSuspense(<AdminFinancePage />) },
+          { path: "profit", element: withSuspense(<AdminProfitPage />) },
+          { path: "notifications", element: withSuspense(<AdminNotificationsPage />) },
+          { path: "settings", element: withSuspense(<AdminSettingsPage />) }
         ]
       }
     ]

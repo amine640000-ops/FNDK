@@ -1,5 +1,6 @@
 import { ChevronLeft, LogOut } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { clearAuthSession } from "@/lib/auth";
 
 type MobilePageHeaderProps = {
   title: string;
@@ -9,9 +10,7 @@ type MobilePageHeaderProps = {
 export function MobilePageHeader({ title, subtitle }: MobilePageHeaderProps) {
   const navigate = useNavigate();
   const handleLogout = () => {
-    localStorage.removeItem("nevo.accessToken");
-    localStorage.removeItem("nevo.refreshToken");
-    localStorage.removeItem("nevo.user");
+    clearAuthSession();
     navigate("/login");
   };
 

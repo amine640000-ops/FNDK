@@ -9,6 +9,7 @@ import {
   Users
 } from "lucide-react";
 import { Outlet } from "react-router-dom";
+import { AuthSessionListener } from "@/components/auth-session-listener";
 import { SidebarNav } from "@/components/sidebar-nav";
 
 const items = [
@@ -24,6 +25,7 @@ const items = [
 export function AdminLayout() {
   return (
     <div className="min-h-screen bg-aura px-4 py-6 text-white md:px-6 lg:px-8">
+      <AuthSessionListener />
       <div className="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
         <SidebarNav items={items} title="FNDK Control" kicker="Admin Panel" />
         <main className="space-y-6">

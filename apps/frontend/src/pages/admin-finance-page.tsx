@@ -1,17 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import axios from "axios";
 import toast from "react-hot-toast";
 import { ExternalLink, RefreshCcw } from "lucide-react";
 import { formatCurrency } from "@nevo/shared-utils";
 import { useNavigate } from "react-router-dom";
+import { adminApi, getApiErrorMessage, isApiAuthError, uploadBaseUrls } from "@/api/client";
 import { SectionCard } from "@/components/section-card";
-
-const adminApi = axios.create({
-  baseURL: import.meta.env.VITE_ADMIN_API_URL ?? "http://localhost:4006/api"
-});
-
-const walletApiBase = import.meta.env.VITE_WALLET_API_URL ?? "http://localhost:4002/api";
-const walletUploadsBase = walletApiBase.replace(/\/api\/?$/, "");
+import { clearAuthSession, getAccessToken } from "@/lib/auth";
 
 type FinanceTransaction = {
   id: string;
@@ -46,7 +40,7 @@ const resolveProofUrl = (proofUrl?: string | null) => {
     return proofUrl;
   }
 
-  return `${walletUploadsBase}${proofUrl}`;
+  return `${uploadBaseUrls.wallet}${proofUrl}`;
 };
 
 export function AdminFinancePage() {
@@ -67,7 +61,7 @@ export function AdminFinancePage() {
   );
 
   const loadFinanceState = async () => {
-    const token = localStorage.getItem("nevo.accessToken");
+    const token = getAccessToken();
     if (!token) {
       setLoading(false);
       return;
@@ -75,22 +69,16 @@ export function AdminFinancePage() {
 
     try {
       const [depositResponse, withdrawalResponse] = await Promise.all([
-        adminApi.get<FinanceTransaction[]>("/admin/deposits", {
-          headers: { Authorization: `Bearer ${token}` }
-        }),
-        adminApi.get<FinanceTransaction[]>("/admin/withdrawals", {
-          headers: { Authorization: `Bearer ${token}` }
-        })
+        adminApi.get<FinanceTransaction[]>("/admin/deposits"),
+        adminApi.get<FinanceTransaction[]>("/admin/withdrawals")
       ]);
 
       setAdminApiOffline(false);
       setDeposits(depositResponse.data);
       setWithdrawals(withdrawalResponse.data);
     } catch (error) {
-      if (axios.isAxiosError(error) && (error.response?.status === 401 || error.response?.status === 403)) {
-        localStorage.removeItem("nevo.accessToken");
-        localStorage.removeItem("nevo.refreshToken");
-        localStorage.removeItem("nevo.user");
+      if (isApiAuthError(error)) {
+        clearAuthSession();
         setAdminApiOffline(false);
         toast.error("Your admin session expired. Sign in again.");
         navigate("/login", { replace: true });
@@ -114,7 +102,7 @@ export function AdminFinancePage() {
   }, []);
 
   const reviewTransaction = async (transactionId: string, action: "approve" | "reject") => {
-    const token = localStorage.getItem("nevo.accessToken");
+    const token = getAccessToken();
     if (!token) {
       toast.error("Sign in as admin first.");
       return;
@@ -134,25 +122,13 @@ export function AdminFinancePage() {
     try {
       await adminApi.patch(
         `/admin/transactions/${transactionId}/${action}`,
-        adminNote ? { adminNote } : {},
-        {
-          headers: { Authorization: `Bearer ${token}` }
-        }
+        adminNote ? { adminNote } : {}
       );
 
       toast.success(action === "approve" ? "Transaction approved." : "Transaction rejected.");
       await loadFinanceState();
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        const responseMessage = error.response?.data?.message;
-        if (typeof responseMessage === "string") {
-          toast.error(responseMessage);
-        } else {
-          toast.error(`Could not ${action} transaction.`);
-        }
-      } else {
-        toast.error(`Could not ${action} transaction.`);
-      }
+      toast.error(getApiErrorMessage(error, `Could not ${action} transaction.`));
     } finally {
       setActionId(null);
     }
@@ -275,7 +251,7 @@ export function AdminFinancePage() {
       >
         {adminApiOffline ? (
           <div className="mb-4 rounded-3xl border border-amber-300/20 bg-amber-300/10 p-4 text-sm text-amber-100">
-            Live finance data is unavailable because `admin-service` is not responding on `localhost:4006`.
+            Live finance data is unavailable right now.
           </div>
         ) : null}
         {deposits.length ? (

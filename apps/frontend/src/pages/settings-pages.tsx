@@ -1,5 +1,4 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import axios from "axios";
 import toast from "react-hot-toast";
 import {
   Activity,
@@ -20,19 +19,9 @@ import {
 import { Link, useNavigate } from "react-router-dom";
 import type { AssetType, DashboardTransaction, WalletSummary } from "@nevo/shared-types";
 import { SUPPORTED_ASSETS, formatCurrency } from "@nevo/shared-utils";
+import { getApiErrorMessage, identityApi, notificationApi, walletApi } from "@/api/client";
 import { MobilePageHeader } from "@/components/mobile-page-header";
-
-const identityApi = axios.create({
-  baseURL: import.meta.env.VITE_IDENTITY_API_URL ?? "http://localhost:4001/api"
-});
-
-const notificationApi = axios.create({
-  baseURL: import.meta.env.VITE_NOTIFICATION_API_URL ?? "http://localhost:4005/api"
-});
-
-const walletApi = axios.create({
-  baseURL: import.meta.env.VITE_WALLET_API_URL ?? "http://localhost:4002/api"
-});
+import { authHeaders, getAccessToken } from "@/lib/auth";
 
 type StoredUser = {
   id?: string;
@@ -88,25 +77,9 @@ const assetLabels: Record<AssetType, string> = {
   STOCKS: "STOCKS"
 };
 
-const resolveApiErrorMessage = (fallback: string, error: unknown) => {
-  if (!axios.isAxiosError(error)) {
-    return fallback;
-  }
+const resolveApiErrorMessage = (fallback: string, error: unknown) => getApiErrorMessage(error, fallback);
 
-  const responseMessage = error.response?.data?.message;
-  if (Array.isArray(responseMessage)) {
-    return responseMessage.join(" ");
-  }
-
-  return typeof responseMessage === "string" ? responseMessage : fallback;
-};
-
-const getToken = () => localStorage.getItem("nevo.accessToken");
-
-const authHeaders = () => {
-  const token = getToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
-};
+const getToken = getAccessToken;
 
 const readStoredUser = (): StoredUser => {
   try {

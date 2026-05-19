@@ -1,15 +1,12 @@
 import { useMemo, useState } from "react";
-import axios from "axios";
 import toast from "react-hot-toast";
 import { Check, CheckCircle2, ChevronDown, Copy, Landmark, X } from "lucide-react";
 import { useEffect } from "react";
 import type { AssetRouteSetting, AssetType } from "@nevo/shared-types";
 import { DEFAULT_ASSET_LABELS, DEFAULT_ASSET_ROUTE_SETTINGS, formatCurrency } from "@nevo/shared-utils";
+import { getApiErrorMessage, walletApi } from "@/api/client";
 import { MobilePageHeader } from "@/components/mobile-page-header";
-
-const walletApi = axios.create({
-  baseURL: import.meta.env.VITE_WALLET_API_URL ?? "http://localhost:4002/api"
-});
+import { getAccessToken } from "@/lib/auth";
 
 type DepositResponse = {
   id: string;
@@ -43,7 +40,7 @@ export function DepositPage() {
   const selectedWalletAddress = depositResponse?.walletAddress ?? selectedAssetSetting?.address ?? "";
 
   useEffect(() => {
-    const token = localStorage.getItem("nevo.accessToken");
+    const token = getAccessToken();
     if (!token) {
       return;
     }
@@ -52,11 +49,7 @@ export function DepositPage() {
 
     const loadDepositAssets = async () => {
       try {
-        const response = await walletApi.get<AssetRouteSetting[]>("/wallet/deposit-assets", {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        });
+        const response = await walletApi.get<AssetRouteSetting[]>("/wallet/deposit-assets");
 
         if (active) {
           setAssetSettings(response.data);
@@ -83,7 +76,7 @@ export function DepositPage() {
   }, []);
 
   const submitDeposit = async () => {
-    const token = localStorage.getItem("nevo.accessToken");
+    const token = getAccessToken();
     if (!token) {
       toast.error("Sign in first.");
       return;
@@ -106,27 +99,13 @@ export function DepositPage() {
         {
           asset,
           amount: parsedAmount
-        },
-        {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
         }
       );
 
       setDepositResponse(response.data);
       toast.success(response.data.message);
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        const responseMessage = error.response?.data?.message;
-        if (typeof responseMessage === "string") {
-          toast.error(responseMessage);
-        } else {
-          toast.error("Could not submit deposit.");
-        }
-      } else {
-        toast.error("Could not submit deposit.");
-      }
+      toast.error(getApiErrorMessage(error, "Could not submit deposit."));
     } finally {
       setSubmitting(false);
     }

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import axios from "axios";
 import toast from "react-hot-toast";
 import {
   Bell,
@@ -22,16 +21,10 @@ import {
 import type { AiTradingActivation, AssetType, MissionTaskCategory, MissionTaskProgress, VipTier, WalletSummary } from "@nevo/shared-types";
 import { formatCurrency, formatPercent, resolveTierByDeposit } from "@nevo/shared-utils";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { getApiErrorMessage, isApiAuthError, taskApi, walletApi } from "@/api/client";
 import { BrandMark } from "@/components/brand-mark";
+import { clearAuthSession, getAccessToken } from "@/lib/auth";
 import { useDashboardStore } from "@/store/use-dashboard-store";
-
-const taskApi = axios.create({
-  baseURL: import.meta.env.VITE_TASK_API_URL ?? "http://localhost:4004/api"
-});
-
-const walletApi = axios.create({
-  baseURL: import.meta.env.VITE_WALLET_API_URL ?? "http://localhost:4002/api"
-});
 
 type ActivationState = {
   currentTier: VipTier;
@@ -230,7 +223,7 @@ export function VipPage() {
   }, [location.pathname]);
 
   useEffect(() => {
-    const token = localStorage.getItem("nevo.accessToken");
+    const token = getAccessToken();
     if (!token) {
       setActivationState(fallbackActivationState);
       return;
@@ -240,20 +233,14 @@ export function VipPage() {
 
     const loadState = async () => {
       try {
-        const response = await taskApi.get<ActivationState>("/tasks/activations/me", {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        });
+        const response = await taskApi.get<ActivationState>("/tasks/activations/me");
 
         if (active) {
           setActivationState(response.data);
         }
       } catch (error) {
-        if (axios.isAxiosError(error) && (error.response?.status === 401 || error.response?.status === 403)) {
-          localStorage.removeItem("nevo.accessToken");
-          localStorage.removeItem("nevo.refreshToken");
-          localStorage.removeItem("nevo.user");
+        if (isApiAuthError(error)) {
+          clearAuthSession();
           if (active) {
             toast.error("Your session expired. Sign in again.");
             navigate("/login", { replace: true });
@@ -262,11 +249,7 @@ export function VipPage() {
         }
 
         try {
-          const walletResponse = await walletApi.get<WalletSummary>("/wallet/summary", {
-            headers: {
-              Authorization: `Bearer ${token}`
-            }
-          });
+          const walletResponse = await walletApi.get<WalletSummary>("/wallet/summary");
 
           if (active) {
             const derivedInvestment = Math.max(
@@ -294,7 +277,7 @@ export function VipPage() {
   }, [fallbackActivationState, navigate]);
 
   useEffect(() => {
-    const token = localStorage.getItem("nevo.accessToken");
+    const token = getAccessToken();
     if (!token) {
       return;
     }
@@ -303,11 +286,7 @@ export function VipPage() {
     setLoadingMissionCenter(true);
 
     taskApi
-      .get<MissionCenterState>("/tasks/missions/me", {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      })
+      .get<MissionCenterState>("/tasks/missions/me")
       .then((response) => {
         if (active) {
           setMissionCenter(response.data);
@@ -350,7 +329,7 @@ export function VipPage() {
       return;
     }
 
-    const token = localStorage.getItem("nevo.accessToken");
+    const token = getAccessToken();
     if (!token) {
       return;
     }
@@ -359,11 +338,7 @@ export function VipPage() {
     completionRefreshInFlight.current = runningActivation.id;
 
     taskApi
-      .get<ActivationState>("/tasks/activations/me", {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      })
+      .get<ActivationState>("/tasks/activations/me")
       .then((response) => {
         if (active) {
           setActivationState(response.data);
@@ -494,9 +469,7 @@ export function VipPage() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("nevo.accessToken");
-    localStorage.removeItem("nevo.refreshToken");
-    localStorage.removeItem("nevo.user");
+    clearAuthSession();
     navigate("/login");
   };
 
@@ -512,7 +485,7 @@ export function VipPage() {
   };
 
   const startActivation = async () => {
-    const token = localStorage.getItem("nevo.accessToken");
+    const token = getAccessToken();
     if (!token) {
       toast.error("Login first to trigger AI trading.");
       return;
@@ -537,12 +510,7 @@ export function VipPage() {
     try {
       const response = await taskApi.post<StartActivationResponse>(
         "/tasks/activations/start",
-        { reservationAmount: parsedReservationAmount, securityPasscode },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        }
+        { reservationAmount: parsedReservationAmount, securityPasscode }
       );
 
       if (response.data.outcome === "failed") {
@@ -554,27 +522,10 @@ export function VipPage() {
 
       setReservationModalOpen(false);
       setSecurityPasscode("");
-      const latestState = await taskApi.get<ActivationState>("/tasks/activations/me", {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
+      const latestState = await taskApi.get<ActivationState>("/tasks/activations/me");
       setActivationState(latestState.data);
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        const responseMessage = error.response?.data?.message;
-        if (typeof responseMessage === "string") {
-          toast.error(responseMessage);
-        } else if (Array.isArray(responseMessage) && typeof responseMessage[0] === "string") {
-          toast.error(responseMessage[0]);
-        } else if (!error.response) {
-          toast.error("Task service is unavailable right now.");
-        } else {
-          toast.error("Unable to start AI activation.");
-        }
-      } else {
-        toast.error("Unable to start AI activation.");
-      }
+      toast.error(getApiErrorMessage(error, "Unable to start AI activation."));
     } finally {
       setLoadingActivation(false);
     }
@@ -598,7 +549,7 @@ export function VipPage() {
               onClick={handleNotifications}
               type="button"
             >
-              <Bell className="h-4.5 w-4.5" />
+              <Bell className="h-[18px] w-[18px]" />
             </button>
             <button
               aria-label="Language"
@@ -606,7 +557,7 @@ export function VipPage() {
               onClick={handleLanguage}
               type="button"
             >
-              <Globe className="h-4.5 w-4.5" />
+              <Globe className="h-[18px] w-[18px]" />
             </button>
             <button
               aria-label="Support"
@@ -614,7 +565,7 @@ export function VipPage() {
               onClick={handleSupport}
               type="button"
             >
-              <Headset className="h-4.5 w-4.5" />
+              <Headset className="h-[18px] w-[18px]" />
             </button>
             <button
               aria-label="Sign out"
@@ -622,7 +573,7 @@ export function VipPage() {
               onClick={handleLogout}
               type="button"
             >
-              <LogOut className="h-4.5 w-4.5" />
+              <LogOut className="h-[18px] w-[18px]" />
             </button>
           </div>
         </div>

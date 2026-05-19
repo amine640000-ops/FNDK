@@ -1,5 +1,4 @@
 import { ChangeEvent, useEffect, useId, useMemo, useState } from "react";
-import axios from "axios";
 import toast from "react-hot-toast";
 import {
   Activity,
@@ -9,6 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleAlert,
+  Copy,
   CreditCard,
   FileText,
   IdCard,
@@ -23,12 +23,8 @@ import {
   type LucideIcon
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-
-const identityApiBase = import.meta.env.VITE_IDENTITY_API_URL ?? "http://localhost:4001/api";
-
-const identityApi = axios.create({
-  baseURL: identityApiBase
-});
+import { getApiErrorMessage, identityApi } from "@/api/client";
+import { clearAuthSession, getAccessToken } from "@/lib/auth";
 
 type KycSubmission = {
   id: string;
@@ -46,9 +42,12 @@ type KycSubmission = {
 };
 
 type StoredUser = {
+  id?: string;
+  publicId?: string;
   fullName?: string;
   email?: string;
   phone?: string;
+  referralCode?: string;
   kycStatus?: "pending" | "verified" | "rejected";
   hasSecurityPasscode?: boolean;
 };
@@ -76,18 +75,7 @@ type SecurityRowProps = SettingsRowProps & {
 const fieldClass =
   "fndk-app-input";
 
-const resolveApiErrorMessage = (fallback: string, error: unknown) => {
-  if (!axios.isAxiosError(error)) {
-    return fallback;
-  }
-
-  const responseMessage = error.response?.data?.message;
-  if (Array.isArray(responseMessage)) {
-    return responseMessage.join(" ");
-  }
-
-  return typeof responseMessage === "string" ? responseMessage : fallback;
-};
+const resolveApiErrorMessage = (fallback: string, error: unknown) => getApiErrorMessage(error, fallback);
 
 const readStoredUser = (): StoredUser => {
   try {
@@ -96,6 +84,33 @@ const readStoredUser = (): StoredUser => {
   } catch {
     return {};
   }
+};
+
+const writeStoredUser = (user: StoredUser) => {
+  localStorage.setItem("nevo.user", JSON.stringify({ ...readStoredUser(), ...user }));
+};
+
+const fallbackPublicId = (userId?: string) => {
+  if (!userId) {
+    return "";
+  }
+
+  let hash = 0;
+  for (const character of userId) {
+    hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
+  }
+
+  return ((hash % 900_000) + 100_000).toString();
+};
+
+const resolvePublicId = (user: StoredUser) => {
+  const publicId = user.publicId?.trim();
+
+  if (publicId && /^\d{6}$/.test(publicId)) {
+    return publicId;
+  }
+
+  return fallbackPublicId(user.id);
 };
 
 function ScreenHeader({ title, onBack }: { title: string; onBack: () => void }) {
@@ -229,7 +244,7 @@ function VerificationUploadField({ title, helper, fileName, onChange }: UploadFi
 export function ProfilePage() {
   const navigate = useNavigate();
   const [screen, setScreen] = useState<ProfileScreen>("settings");
-  const [storedUser] = useState<StoredUser>(() => readStoredUser());
+  const [storedUser, setStoredUser] = useState<StoredUser>(() => readStoredUser());
   const [documentType, setDocumentType] = useState("Passport");
   const [nationality, setNationality] = useState("America");
   const [firstName, setFirstName] = useState("");
@@ -246,18 +261,30 @@ export function ProfilePage() {
   const [hasSecurityPasscode, setHasSecurityPasscode] = useState(Boolean(storedUser.hasSecurityPasscode));
 
   useEffect(() => {
-    const token = localStorage.getItem("nevo.accessToken");
+    const token = getAccessToken();
     if (!token) {
       return;
     }
 
     let active = true;
 
+    const loadUserProfile = async () => {
+      try {
+        const response = await identityApi.get<StoredUser>("/auth/me");
+
+        if (active) {
+          setStoredUser(response.data);
+          setHasSecurityPasscode(Boolean(response.data.hasSecurityPasscode));
+          writeStoredUser(response.data);
+        }
+      } catch {
+        return;
+      }
+    };
+
     const loadKycSubmissions = async () => {
       try {
-        const response = await identityApi.get<KycSubmission[]>("/kyc/submissions/me", {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const response = await identityApi.get<KycSubmission[]>("/kyc/submissions/me");
 
         if (active) {
           setSubmissions(response.data);
@@ -269,6 +296,7 @@ export function ProfilePage() {
       }
     };
 
+    void loadUserProfile();
     void loadKycSubmissions();
 
     return () => {
@@ -296,6 +324,22 @@ export function ProfilePage() {
 
   const displayName = storedUser.fullName?.trim() || "FNDK User";
   const displayEmail = storedUser.email?.trim() || "email not set";
+  const displayPublicId = resolvePublicId(storedUser);
+  const referralCode = storedUser.referralCode?.trim() ?? "";
+
+  const copySettingValue = async (value: string, label: string) => {
+    if (!value) {
+      toast.error(`${label} is not available yet.`);
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success(`${label} copied.`);
+    } catch {
+      toast.error(`Could not copy ${label.toLowerCase()}.`);
+    }
+  };
 
   const validateRealNameDetails = () => {
     if (!nationality.trim() || !lastName.trim() || !firstName.trim() || !documentNumber.trim()) {
@@ -307,7 +351,7 @@ export function ProfilePage() {
   };
 
   const submitKyc = async () => {
-    const token = localStorage.getItem("nevo.accessToken");
+    const token = getAccessToken();
     if (!token) {
       toast.error("Sign in first.");
       return;
@@ -334,9 +378,7 @@ export function ProfilePage() {
 
     setSubmittingKyc(true);
     try {
-      const response = await identityApi.post<KycSubmission>("/kyc/submissions", formData, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await identityApi.post<KycSubmission>("/kyc/submissions", formData);
 
       setSubmissions((current) => [response.data, ...current]);
       setScreen("security");
@@ -349,7 +391,7 @@ export function ProfilePage() {
   };
 
   const saveSecurityPasscode = async () => {
-    const token = localStorage.getItem("nevo.accessToken");
+    const token = getAccessToken();
     if (!token) {
       toast.error("Sign in first.");
       return;
@@ -367,11 +409,7 @@ export function ProfilePage() {
 
     setSavingSecurityPasscode(true);
     try {
-      await identityApi.post(
-        "/auth/security-passcode",
-        { passcode: securityPasscode },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await identityApi.post("/auth/security-passcode", { passcode: securityPasscode });
 
       const currentUser = readStoredUser();
       localStorage.setItem("nevo.user", JSON.stringify({ ...currentUser, hasSecurityPasscode: true }));
@@ -389,9 +427,7 @@ export function ProfilePage() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("nevo.accessToken");
-    localStorage.removeItem("nevo.refreshToken");
-    localStorage.removeItem("nevo.user");
+    clearAuthSession();
     navigate("/login", { replace: true });
   };
 
@@ -409,6 +445,32 @@ export function ProfilePage() {
               <span className="rounded-full bg-white/5 px-2 py-1">{realNameStatus}</span>
             </div>
             <div className="mt-2 truncate text-[0.76rem] font-medium text-slate-300">{displayEmail}</div>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-2 border-t border-cyan-200/10 pt-4 text-[0.78rem]">
+          <div className="flex min-h-10 items-center justify-between gap-3 rounded-[10px] bg-white/[0.04] px-3">
+            <span className="font-semibold text-slate-300">User ID</span>
+            <span className="font-mono text-sm font-extrabold tracking-[0.18em] text-cyan-100">
+              {displayPublicId || "------"}
+            </span>
+          </div>
+          <div className="flex min-h-10 items-center justify-between gap-3 rounded-[10px] bg-white/[0.04] px-3">
+            <span className="font-semibold text-slate-300">Referral code</span>
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="truncate font-mono text-sm font-extrabold text-cyan-100">
+                {referralCode || "Not available"}
+              </span>
+              <button
+                aria-label="Copy referral code"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-cyan-300/20 bg-cyan-300/10 text-cyan-100 transition hover:bg-cyan-300/20 disabled:opacity-40"
+                disabled={!referralCode}
+                onClick={() => void copySettingValue(referralCode, "Referral code")}
+                type="button"
+              >
+                <Copy className="h-4 w-4" />
+              </button>
+            </span>
           </div>
         </div>
       </section>

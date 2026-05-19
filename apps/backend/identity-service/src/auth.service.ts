@@ -25,6 +25,7 @@ import type { LoginDto, RegisterDto, UpdateProfileDto } from "./auth.dto";
 
 interface IdentityUserRecord {
   id: string;
+  public_id: string;
   email: string;
   password_hash: string;
   full_name: string;
@@ -45,6 +46,7 @@ type VerificationCodeRecord = {
 
 export interface IdentityUser {
   id: string;
+  publicId: string;
   email: string;
   fullName: string;
   phone: string;
@@ -154,6 +156,7 @@ export class AuthService {
         ? "Registration created. Check your email for the verification code."
         : "Registration created, but the verification email could not be sent. Check email delivery settings and try resend verification.",
       userId: inserted.id,
+      publicId: inserted.public_id,
       referralCode: inserted.referral_code,
       emailVerificationSent: verificationEmailSent
     };
@@ -345,6 +348,7 @@ export class AuthService {
       `
         SELECT
           id,
+          public_id,
           email,
           password_hash,
           full_name,
@@ -389,6 +393,7 @@ export class AuthService {
       `
         SELECT
           id,
+          public_id,
           email,
           password_hash,
           full_name,
@@ -440,6 +445,7 @@ export class AuthService {
           WHERE id = $1
           RETURNING
             id,
+            public_id,
             email,
             password_hash,
             full_name,
@@ -473,6 +479,7 @@ export class AuthService {
       `
         SELECT
           id,
+          public_id,
           email,
           password_hash,
           full_name,
@@ -501,6 +508,7 @@ export class AuthService {
       `
         SELECT
           id,
+          public_id,
           email,
           password_hash,
           full_name,
@@ -549,6 +557,7 @@ export class AuthService {
   private toPublicUser(user: IdentityUserRecord): IdentityUser {
     return {
       id: user.id,
+      publicId: user.public_id,
       email: user.email,
       fullName: user.full_name,
       phone: user.phone,
@@ -573,55 +582,81 @@ export class AuthService {
     referralCode: string;
     referredBy: string | null;
   }) {
-    try {
-      const inserted = await getOne<Pick<IdentityUserRecord, "id" | "referral_code">>(
-        `
-          INSERT INTO users (
-            id,
-            email,
-            password_hash,
-            full_name,
-            phone,
-            referral_code,
-            referred_by,
-            kyc_status,
-            role,
-            email_verified_at
-          )
-          VALUES (
-            gen_random_uuid(),
-            $1,
-            $2,
-            $3,
-            $4,
-            $5,
-            $6,
-            'pending',
-            'USER',
-            NULL
-          )
-          RETURNING id, referral_code
-        `,
-        [input.email, input.passwordHash, input.fullName, input.phone, input.referralCode, input.referredBy]
-      );
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      try {
+        const inserted = await getOne<Pick<IdentityUserRecord, "id" | "public_id" | "referral_code">>(
+          `
+            INSERT INTO users (
+              id,
+              public_id,
+              email,
+              password_hash,
+              full_name,
+              phone,
+              referral_code,
+              referred_by,
+              kyc_status,
+              role,
+              email_verified_at
+            )
+            VALUES (
+              gen_random_uuid(),
+              $7,
+              $1,
+              $2,
+              $3,
+              $4,
+              $5,
+              $6,
+              'pending',
+              'USER',
+              NULL
+            )
+            RETURNING id, public_id, referral_code
+          `,
+          [
+            input.email,
+            input.passwordHash,
+            input.fullName,
+            input.phone,
+            input.referralCode,
+            input.referredBy,
+            this.createPublicUserId()
+          ]
+        );
 
-      if (!inserted) {
-        throw new BadRequestException("Registration could not be created");
-      }
-
-      return inserted;
-    } catch (error) {
-      if (this.isUniqueViolation(error)) {
-        const constraint = String((error as { constraint?: unknown }).constraint ?? "");
-        if (constraint.includes("phone")) {
-          throw new ConflictException("Phone number already registered");
+        if (!inserted) {
+          throw new BadRequestException("Registration could not be created");
         }
 
-        throw new ConflictException("Email already registered");
-      }
+        return inserted;
+      } catch (error) {
+        if (this.isUniqueViolation(error)) {
+          const constraint = String((error as { constraint?: unknown }).constraint ?? "");
+          if (constraint.includes("public_id")) {
+            continue;
+          }
 
-      throw error;
+          if (constraint.includes("phone")) {
+            throw new ConflictException("Phone number already registered");
+          }
+
+          if (constraint.includes("referral")) {
+            throw new ConflictException("Referral code already exists");
+          }
+
+          throw new ConflictException("Email already registered");
+        }
+
+        throw error;
+      }
     }
+
+    throw new ConflictException("Could not allocate a user ID. Try again.");
+  }
+
+  private createPublicUserId() {
+    return Math.floor(100_000 + Math.random() * 900_000).toString();
   }
 
   private publishRegistrationEvent(payload: { userId: string; email: string; fullName: string; referralCode: string }) {

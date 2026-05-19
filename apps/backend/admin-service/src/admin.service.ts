@@ -96,6 +96,7 @@ const defaultMissionTasks: MissionTaskSetting[] = [
 
 type UserRow = {
   id: string;
+  public_id: string;
   full_name: string;
   email: string;
   kyc_status: string;
@@ -224,6 +225,7 @@ export class AdminService {
         )
         SELECT
           u.id,
+          u.public_id,
           u.full_name,
           u.email,
           u.kyc_status,
@@ -234,13 +236,14 @@ export class AdminService {
         LEFT JOIN wallets w ON w.user_id = u.id
         LEFT JOIN latest_vip lv ON lv.user_id = u.id
         WHERE u.role = 'USER'
-        GROUP BY u.id, u.full_name, u.email, u.kyc_status, u.created_at, lv.vip_tier
+        GROUP BY u.id, u.public_id, u.full_name, u.email, u.kyc_status, u.created_at, lv.vip_tier
         ORDER BY u.created_at DESC
       `
     );
 
     return result.rows.map((user: UserRow) => ({
       id: user.id,
+      publicId: user.public_id,
       fullName: user.full_name,
       email: user.email,
       vipTier: user.vip_tier ?? "Starter",

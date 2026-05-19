@@ -1,20 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import axios from "axios";
 import toast from "react-hot-toast";
 import { ExternalLink, RefreshCcw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { formatCurrency } from "@nevo/shared-utils";
+import { adminApi, getApiErrorMessage, isApiAuthError, uploadBaseUrls } from "@/api/client";
 import { SectionCard } from "@/components/section-card";
-
-const adminApi = axios.create({
-  baseURL: import.meta.env.VITE_ADMIN_API_URL ?? "http://localhost:4006/api"
-});
-
-const identityApiBase = import.meta.env.VITE_IDENTITY_API_URL ?? "http://localhost:4001/api";
-const identityUploadsBase = identityApiBase.replace(/\/api\/?$/, "");
+import { clearAuthSession, getAccessToken } from "@/lib/auth";
 
 type AdminUser = {
   id: string;
+  publicId: string;
   fullName: string;
   email: string;
   vipTier: string;
@@ -47,7 +42,7 @@ const resolveKycUploadUrl = (url: string) => {
     return url;
   }
 
-  return `${identityUploadsBase}${url}`;
+  return `${uploadBaseUrls.identity}${url}`;
 };
 
 export function AdminUsersPage() {
@@ -65,7 +60,7 @@ export function AdminUsersPage() {
   );
 
   const loadAdminUsersState = async () => {
-    const token = localStorage.getItem("nevo.accessToken");
+    const token = getAccessToken();
     if (!token) {
       setLoading(false);
       return;
@@ -73,22 +68,16 @@ export function AdminUsersPage() {
 
     try {
       const [usersResponse, kycResponse] = await Promise.all([
-        adminApi.get<AdminUser[]>("/admin/users", {
-          headers: { Authorization: `Bearer ${token}` }
-        }),
-        adminApi.get<KycSubmission[]>("/admin/kyc", {
-          headers: { Authorization: `Bearer ${token}` }
-        })
+        adminApi.get<AdminUser[]>("/admin/users"),
+        adminApi.get<KycSubmission[]>("/admin/kyc")
       ]);
 
       setAdminApiOffline(false);
       setUsers(usersResponse.data);
       setKycSubmissions(kycResponse.data);
     } catch (error) {
-      if (axios.isAxiosError(error) && (error.response?.status === 401 || error.response?.status === 403)) {
-        localStorage.removeItem("nevo.accessToken");
-        localStorage.removeItem("nevo.refreshToken");
-        localStorage.removeItem("nevo.user");
+      if (isApiAuthError(error)) {
+        clearAuthSession();
         setAdminApiOffline(false);
         toast.error("Your admin session expired. Sign in again.");
         navigate("/login", { replace: true });
@@ -112,7 +101,7 @@ export function AdminUsersPage() {
   }, []);
 
   const reviewKyc = async (submissionId: string, status: "verified" | "rejected") => {
-    const token = localStorage.getItem("nevo.accessToken");
+    const token = getAccessToken();
     if (!token) {
       toast.error("Sign in as admin first.");
       return;
@@ -132,21 +121,13 @@ export function AdminUsersPage() {
     try {
       await adminApi.patch(
         `/admin/kyc/${submissionId}/review`,
-        adminNote ? { status, adminNote } : { status },
-        {
-          headers: { Authorization: `Bearer ${token}` }
-        }
+        adminNote ? { status, adminNote } : { status }
       );
 
       toast.success(status === "verified" ? "KYC approved." : "KYC rejected.");
       await loadAdminUsersState();
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        const responseMessage = error.response?.data?.message;
-        toast.error(typeof responseMessage === "string" ? responseMessage : "Could not review KYC.");
-      } else {
-        toast.error("Could not review KYC.");
-      }
+      toast.error(getApiErrorMessage(error, "Could not review KYC."));
     } finally {
       setActionId(null);
     }
@@ -171,7 +152,7 @@ export function AdminUsersPage() {
       >
         {adminApiOffline ? (
           <div className="mb-4 rounded-3xl border border-amber-300/20 bg-amber-300/10 p-4 text-sm text-amber-100">
-            Live users data is unavailable because `admin-service` is not responding on `localhost:4006`.
+            Live users data is unavailable right now.
           </div>
         ) : null}
         <div className="hide-scrollbar overflow-x-auto rounded-[24px]">
@@ -179,6 +160,7 @@ export function AdminUsersPage() {
             <thead className="text-slate-400">
               <tr>
                 <th className="pb-3">Name</th>
+                <th className="pb-3">User ID</th>
                 <th className="pb-3">Email</th>
                 <th className="pb-3">VIP</th>
                 <th className="pb-3">Balance</th>
@@ -191,6 +173,7 @@ export function AdminUsersPage() {
                 users.map((user) => (
                   <tr key={user.id} className="border-t border-white/10">
                     <td className="py-4">{user.fullName}</td>
+                    <td className="py-4 font-mono text-cyan-100">{user.publicId}</td>
                     <td className="py-4">{user.email}</td>
                     <td className="py-4">{user.vipTier}</td>
                     <td className="py-4">{formatCurrency(user.balance)}</td>
@@ -200,7 +183,7 @@ export function AdminUsersPage() {
                 ))
               ) : (
                 <tr className="border-t border-white/10">
-                  <td className="py-6 text-slate-400" colSpan={6}>
+                  <td className="py-6 text-slate-400" colSpan={7}>
                     {loading ? "Loading users..." : "No users loaded."}
                   </td>
                 </tr>

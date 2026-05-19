@@ -14,12 +14,13 @@ import {
   WalletCards
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
 import toast from "react-hot-toast";
 import { Link, useNavigate } from "react-router-dom";
 import { formatCurrency } from "@nevo/shared-utils";
 import type { AdCarouselSlide, WalletSummary } from "@nevo/shared-types";
+import { adminApi, isApiAuthError, notificationApi, uploadBaseUrls, walletApi } from "@/api/client";
 import { BrandMark } from "@/components/brand-mark";
+import { clearAuthSession, getAccessToken } from "@/lib/auth";
 import { useDashboardStore } from "@/store/use-dashboard-store";
 
 const compactNumber = new Intl.NumberFormat("en-US", {
@@ -77,21 +78,6 @@ const headerActions = [
   { label: "Support", icon: Headset }
 ] as const;
 
-const notificationApi = axios.create({
-  baseURL: import.meta.env.VITE_NOTIFICATION_API_URL ?? "http://localhost:4005/api"
-});
-
-const adminApiBase = import.meta.env.VITE_ADMIN_API_URL ?? "http://localhost:4006/api";
-const adminUploadsBase = adminApiBase.replace(/\/api\/?$/, "");
-
-const publicAdminApi = axios.create({
-  baseURL: adminApiBase
-});
-
-const walletApi = axios.create({
-  baseURL: import.meta.env.VITE_WALLET_API_URL ?? "http://localhost:4002/api"
-});
-
 const defaultAdCarouselSlides: AdCarouselSlide[] = [
   {
     id: "mission-rewards",
@@ -134,7 +120,7 @@ const resolveAdminAssetUrl = (url: string) => {
     return url;
   }
 
-  return `${adminUploadsBase}${url.startsWith("/") ? url : `/${url}`}`;
+  return `${uploadBaseUrls.admin}${url.startsWith("/") ? url : `/${url}`}`;
 };
 
 const isInternalHref = (href: string) => href.startsWith("/");
@@ -228,7 +214,7 @@ export function OverviewPage() {
   }, [language]);
 
   useEffect(() => {
-    const token = localStorage.getItem("nevo.accessToken");
+    const token = getAccessToken();
     if (!token) {
       setLiveWallet(null);
       return;
@@ -238,18 +224,14 @@ export function OverviewPage() {
 
     const loadWallet = async () => {
       try {
-        const response = await walletApi.get<WalletSummary>("/wallet/summary", {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const response = await walletApi.get<WalletSummary>("/wallet/summary");
 
         if (active) {
           setLiveWallet(response.data);
         }
       } catch (error) {
-        if (axios.isAxiosError(error) && (error.response?.status === 401 || error.response?.status === 403)) {
-          localStorage.removeItem("nevo.accessToken");
-          localStorage.removeItem("nevo.refreshToken");
-          localStorage.removeItem("nevo.user");
+        if (isApiAuthError(error)) {
+          clearAuthSession();
           if (active) {
             toast.error("Your session expired. Sign in again.");
             navigate("/login", { replace: true });
@@ -332,7 +314,7 @@ export function OverviewPage() {
   useEffect(() => {
     let active = true;
 
-    publicAdminApi
+    adminApi
       .get<AdCarouselSlide[]>("/public/ad-carousel")
       .then((response) => {
         if (!active) {
@@ -372,14 +354,12 @@ export function OverviewPage() {
   }, [adSlides.length]);
 
   const handleLogout = () => {
-    localStorage.removeItem("nevo.accessToken");
-    localStorage.removeItem("nevo.refreshToken");
-    localStorage.removeItem("nevo.user");
+    clearAuthSession();
     navigate("/login");
   };
 
   const openNotifications = async () => {
-    const token = localStorage.getItem("nevo.accessToken");
+    const token = getAccessToken();
     if (!token) {
       toast.error("Sign in first.");
       return;
@@ -389,9 +369,7 @@ export function OverviewPage() {
     setNotificationsLoading(true);
 
     try {
-      const response = await notificationApi.get<NotificationItem[]>("/notifications", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await notificationApi.get<NotificationItem[]>("/notifications");
       setNotifications(response.data);
     } catch {
       toast.error("Could not load notifications.");

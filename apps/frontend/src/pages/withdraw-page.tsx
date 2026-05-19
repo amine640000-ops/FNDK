@@ -1,14 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
 import toast from "react-hot-toast";
 import { Check, ChevronDown, Clock3, HandCoins, KeyRound, MailCheck, X } from "lucide-react";
 import type { AssetType, WalletSummary } from "@nevo/shared-types";
 import { SUPPORTED_ASSETS, formatCurrency } from "@nevo/shared-utils";
+import { getApiErrorMessage, walletApi } from "@/api/client";
 import { MobilePageHeader } from "@/components/mobile-page-header";
-
-const walletApi = axios.create({
-  baseURL: import.meta.env.VITE_WALLET_API_URL ?? "http://localhost:4002/api"
-});
+import { getAccessToken } from "@/lib/auth";
 
 const emptySummary: WalletSummary = {
   totalBalance: 0,
@@ -59,16 +56,14 @@ export function WithdrawPage() {
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem("nevo.accessToken");
+    const token = getAccessToken();
     if (!token) {
       setLoadingSummary(false);
       return;
     }
 
     walletApi
-      .get<WalletSummary>("/wallet/summary", {
-        headers: { Authorization: `Bearer ${token}` }
-      })
+      .get<WalletSummary>("/wallet/summary")
       .then((response) => {
         setSummary(response.data);
         const firstAssetWithBalance = response.data.assets.find((walletAsset) => walletAsset.balance > 0)?.asset;
@@ -93,7 +88,7 @@ export function WithdrawPage() {
   );
 
   const validateWithdrawalForm = () => {
-    const token = localStorage.getItem("nevo.accessToken");
+    const token = getAccessToken();
     if (!token) {
       toast.error("Sign in first.");
       return null;
@@ -126,23 +121,13 @@ export function WithdrawPage() {
           asset,
           amount: parsedAmount,
           destinationAddress: destinationAddress.trim()
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
         }
       );
 
       setVerificationCodeSent(response.data.emailVerificationSent);
       toast.success(response.data.emailVerificationSent ? "Verification code sent to your email." : response.data.message);
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        const responseMessage = error.response?.data?.message;
-        toast.error(typeof responseMessage === "string" ? responseMessage : "Could not send withdrawal code.");
-      } else {
-        toast.error("Could not send withdrawal code.");
-      }
+      toast.error(getApiErrorMessage(error, "Could not send withdrawal code."));
     } finally {
       setSendingVerificationCode(false);
     }
@@ -174,11 +159,6 @@ export function WithdrawPage() {
           destinationAddress: destinationAddress.trim(),
           verificationCode: verificationCode.trim(),
           securityPasscode
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
         }
       );
 
@@ -188,16 +168,7 @@ export function WithdrawPage() {
       setVerificationCodeSent(false);
       toast.success(response.data.message);
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        const responseMessage = error.response?.data?.message;
-        if (typeof responseMessage === "string") {
-          toast.error(responseMessage);
-        } else {
-          toast.error("Could not submit withdrawal.");
-        }
-      } else {
-        toast.error("Could not submit withdrawal.");
-      }
+      toast.error(getApiErrorMessage(error, "Could not submit withdrawal."));
     } finally {
       setSubmitting(false);
     }

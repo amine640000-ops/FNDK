@@ -1,18 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import axios from "axios";
 import toast from "react-hot-toast";
 import { ImagePlus, Plus, Trash2 } from "lucide-react";
 import type { AdCarouselSlide, AdminPlatformSettings, AssetRouteSetting, MissionTaskSetting } from "@nevo/shared-types";
 import { DEFAULT_ASSET_ROUTE_SETTINGS, SUPPORTED_ASSETS } from "@nevo/shared-utils";
 import { useNavigate } from "react-router-dom";
+import { adminApi, getApiErrorMessage, isApiAuthError, uploadBaseUrls } from "@/api/client";
 import { SectionCard } from "@/components/section-card";
-
-const adminApiBase = import.meta.env.VITE_ADMIN_API_URL ?? "http://localhost:4006/api";
-const adminUploadsBase = adminApiBase.replace(/\/api\/?$/, "");
-
-const adminApi = axios.create({
-  baseURL: adminApiBase
-});
+import { clearAuthSession, getAccessToken } from "@/lib/auth";
 
 const defaultAdCarouselSlides: AdCarouselSlide[] = [
   {
@@ -154,7 +148,7 @@ const resolveAdminAssetUrl = (url: string) => {
     return url;
   }
 
-  return `${adminUploadsBase}${url.startsWith("/") ? url : `/${url}`}`;
+  return `${uploadBaseUrls.admin}${url.startsWith("/") ? url : `/${url}`}`;
 };
 
 export function AdminSettingsPage() {
@@ -172,16 +166,14 @@ export function AdminSettingsPage() {
     }
 
     loadedRef.current = true;
-    const token = localStorage.getItem("nevo.accessToken");
+    const token = getAccessToken();
     if (!token) {
       setLoading(false);
       return;
     }
 
     adminApi
-      .get<AdminPlatformSettings>("/admin/settings", {
-        headers: { Authorization: `Bearer ${token}` }
-      })
+      .get<AdminPlatformSettings>("/admin/settings")
       .then((response) => {
         setAdminApiOffline(false);
         setSettings({
@@ -199,10 +191,8 @@ export function AdminSettingsPage() {
         });
       })
       .catch((error) => {
-        if (axios.isAxiosError(error) && (error.response?.status === 401 || error.response?.status === 403)) {
-          localStorage.removeItem("nevo.accessToken");
-          localStorage.removeItem("nevo.refreshToken");
-          localStorage.removeItem("nevo.user");
+        if (isApiAuthError(error)) {
+          clearAuthSession();
           setAdminApiOffline(false);
           toast.error("Your admin session expired. Sign in again.");
           navigate("/login", { replace: true });
@@ -297,7 +287,7 @@ export function AdminSettingsPage() {
       return;
     }
 
-    const token = localStorage.getItem("nevo.accessToken");
+    const token = getAccessToken();
     if (!token) {
       toast.error("Sign in as admin first.");
       return;
@@ -308,9 +298,7 @@ export function AdminSettingsPage() {
     setUploadingSlideId(slideId);
 
     try {
-      const response = await adminApi.post<{ url: string }>("/admin/assets/ad-image", formData, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await adminApi.post<{ url: string }>("/admin/assets/ad-image", formData);
       updateAdSlide(slideId, "imageUrl", response.data.url);
       toast.success("Ad image uploaded");
     } catch {
@@ -321,7 +309,7 @@ export function AdminSettingsPage() {
   };
 
   const saveSettings = async () => {
-    const token = localStorage.getItem("nevo.accessToken");
+    const token = getAccessToken();
     if (!token) {
       toast.error("Sign in as admin first.");
       return;
@@ -329,13 +317,11 @@ export function AdminSettingsPage() {
 
     setSaving(true);
     try {
-      const response = await adminApi.patch<AdminPlatformSettings>("/admin/settings", settings, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await adminApi.patch<AdminPlatformSettings>("/admin/settings", settings);
       setSettings(response.data);
       toast.success("Settings saved");
     } catch (error) {
-      toast.error("Saving settings failed.");
+      toast.error(getApiErrorMessage(error, "Saving settings failed."));
     } finally {
       setSaving(false);
     }
@@ -346,7 +332,7 @@ export function AdminSettingsPage() {
       <SectionCard title="Platform Settings" subtitle="Branding, maintenance mode, and asset toggles.">
         {adminApiOffline ? (
           <div className="mb-4 rounded-2xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-sm text-amber-100">
-            Live admin settings are unavailable because `admin-service` is not responding on `localhost:4006`.
+            Live admin settings are unavailable right now.
           </div>
         ) : null}
         <div className="grid gap-3">

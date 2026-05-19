@@ -1,13 +1,10 @@
 import { useState } from "react";
-import axios from "axios";
 import { Eye, Headphones, Loader2, Mail, Phone, ShieldQuestion } from "lucide-react";
 import toast from "react-hot-toast";
 import { Link, useNavigate } from "react-router-dom";
+import { axios, getApiErrorMessage, identityApi } from "@/api/client";
 import { FndkLogo } from "@/components/brand-mark";
-
-const identityApi = axios.create({
-  baseURL: import.meta.env.VITE_IDENTITY_API_URL ?? "http://localhost:4001/api"
-});
+import { saveAuthSession } from "@/lib/auth";
 
 type LoginMode = "phone" | "email";
 
@@ -29,18 +26,14 @@ export function LoginPage() {
         email: identifier.trim(),
         password
       });
-      localStorage.setItem("nevo.accessToken", response.data.accessToken);
-      localStorage.setItem("nevo.refreshToken", response.data.refreshToken);
-      localStorage.setItem("nevo.user", JSON.stringify(response.data.user));
+      saveAuthSession(response.data);
       toast.success("Login successful");
       navigate(response.data.user.role === "ADMIN" ? "/admin" : "/app");
     } catch (error) {
       if (axios.isAxiosError(error) && !error.response) {
-        toast.error("Login service is unreachable. Check that identity-service is running.");
-      } else if (axios.isAxiosError(error) && typeof error.response?.data?.message === "string") {
-        toast.error(error.response.data.message);
+        toast.error("Login service is unreachable. Check the identity API status.");
       } else {
-        toast.error("Login failed. Check your credentials.");
+        toast.error(getApiErrorMessage(error, "Login failed. Check your credentials."));
       }
     } finally {
       setLoading(false);

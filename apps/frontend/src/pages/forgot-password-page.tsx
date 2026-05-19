@@ -1,13 +1,9 @@
 import { type FormEvent, useState } from "react";
-import axios from "axios";
 import { ChevronLeft, Eye, Headphones, KeyRound, Loader2, Mail, ShieldQuestion } from "lucide-react";
 import toast from "react-hot-toast";
 import { Link, useNavigate } from "react-router-dom";
+import { axios, identityApi } from "@/api/client";
 import { FndkLogo } from "@/components/brand-mark";
-
-const identityApi = axios.create({
-  baseURL: import.meta.env.VITE_IDENTITY_API_URL ?? "http://localhost:4001/api"
-});
 
 const strongPasswordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 

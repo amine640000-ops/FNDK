@@ -1,8 +1,5 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
-
-type StoredUser = {
-  role?: "USER" | "ADMIN";
-};
+import { clearAuthSession, getAccessToken, getStoredUser, isAccessTokenExpired, type StoredUserSession } from "@/lib/auth";
 
 type AuthGuardProps = {
   allowedRoles?: Array<"USER" | "ADMIN">;
@@ -10,23 +7,16 @@ type AuthGuardProps = {
 
 export function AuthGuard({ allowedRoles }: AuthGuardProps) {
   const location = useLocation();
-  const token = localStorage.getItem("nevo.accessToken");
-  const rawUser = localStorage.getItem("nevo.user");
+  const token = getAccessToken();
+  const user = getStoredUser<StoredUserSession>();
 
-  if (!token || !rawUser) {
+  if (!token || !user || isAccessTokenExpired(token)) {
+    clearAuthSession();
     return <Navigate replace state={{ from: location }} to="/login" />;
   }
 
-  try {
-    const user = JSON.parse(rawUser) as StoredUser;
-    if (allowedRoles && (!user.role || !allowedRoles.includes(user.role))) {
-      return <Navigate replace to={user.role === "ADMIN" ? "/admin" : "/app"} />;
-    }
-  } catch {
-    localStorage.removeItem("nevo.accessToken");
-    localStorage.removeItem("nevo.refreshToken");
-    localStorage.removeItem("nevo.user");
-    return <Navigate replace state={{ from: location }} to="/login" />;
+  if (allowedRoles && (!user.role || !allowedRoles.includes(user.role))) {
+    return <Navigate replace to={user.role === "ADMIN" ? "/admin" : "/app"} />;
   }
 
   return <Outlet />;

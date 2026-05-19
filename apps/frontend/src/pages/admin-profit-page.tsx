@@ -1,15 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import axios from "axios";
 import toast from "react-hot-toast";
 import { RefreshCcw, X } from "lucide-react";
 import type { VipTier } from "@nevo/shared-types";
 import { formatCurrency, formatPercent } from "@nevo/shared-utils";
 import { useNavigate } from "react-router-dom";
+import { adminApi, getApiErrorMessage, isApiAuthError } from "@/api/client";
 import { SectionCard } from "@/components/section-card";
-
-const adminApi = axios.create({
-  baseURL: import.meta.env.VITE_ADMIN_API_URL ?? "http://localhost:4006/api"
-});
+import { clearAuthSession, getAccessToken } from "@/lib/auth";
 
 type ProfitSettings = {
   autoProfitDistribution: boolean;
@@ -48,16 +45,14 @@ export function AdminProfitPage() {
   const loadedRef = useRef(false);
 
   const handleAuthFailure = () => {
-    localStorage.removeItem("nevo.accessToken");
-    localStorage.removeItem("nevo.refreshToken");
-    localStorage.removeItem("nevo.user");
+    clearAuthSession();
     setAdminApiOffline(false);
     toast.error("Your admin session expired. Sign in again.");
     navigate("/login", { replace: true });
   };
 
   const loadPageState = async () => {
-    const token = localStorage.getItem("nevo.accessToken");
+    const token = getAccessToken();
     if (!token) {
       setLoading(false);
       return;
@@ -65,19 +60,15 @@ export function AdminProfitPage() {
 
     try {
       const [tiersResponse, settingsResponse] = await Promise.all([
-        adminApi.get<VipTier[]>("/admin/vip-tiers", {
-          headers: { Authorization: `Bearer ${token}` }
-        }),
-        adminApi.get<ProfitSettings>("/admin/profit-settings", {
-          headers: { Authorization: `Bearer ${token}` }
-        })
+        adminApi.get<VipTier[]>("/admin/vip-tiers"),
+        adminApi.get<ProfitSettings>("/admin/profit-settings")
       ]);
 
       setAdminApiOffline(false);
       setVipTiers(tiersResponse.data);
       setProfitSettings(settingsResponse.data);
     } catch (error) {
-      if (axios.isAxiosError(error) && (error.response?.status === 401 || error.response?.status === 403)) {
+      if (isApiAuthError(error)) {
         handleAuthFailure();
         return;
       }
@@ -103,7 +94,7 @@ export function AdminProfitPage() {
       return;
     }
 
-    const token = localStorage.getItem("nevo.accessToken");
+    const token = getAccessToken();
     if (!token) {
       toast.error("Sign in as admin first.");
       return;
@@ -120,9 +111,6 @@ export function AdminProfitPage() {
           dailyRoiMax: Number(editingTier.dailyRoiMaxPercent) / 100,
           activationLimitPerDay: Number(editingTier.activationLimitPerDay),
           activationDurationMinutes: Number(editingTier.activationDurationMinutes)
-        },
-        {
-          headers: { Authorization: `Bearer ${token}` }
         }
       );
 
@@ -134,24 +122,19 @@ export function AdminProfitPage() {
       setEditingTier(null);
       toast.success(`VIP ${response.data.id} saved.`);
     } catch (error) {
-      if (axios.isAxiosError(error) && (error.response?.status === 401 || error.response?.status === 403)) {
+      if (isApiAuthError(error)) {
         handleAuthFailure();
         return;
       }
 
-      const responseMessage = axios.isAxiosError(error) ? error.response?.data?.message : null;
-      if (typeof responseMessage === "string") {
-        toast.error(responseMessage);
-      } else {
-        toast.error("Could not save VIP tier.");
-      }
+      toast.error(getApiErrorMessage(error, "Could not save VIP tier."));
     } finally {
       setSavingTierId(null);
     }
   };
 
   const toggleAutoDistribution = async () => {
-    const token = localStorage.getItem("nevo.accessToken");
+    const token = getAccessToken();
     if (!token) {
       toast.error("Sign in as admin first.");
       return;
@@ -163,16 +146,13 @@ export function AdminProfitPage() {
         "/admin/profit-settings",
         {
           autoProfitDistribution: !profitSettings.autoProfitDistribution
-        },
-        {
-          headers: { Authorization: `Bearer ${token}` }
         }
       );
 
       setProfitSettings(response.data);
       toast.success(`Auto distribution ${response.data.autoProfitDistribution ? "enabled" : "disabled"}.`);
     } catch (error) {
-      if (axios.isAxiosError(error) && (error.response?.status === 401 || error.response?.status === 403)) {
+      if (isApiAuthError(error)) {
         handleAuthFailure();
         return;
       }
@@ -184,7 +164,7 @@ export function AdminProfitPage() {
   };
 
   const triggerAllUsers = async () => {
-    const token = localStorage.getItem("nevo.accessToken");
+    const token = getAccessToken();
     if (!token) {
       toast.error("Sign in as admin first.");
       return;
@@ -194,15 +174,12 @@ export function AdminProfitPage() {
     try {
       const response = await adminApi.post<{ processedUsers: number; updatedUsers: number }>(
         "/admin/profit/recalculate-users",
-        {},
-        {
-          headers: { Authorization: `Bearer ${token}` }
-        }
+        {}
       );
 
       toast.success(`Processed ${response.data.processedUsers} users. Updated ${response.data.updatedUsers}.`);
     } catch (error) {
-      if (axios.isAxiosError(error) && (error.response?.status === 401 || error.response?.status === 403)) {
+      if (isApiAuthError(error)) {
         handleAuthFailure();
         return;
       }
@@ -362,7 +339,7 @@ export function AdminProfitPage() {
         >
           {adminApiOffline ? (
             <div className="mb-4 rounded-3xl border border-amber-300/20 bg-amber-300/10 p-4 text-sm text-amber-100">
-              Live VIP settings are unavailable because `admin-service` is not responding on `localhost:4006`.
+              Live VIP settings are unavailable right now.
             </div>
           ) : null}
 

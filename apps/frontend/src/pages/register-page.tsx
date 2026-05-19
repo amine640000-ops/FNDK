@@ -1,13 +1,9 @@
 import { useState } from "react";
-import axios from "axios";
 import { Eye, Headphones, Loader2, ShieldQuestion } from "lucide-react";
 import toast from "react-hot-toast";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { axios, identityApi } from "@/api/client";
 import { FndkLogo } from "@/components/brand-mark";
-
-const identityApi = axios.create({
-  baseURL: import.meta.env.VITE_IDENTITY_API_URL ?? "http://localhost:4001/api"
-});
 
 type RegisterResponse = {
   message: string;

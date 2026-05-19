@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import axios from "axios";
 import toast from "react-hot-toast";
 import {
   Bell,
@@ -11,12 +10,10 @@ import {
 } from "lucide-react";
 import type { DashboardTransaction, WalletSummary } from "@nevo/shared-types";
 import { formatCurrency } from "@nevo/shared-utils";
+import { isApiAuthError, walletApi } from "@/api/client";
 import { BrandMark } from "@/components/brand-mark";
+import { clearAuthSession, getAccessToken } from "@/lib/auth";
 import { Link, useNavigate } from "react-router-dom";
-
-const walletApi = axios.create({
-  baseURL: import.meta.env.VITE_WALLET_API_URL ?? "http://localhost:4002/api"
-});
 
 const emptySummary: WalletSummary = {
   totalBalance: 0,
@@ -58,19 +55,15 @@ export function WalletPage() {
     }
 
     loadedRef.current = true;
-    const token = localStorage.getItem("nevo.accessToken");
+    const token = getAccessToken();
     if (!token) {
       setLoading(false);
       return;
     }
 
     Promise.all([
-      walletApi.get<WalletSummary>("/wallet/summary", {
-        headers: { Authorization: `Bearer ${token}` }
-      }),
-      walletApi.get<DashboardTransaction[]>("/wallet/transactions", {
-        headers: { Authorization: `Bearer ${token}` }
-      })
+      walletApi.get<WalletSummary>("/wallet/summary"),
+      walletApi.get<DashboardTransaction[]>("/wallet/transactions")
     ])
       .then(([summaryResponse, transactionsResponse]) => {
         setWalletApiOffline(false);
@@ -78,10 +71,8 @@ export function WalletPage() {
         setTransactions(transactionsResponse.data);
       })
       .catch((error) => {
-        if (axios.isAxiosError(error) && (error.response?.status === 401 || error.response?.status === 403)) {
-          localStorage.removeItem("nevo.accessToken");
-          localStorage.removeItem("nevo.refreshToken");
-          localStorage.removeItem("nevo.user");
+        if (isApiAuthError(error)) {
+          clearAuthSession();
           setWalletApiOffline(false);
           toast.error("Your session expired. Sign in again.");
           navigate("/login", { replace: true });
@@ -154,7 +145,7 @@ export function WalletPage() {
               onClick={() => toast("No asset alerts yet.")}
               type="button"
             >
-              <Bell className="h-4.5 w-4.5" />
+              <Bell className="h-[18px] w-[18px]" />
             </button>
             <button
               aria-label="Language"
@@ -162,7 +153,7 @@ export function WalletPage() {
               onClick={toggleLanguage}
               type="button"
             >
-              <Globe className="h-4.5 w-4.5" />
+              <Globe className="h-[18px] w-[18px]" />
             </button>
             <button
               aria-label="Support"
@@ -172,7 +163,7 @@ export function WalletPage() {
               }}
               type="button"
             >
-              <Headset className="h-4.5 w-4.5" />
+              <Headset className="h-[18px] w-[18px]" />
             </button>
           </div>
         </div>
@@ -181,7 +172,7 @@ export function WalletPage() {
       <div className="px-4 pt-5">
         {walletApiOffline ? (
           <div className="mb-4 rounded-[22px] border border-amber-300/20 bg-amber-300/10 px-4 py-4 text-[13px] leading-6 text-amber-100">
-            Live wallet data is unavailable because `wallet-service` is not running on `localhost:4002`.
+            Live wallet data is unavailable right now.
           </div>
         ) : null}
 

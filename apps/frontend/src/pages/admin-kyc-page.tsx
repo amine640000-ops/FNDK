@@ -1,16 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import axios from "axios";
 import toast from "react-hot-toast";
 import { ExternalLink, RefreshCcw, ShieldCheck } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { adminApi, getApiErrorMessage, isApiAuthError, uploadBaseUrls } from "@/api/client";
 import { SectionCard } from "@/components/section-card";
-
-const adminApi = axios.create({
-  baseURL: import.meta.env.VITE_ADMIN_API_URL ?? "http://localhost:4006/api"
-});
-
-const identityApiBase = import.meta.env.VITE_IDENTITY_API_URL ?? "http://localhost:4001/api";
-const identityUploadsBase = identityApiBase.replace(/\/api\/?$/, "");
+import { clearAuthSession, getAccessToken } from "@/lib/auth";
 
 type KycSubmission = {
   id: string;
@@ -40,7 +34,7 @@ const resolveKycUploadUrl = (url: string) => {
     return url;
   }
 
-  return `${identityUploadsBase}${url}`;
+  return `${uploadBaseUrls.identity}${url}`;
 };
 
 export function AdminKycPage() {
@@ -57,24 +51,20 @@ export function AdminKycPage() {
   );
 
   const loadKycSubmissions = async () => {
-    const token = localStorage.getItem("nevo.accessToken");
+    const token = getAccessToken();
     if (!token) {
       setLoading(false);
       return;
     }
 
     try {
-      const response = await adminApi.get<KycSubmission[]>("/admin/kyc", {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const response = await adminApi.get<KycSubmission[]>("/admin/kyc");
 
       setAdminApiOffline(false);
       setSubmissions(response.data);
     } catch (error) {
-      if (axios.isAxiosError(error) && (error.response?.status === 401 || error.response?.status === 403)) {
-        localStorage.removeItem("nevo.accessToken");
-        localStorage.removeItem("nevo.refreshToken");
-        localStorage.removeItem("nevo.user");
+      if (isApiAuthError(error)) {
+        clearAuthSession();
         setAdminApiOffline(false);
         toast.error("Your admin session expired. Sign in again.");
         navigate("/login", { replace: true });
@@ -98,7 +88,7 @@ export function AdminKycPage() {
   }, []);
 
   const reviewKyc = async (submissionId: string, status: "verified" | "rejected") => {
-    const token = localStorage.getItem("nevo.accessToken");
+    const token = getAccessToken();
     if (!token) {
       toast.error("Sign in as admin first.");
       return;
@@ -118,21 +108,13 @@ export function AdminKycPage() {
     try {
       await adminApi.patch(
         `/admin/kyc/${submissionId}/review`,
-        adminNote ? { status, adminNote } : { status },
-        {
-          headers: { Authorization: `Bearer ${token}` }
-        }
+        adminNote ? { status, adminNote } : { status }
       );
 
       toast.success(status === "verified" ? "KYC approved." : "KYC rejected.");
       await loadKycSubmissions();
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        const responseMessage = error.response?.data?.message;
-        toast.error(typeof responseMessage === "string" ? responseMessage : "Could not review KYC.");
-      } else {
-        toast.error("Could not review KYC.");
-      }
+      toast.error(getApiErrorMessage(error, "Could not review KYC."));
     } finally {
       setActionId(null);
     }
@@ -157,7 +139,7 @@ export function AdminKycPage() {
       >
         {adminApiOffline ? (
           <div className="mb-4 rounded-3xl border border-amber-300/20 bg-amber-300/10 p-4 text-sm text-amber-100">
-            Live KYC data is unavailable because `admin-service` is not responding on `localhost:4006`.
+            Live KYC data is unavailable right now.
           </div>
         ) : null}
 
