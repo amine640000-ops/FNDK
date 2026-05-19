@@ -448,35 +448,35 @@ export function OverviewPage() {
 
   return (
     <div className="relative px-4 pb-6 pt-5">
-      <header className="flex items-center justify-between">
-        <div>
+      <header className="sticky top-0 z-30 -mx-4 border-b border-cyan-300/10 bg-[#050849]/94 px-4 py-4 backdrop-blur-md">
+        <div className="flex items-center justify-between">
           <BrandMark
             iconClassName="h-10 w-10 rounded-xl p-1.5"
             subtitle="AI trading hub"
             textClassName="text-xl tracking-[0.08em]"
             subtitleClassName="text-[11px] tracking-[0.3em]"
           />
-        </div>
-        <div className="flex items-center gap-2">
-          {headerActions.map(({ label, icon: Icon }) => (
+          <div className="flex items-center gap-2">
+            {headerActions.map(({ label, icon: Icon }) => (
+              <button
+                key={label}
+                aria-label={label}
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-cyan-300/15 bg-white/5 text-cyan-200 transition hover:bg-cyan-300/10"
+                onClick={() => handleHeaderAction(label)}
+                type="button"
+              >
+                <Icon className="h-4 w-4" />
+              </button>
+            ))}
             <button
-              key={label}
-              aria-label={label}
+              aria-label="Sign out"
               className="flex h-10 w-10 items-center justify-center rounded-full border border-cyan-300/15 bg-white/5 text-cyan-200 transition hover:bg-cyan-300/10"
-              onClick={() => handleHeaderAction(label)}
+              onClick={handleLogout}
               type="button"
             >
-              <Icon className="h-4 w-4" />
+              <LogOut className="h-4 w-4" />
             </button>
-          ))}
-          <button
-            aria-label="Sign out"
-            className="flex h-10 w-10 items-center justify-center rounded-full border border-cyan-300/15 bg-white/5 text-cyan-200 transition hover:bg-cyan-300/10"
-            onClick={handleLogout}
-            type="button"
-          >
-            <LogOut className="h-4 w-4" />
-          </button>
+          </div>
         </div>
       </header>
 
