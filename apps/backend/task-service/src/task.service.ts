@@ -54,11 +54,17 @@ type ActivationRow = {
 
 type ReservationRulesRow = {
   reservation_failures_per_day: number;
-  failed_reservations_today: number;
 };
 
 type SecurityPasscodeRow = {
   security_passcode_hash: string | null;
+};
+
+type ReservationDayUsageRow = {
+  activation_count: number;
+  failed_activation_count: number;
+  window_starts_at: string;
+  window_ends_at: string;
 };
 
 const defaultMissionTasks: MissionTaskSetting[] = [
@@ -106,6 +112,8 @@ const defaultMissionTasks: MissionTaskSetting[] = [
 
 @Injectable()
 export class TaskService {
+  private readonly reservationTimeZone = process.env.RESERVATION_TIME_ZONE ?? "Africa/Tunis";
+
   async getStatus() {
     const settings = await getOne<{ value: boolean }>(
       `
@@ -127,15 +135,7 @@ export class TaskService {
     await this.finalizeDueActivations(userId);
 
     const tier = await this.getTierForUser(userId);
-    const activationCount = await getOne<{ count: number }>(
-      `
-        SELECT COUNT(*)::int AS count
-        FROM ai_trading_activations
-        WHERE user_id = $1
-          AND started_at::date = CURRENT_DATE
-      `,
-      [userId]
-    );
+    const reservationDayUsage = await this.getReservationDayUsage(userId);
 
     const runningActivation = await getOne<ActivationRow>(
       `
@@ -160,7 +160,9 @@ export class TaskService {
           vt.activation_limit_per_day AS daily_limit
         FROM ai_trading_activations ata
         JOIN vip_tiers vt ON vt.id = ata.tier_id
-        WHERE ata.user_id = $1 AND ata.status = 'running'
+        WHERE ata.user_id = $1
+          AND ata.status = 'running'
+          AND ata.ends_at > NOW()
         ORDER BY ata.started_at DESC
         LIMIT 1
       `,
@@ -201,8 +203,10 @@ export class TaskService {
       currentTier: this.mapTierRow(tier),
       activeInvestment: tier.active_investment,
       runningActivation: runningActivation ? this.mapActivation(runningActivation) : null,
-      remainingActivationsToday: Math.max(tier.activation_limit_per_day - (activationCount?.count ?? 0), 0),
-      usedActivationsToday: activationCount?.count ?? 0,
+      remainingActivationsToday: Math.max(tier.activation_limit_per_day - reservationDayUsage.activation_count, 0),
+      usedActivationsToday: reservationDayUsage.activation_count,
+      reservationWindowStartsAt: reservationDayUsage.window_starts_at,
+      reservationWindowEndsAt: reservationDayUsage.window_ends_at,
       history: history.rows.map((activation) => this.mapActivation(activation))
     };
   }
@@ -266,7 +270,9 @@ export class TaskService {
       `
         SELECT id
         FROM ai_trading_activations
-        WHERE user_id = $1 AND status = 'running'
+        WHERE user_id = $1
+          AND status = 'running'
+          AND ends_at > NOW()
         LIMIT 1
       `,
       [userId]
@@ -276,19 +282,10 @@ export class TaskService {
       throw new BadRequestException("An AI activation is already running. Wait for the current 2-minute cycle to finish.");
     }
 
-    const activationCount = await getOne<{ count: number }>(
-      `
-        SELECT COUNT(*)::int AS count
-        FROM ai_trading_activations
-        WHERE user_id = $1
-          AND started_at::date = CURRENT_DATE
-      `,
-      [userId]
-    );
-
-    const usedActivations = activationCount?.count ?? 0;
+    const reservationDayUsage = await this.getReservationDayUsage(userId);
+    const usedActivations = reservationDayUsage.activation_count;
     if (usedActivations >= tier.activation_limit_per_day) {
-      throw new BadRequestException(`Daily activation limit reached for ${tier.name}.`);
+      throw new BadRequestException(`Daily reservation limit reached for ${tier.name}. The next window starts at 5 AM.`);
     }
 
     const effectiveReservationAmount = Number((reservationAmount ?? tier.active_investment).toFixed(2));
@@ -303,16 +300,9 @@ export class TaskService {
     const reservationRules = await getOne<ReservationRulesRow>(
       `
         SELECT
-          COALESCE((SELECT (value #>> '{}')::int FROM admin_settings WHERE key = 'platform.reservationFailuresPerDay'), 0) AS reservation_failures_per_day,
-          (
-            SELECT COUNT(*)::int
-            FROM ai_trading_activations
-            WHERE user_id = $1
-              AND status = 'failed'
-              AND started_at::date = CURRENT_DATE
-          ) AS failed_reservations_today
+          COALESCE((SELECT (value #>> '{}')::int FROM admin_settings WHERE key = 'platform.reservationFailuresPerDay'), 0) AS reservation_failures_per_day
       `,
-      [userId]
+      []
     );
 
     const plan = this.buildActivationPlan(tier);
@@ -322,7 +312,7 @@ export class TaskService {
       activationLimitPerDay: tier.activation_limit_per_day
     });
 
-    if ((reservationRules?.failed_reservations_today ?? 0) < (reservationRules?.reservation_failures_per_day ?? 0)) {
+    if (reservationDayUsage.failed_activation_count < (reservationRules?.reservation_failures_per_day ?? 0)) {
       const failedActivation = await getOne<ActivationRow>(
         `
           INSERT INTO ai_trading_activations (
@@ -599,8 +589,50 @@ export class TaskService {
         entryPrice: completion.entryPrice,
         exitPrice: completion.exitPrice,
         executedAt: new Date().toISOString()
+      }).catch((error) => {
+        console.warn("[task-service] failed to publish activation profit event", error);
       });
     }
+  }
+
+  private async getReservationDayUsage(userId: string) {
+    const usage = await getOne<ReservationDayUsageRow>(
+      `
+        WITH reservation_window AS (
+          SELECT
+            (
+              date_trunc('day', (NOW() AT TIME ZONE $2) - INTERVAL '5 hours')
+              + INTERVAL '5 hours'
+            ) AT TIME ZONE $2 AS starts_at,
+            (
+              date_trunc('day', (NOW() AT TIME ZONE $2) - INTERVAL '5 hours')
+              + INTERVAL '29 hours'
+            ) AT TIME ZONE $2 AS ends_at
+        ),
+        scoped_activations AS (
+          SELECT ata.status
+          FROM ai_trading_activations ata
+          CROSS JOIN reservation_window rw
+          WHERE ata.user_id = $1
+            AND ata.started_at >= rw.starts_at
+            AND ata.started_at < rw.ends_at
+        )
+        SELECT
+          (SELECT starts_at FROM reservation_window) AS window_starts_at,
+          (SELECT ends_at FROM reservation_window) AS window_ends_at,
+          COUNT(*)::int AS activation_count,
+          COUNT(*) FILTER (WHERE status = 'failed')::int AS failed_activation_count
+        FROM scoped_activations
+      `,
+      [userId, this.reservationTimeZone]
+    );
+
+    return {
+      activation_count: usage?.activation_count ?? 0,
+      failed_activation_count: usage?.failed_activation_count ?? 0,
+      window_starts_at: usage?.window_starts_at ?? new Date().toISOString(),
+      window_ends_at: usage?.window_ends_at ?? new Date().toISOString()
+    };
   }
 
   private async getDistributionCandidates(scope: string) {

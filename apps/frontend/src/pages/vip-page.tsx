@@ -32,6 +32,8 @@ type ActivationState = {
   runningActivation: AiTradingActivation | null;
   remainingActivationsToday: number;
   usedActivationsToday: number;
+  reservationWindowStartsAt?: string;
+  reservationWindowEndsAt?: string;
   history: AiTradingActivation[];
 };
 
@@ -318,11 +320,12 @@ export function VipPage() {
   const runningActivation = liveState.runningActivation;
   const nextTier = vipTiers.find((tier) => tier.id === currentTier.id + 1);
   const hasActiveInvestment = liveState.activeInvestment > 0;
-  const canStartActivation =
-    !loadingActivation && !runningActivation && liveState.remainingActivationsToday > 0 && hasActiveInvestment;
   const countdownSeconds = runningActivation
     ? Math.max(Math.ceil((new Date(runningActivation.endsAt).getTime() - now) / 1000), 0)
     : 0;
+  const liveRunningActivation = runningActivation && countdownSeconds > 0 ? runningActivation : null;
+  const canStartActivation =
+    !loadingActivation && !liveRunningActivation && liveState.remainingActivationsToday > 0 && hasActiveInvestment;
 
   useEffect(() => {
     if (!runningActivation || countdownSeconds > 0 || completionRefreshInFlight.current === runningActivation.id) {
@@ -364,11 +367,30 @@ export function VipPage() {
   );
 
   const todayProfit = useMemo(() => {
-    const today = new Date().toDateString();
+    const fallbackStart = new Date();
+    fallbackStart.setHours(5, 0, 0, 0);
+    if (Date.now() < fallbackStart.getTime()) {
+      fallbackStart.setDate(fallbackStart.getDate() - 1);
+    }
+
+    const windowStart = liveState.reservationWindowStartsAt
+      ? new Date(liveState.reservationWindowStartsAt).getTime()
+      : fallbackStart.getTime();
+    const windowEnd = liveState.reservationWindowEndsAt
+      ? new Date(liveState.reservationWindowEndsAt).getTime()
+      : windowStart + 24 * 60 * 60 * 1000;
+
     return completedHistory
-      .filter((activation) => activation.completedAt && new Date(activation.completedAt).toDateString() === today)
+      .filter((activation) => {
+        if (!activation.completedAt) {
+          return false;
+        }
+
+        const completedAt = new Date(activation.completedAt).getTime();
+        return completedAt >= windowStart && completedAt < windowEnd;
+      })
       .reduce((sum, activation) => sum + (activation.profit ?? 0), 0);
-  }, [completedHistory]);
+  }, [completedHistory, liveState.reservationWindowEndsAt, liveState.reservationWindowStartsAt]);
 
   const totalActivationProfit = useMemo(
     () => completedHistory.reduce((sum, activation) => sum + (activation.profit ?? 0), 0),
@@ -378,17 +400,17 @@ export function VipPage() {
   const todayReservation = useMemo(() => {
     const today = new Date().toDateString();
     return (
-      runningActivation ??
+      liveRunningActivation ??
       liveState.history.find((activation) => {
         const referenceTime = activation.completedAt ?? activation.startedAt;
         return new Date(referenceTime).toDateString() === today;
       }) ??
       null
     );
-  }, [liveState.history, runningActivation]);
+  }, [liveState.history, liveRunningActivation]);
 
-  const strategyAssets = runningActivation
-    ? [runningActivation.asset, ...currentTier.activationAssets.filter((asset) => asset !== runningActivation.asset)]
+  const strategyAssets = liveRunningActivation
+    ? [liveRunningActivation.asset, ...currentTier.activationAssets.filter((asset) => asset !== liveRunningActivation.asset)]
     : currentTier.activationAssets;
   const parsedReservationAmount = Number(reservationAmount || 0);
   const sortedVipTiers = useMemo(() => [...vipTiers].sort((left, right) => left.id - right.id), [vipTiers]);
@@ -985,18 +1007,18 @@ export function VipPage() {
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <div className="text-[13px] font-semibold uppercase tracking-[0.18em] text-[#0c4b51]/80">
-                    {runningActivation ? "Reservation live" : hasActiveInvestment ? "Next reservation" : "Deposit required"}
+                    {liveRunningActivation ? "Reservation live" : hasActiveInvestment ? "Next reservation" : "Deposit required"}
                   </div>
                   <div className="mt-2 text-[1.02rem] font-bold">
-                    {runningActivation
-                      ? `${runningActivation.strategy} ends in`
+                    {liveRunningActivation
+                      ? `${liveRunningActivation.strategy} ends in`
                       : hasActiveInvestment
-                        ? "The next AI reservation window is open now."
+                        ? "The current 5 AM reservation window is open now."
                         : "Fund the account to unlock the reservation window."}
                   </div>
                 </div>
                 <div className="shrink-0 text-[1.25rem] font-extrabold">
-                  {runningActivation ? formatCountdown(countdownSeconds) : hasActiveInvestment ? "Start now" : "Fund account"}
+                  {liveRunningActivation ? formatCountdown(countdownSeconds) : hasActiveInvestment ? "Start now" : "Fund account"}
                 </div>
               </div>
             </section>
@@ -1005,10 +1027,10 @@ export function VipPage() {
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <div className="text-[1.8rem] font-extrabold leading-none text-white">Strategie V{currentTier.id}</div>
-                  <div className="mt-2 text-sm text-cyan-200/80">{runningActivation?.strategy ?? `${currentTier.name} execution track`}</div>
+                  <div className="mt-2 text-sm text-cyan-200/80">{liveRunningActivation?.strategy ?? `${currentTier.name} execution track`}</div>
                 </div>
                 <div className="rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-1.5 text-[12px] font-semibold uppercase tracking-[0.18em] text-cyan-100">
-                  {runningActivation ? "Running" : hasActiveInvestment ? "Ready" : "Locked"}
+                  {liveRunningActivation ? "Running" : hasActiveInvestment ? "Ready" : "Locked"}
                 </div>
               </div>
 
@@ -1022,7 +1044,7 @@ export function VipPage() {
                     />
                   ))}
                 </div>
-                <div className="text-[2rem] font-extrabold text-white">{runningActivation?.asset ?? strategyAssets[0]}</div>
+                <div className="text-[2rem] font-extrabold text-white">{liveRunningActivation?.asset ?? strategyAssets[0]}</div>
               </div>
 
               <div className="mt-6 space-y-4 border-t border-white/10 pt-5">
@@ -1047,23 +1069,23 @@ export function VipPage() {
                 <div className="flex items-center justify-between gap-4 text-[15px]">
                   <span className="text-white/45">Reservation Amount</span>
                   <span className="font-semibold text-white">
-                    {formatCurrency(runningActivation?.reservationAmount ?? liveState.activeInvestment)}
+                    {formatCurrency(liveRunningActivation?.reservationAmount ?? liveState.activeInvestment)}
                   </span>
                 </div>
               </div>
 
               <div className="mt-6 rounded-[24px] border border-white/10 bg-[#04073d]/88 p-4">
                 <div className="flex items-center gap-2 text-cyan-200">
-                  {runningActivation ? <Clock3 className="h-4 w-4" /> : <PlayCircle className="h-4 w-4" />}
+                  {liveRunningActivation ? <Clock3 className="h-4 w-4" /> : <PlayCircle className="h-4 w-4" />}
                   <span className="text-sm uppercase tracking-[0.24em]">
-                    {runningActivation ? "Run in progress" : "Ready to activate"}
+                    {liveRunningActivation ? "Run in progress" : "Ready to activate"}
                   </span>
                 </div>
                 <div className="mt-3 text-[1.02rem] font-bold text-white">
-                  {runningActivation?.marketSummary ?? "Launch the next timed AI reservation directly from this strategy panel."}
+                  {liveRunningActivation?.marketSummary ?? "Launch the next timed AI reservation directly from this strategy panel."}
                 </div>
                 <div className="mt-2 text-[13px] leading-5 text-slate-300">
-                  {runningActivation?.thesis ??
+                  {liveRunningActivation?.thesis ??
                     "Each reservation opens a short execution cycle, closes automatically, and posts the result to your record history."}
                 </div>
 
@@ -1080,7 +1102,7 @@ export function VipPage() {
                     onClick={openReservationModal}
                     type="button"
                   >
-                    {loadingActivation ? "Starting..." : runningActivation ? "Reservation Running" : "Open Reservation"}
+                    {loadingActivation ? "Starting..." : liveRunningActivation ? "Reservation Running" : "Open Reservation"}
                   </button>
                   {!hasActiveInvestment ? (
                     <Link
@@ -1099,19 +1121,19 @@ export function VipPage() {
         {activeTab === "today" ? (
           <section className="mt-5 space-y-4">
             <article className="neon-panel p-5">
-              <div className="text-sm uppercase tracking-[0.24em] text-cyan-200/75">Today performance</div>
+              <div className="text-sm uppercase tracking-[0.24em] text-cyan-200/75">5 AM window performance</div>
               <div className="mt-3 text-[2rem] font-extrabold text-white">{formatCurrency(todayProfit)}</div>
               <div className="mt-2 text-[13px] text-slate-300">
-                {runningActivation
+                {liveRunningActivation
                   ? `A run is live and closes in ${formatCountdown(countdownSeconds)}.`
-                  : `${liveState.remainingActivationsToday} activation slots remain for today.`}
+                  : `${liveState.remainingActivationsToday} activation slots remain in the current 5 AM window.`}
               </div>
             </article>
 
             <article className="neon-soft-panel p-5">
               <div className="grid grid-cols-2 gap-4">
                 <div className="rounded-[22px] border border-white/10 bg-white/5 p-4">
-                  <div className="text-sm uppercase tracking-[0.18em] text-cyan-200/75">Used today</div>
+                  <div className="text-sm uppercase tracking-[0.18em] text-cyan-200/75">Used in window</div>
                   <div className="mt-2 text-[1.6rem] font-bold text-white">{liveState.usedActivationsToday}</div>
                 </div>
                 <div className="rounded-[22px] border border-white/10 bg-white/5 p-4">
