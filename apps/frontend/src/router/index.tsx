@@ -20,6 +20,23 @@ const OverviewPage = lazy(() => import("@/pages/overview-page").then(({ Overview
 const ProfilePage = lazy(() => import("@/pages/profile-page").then(({ ProfilePage }) => ({ default: ProfilePage })));
 const RegisterPage = lazy(() => import("@/pages/register-page").then(({ RegisterPage }) => ({ default: RegisterPage })));
 const ReferralsPage = lazy(() => import("@/pages/referrals-page").then(({ ReferralsPage }) => ({ default: ReferralsPage })));
+const ActivityInformationPage = lazy(() =>
+  import("@/pages/settings-pages").then(({ ActivityInformationPage }) => ({ default: ActivityInformationPage }))
+);
+const AssetTransferPage = lazy(() => import("@/pages/settings-pages").then(({ AssetTransferPage }) => ({ default: AssetTransferPage })));
+const EmailSettingsPage = lazy(() => import("@/pages/settings-pages").then(({ EmailSettingsPage }) => ({ default: EmailSettingsPage })));
+const LanguagePage = lazy(() => import("@/pages/settings-pages").then(({ LanguagePage }) => ({ default: LanguagePage })));
+const LoginPasswordPage = lazy(() => import("@/pages/settings-pages").then(({ LoginPasswordPage }) => ({ default: LoginPasswordPage })));
+const NotificationsPage = lazy(() => import("@/pages/settings-pages").then(({ NotificationsPage }) => ({ default: NotificationsPage })));
+const PersonalInformationPage = lazy(() =>
+  import("@/pages/settings-pages").then(({ PersonalInformationPage }) => ({ default: PersonalInformationPage }))
+);
+const PhoneSettingsPage = lazy(() => import("@/pages/settings-pages").then(({ PhoneSettingsPage }) => ({ default: PhoneSettingsPage })));
+const SecurityOverviewPage = lazy(() => import("@/pages/settings-pages").then(({ SecurityOverviewPage }) => ({ default: SecurityOverviewPage })));
+const SupportPage = lazy(() => import("@/pages/settings-pages").then(({ SupportPage }) => ({ default: SupportPage })));
+const WithdrawalAddressPage = lazy(() =>
+  import("@/pages/settings-pages").then(({ WithdrawalAddressPage }) => ({ default: WithdrawalAddressPage }))
+);
 const TradeHistoryPage = lazy(() => import("@/pages/trade-history-page").then(({ TradeHistoryPage }) => ({ default: TradeHistoryPage })));
 const VipPage = lazy(() => import("@/pages/vip-page").then(({ VipPage }) => ({ default: VipPage })));
 const WalletPage = lazy(() => import("@/pages/wallet-page").then(({ WalletPage }) => ({ default: WalletPage })));
@@ -68,7 +85,19 @@ export const router = createBrowserRouter([
           { path: "vip", element: withSuspense(<VipPage />) },
           { path: "trades", element: withSuspense(<TradeHistoryPage />) },
           { path: "referrals", element: withSuspense(<ReferralsPage />) },
-          { path: "profile", element: withSuspense(<ProfilePage />) }
+          { path: "profile", element: withSuspense(<ProfilePage />) },
+          { path: "settings", element: <Navigate replace to="/app/profile" /> },
+          { path: "settings/activity", element: withSuspense(<ActivityInformationPage />) },
+          { path: "settings/asset-transfer", element: withSuspense(<AssetTransferPage />) },
+          { path: "settings/email", element: withSuspense(<EmailSettingsPage />) },
+          { path: "settings/help", element: withSuspense(<SupportPage />) },
+          { path: "settings/language", element: withSuspense(<LanguagePage />) },
+          { path: "settings/login-password", element: withSuspense(<LoginPasswordPage />) },
+          { path: "settings/notifications", element: withSuspense(<NotificationsPage />) },
+          { path: "settings/personal-information", element: withSuspense(<PersonalInformationPage />) },
+          { path: "settings/phone", element: withSuspense(<PhoneSettingsPage />) },
+          { path: "settings/security", element: withSuspense(<SecurityOverviewPage />) },
+          { path: "settings/withdrawal-address", element: withSuspense(<WithdrawalAddressPage />) }
         ]
       }
     ]

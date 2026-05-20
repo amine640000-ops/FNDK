@@ -4,6 +4,7 @@ import {
   Activity,
   ArrowLeftRight,
   Award,
+  Bell,
   Camera,
   ChevronLeft,
   ChevronRight,
@@ -11,6 +12,7 @@ import {
   Copy,
   CreditCard,
   FileText,
+  Headset,
   IdCard,
   KeyRound,
   Languages,
@@ -476,15 +478,17 @@ export function ProfilePage() {
       </section>
 
       <section className="fndk-settings-card mt-5 overflow-hidden">
-        <SettingsRow icon={UserRound} label="Personal Information" />
-        <SettingsRow icon={CreditCard} label="Manage Your Card" />
-        <SettingsRow icon={ArrowLeftRight} label="Asset Transfer" />
-        <SettingsRow icon={Award} label="My Mission" />
-        <SettingsRow icon={FileText} label="Department Order" />
-        <SettingsRow icon={LockKeyhole} label="Login Password" />
+        <SettingsRow icon={UserRound} label="Personal Information" onClick={() => navigate("/app/settings/personal-information")} />
+        <SettingsRow icon={CreditCard} label="Manage Your Card" onClick={() => navigate("/app/settings/withdrawal-address")} />
+        <SettingsRow icon={ArrowLeftRight} label="Asset Transfer" onClick={() => navigate("/app/settings/asset-transfer")} />
+        <SettingsRow icon={Award} label="My Mission" onClick={() => navigate("/app/mission")} />
+        <SettingsRow icon={FileText} label="Department Order" onClick={() => navigate("/app/trades")} />
+        <SettingsRow icon={LockKeyhole} label="Login Password" onClick={() => navigate("/app/settings/login-password")} />
         <SettingsRow icon={ShieldCheck} label="Security Center" onClick={() => setScreen("security")} />
-        <SettingsRow icon={Activity} label="Activity Information" />
-        <SettingsRow icon={Languages} label="Language" />
+        <SettingsRow icon={Activity} label="Activity Information" onClick={() => navigate("/app/settings/activity")} />
+        <SettingsRow icon={Bell} label="Notifications" onClick={() => navigate("/app/settings/notifications")} />
+        <SettingsRow icon={Languages} label="Language" onClick={() => navigate("/app/settings/language")} />
+        <SettingsRow icon={Headset} label="Help Center" onClick={() => navigate("/app/settings/help")} />
       </section>
 
       <button
@@ -539,7 +543,7 @@ export function ProfilePage() {
       <ScreenHeader title="Security Center" onBack={() => setScreen("settings")} />
       <div className="px-4 pt-6">
         <section className="fndk-settings-card overflow-hidden">
-          <SecurityRow icon={WalletCards} label="Withdrawal Address" status="Go To Setting" />
+          <SecurityRow icon={WalletCards} label="Withdrawal Address" status="Go To Setting" onClick={() => navigate("/app/settings/withdrawal-address")} />
           <SecurityRow
             active
             icon={IdCard}
@@ -547,9 +551,9 @@ export function ProfilePage() {
             status={realNameStatus}
             onClick={() => setScreen("real-name-details")}
           />
-          <SecurityRow icon={Smartphone} label="Phone Number" status="Go To Setting" />
-          <SecurityRow icon={Mail} label="Email" status="Go To Setting" />
-          <SecurityRow icon={LockKeyhole} label="Login Password" status="Go To Setting" />
+          <SecurityRow icon={Smartphone} label="Phone Number" status="Go To Setting" onClick={() => navigate("/app/settings/phone")} />
+          <SecurityRow icon={Mail} label="Email" status="Go To Setting" onClick={() => navigate("/app/settings/email")} />
+          <SecurityRow icon={LockKeyhole} label="Login Password" status="Go To Setting" onClick={() => navigate("/app/settings/login-password")} />
           <SecurityRow
             icon={KeyRound}
             label="Transaction Password"
