@@ -204,6 +204,7 @@ export function VipPage() {
   const [vipListOpen, setVipListOpen] = useState(false);
   const completionRefreshInFlight = useRef<string | null>(null);
   const reservationResetRefreshInFlight = useRef(false);
+  const activationStartInFlight = useRef(false);
 
   const fallbackActivationState = useMemo<ActivationState>(
     () => ({
@@ -571,6 +572,10 @@ export function VipPage() {
   };
 
   const startActivation = async () => {
+    if (activationStartInFlight.current) {
+      return;
+    }
+
     const token = getAccessToken();
     if (!token) {
       toast.error("Login first to trigger AI trading.");
@@ -592,6 +597,7 @@ export function VipPage() {
       return;
     }
 
+    activationStartInFlight.current = true;
     setLoadingActivation(true);
     try {
       const response = await taskApi.post<StartActivationResponse>(
@@ -612,7 +618,20 @@ export function VipPage() {
       setActivationState(latestState.data);
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Unable to start AI activation."));
+
+      try {
+        const latestState = await taskApi.get<ActivationState>("/tasks/activations/me");
+        setActivationState(latestState.data);
+
+        if (latestState.data.runningActivation) {
+          setReservationModalOpen(false);
+          setSecurityPasscode("");
+        }
+      } catch {
+        // The regular polling loop will retry state refresh if this request fails.
+      }
     } finally {
+      activationStartInFlight.current = false;
       setLoadingActivation(false);
     }
   };

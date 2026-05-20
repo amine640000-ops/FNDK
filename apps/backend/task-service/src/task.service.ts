@@ -266,23 +266,57 @@ export class TaskService {
       throw new BadRequestException("Activate a VIP tier with an approved deposit before starting AI trading.");
     }
 
-    const runningActivation = await getOne<{ id: string }>(
+    const reservationDayUsage = await this.getReservationDayUsage(userId);
+
+    const runningActivation = await getOne<ActivationRow>(
       `
-        SELECT id
-        FROM ai_trading_activations
-        WHERE user_id = $1
-          AND status = 'running'
-          AND ends_at > NOW()
+        SELECT
+          ata.id,
+          ata.tier_id,
+          vt.name AS tier_name,
+          ata.asset,
+          ata.strategy,
+          ata.market_summary,
+          ata.thesis,
+          ata.status,
+          ata.duration_minutes,
+          ata.daily_slot_number,
+          ata.started_at,
+          ata.ends_at,
+          ata.completed_at,
+          ata.reservation_amount::float8 AS reservation_amount,
+          ata.entry_price::float8 AS entry_price,
+          ata.exit_price::float8 AS exit_price,
+          ata.profit::float8 AS profit,
+          vt.activation_limit_per_day AS daily_limit
+        FROM ai_trading_activations ata
+        JOIN vip_tiers vt ON vt.id = ata.tier_id
+        WHERE ata.user_id = $1
+          AND ata.status = 'running'
+          AND ata.ends_at > NOW()
+        ORDER BY ata.started_at DESC
         LIMIT 1
       `,
       [userId]
     );
 
     if (runningActivation) {
-      throw new BadRequestException("An AI activation is already running. Wait for the current 2-minute cycle to finish.");
+      const expectedIncome = this.buildExpectedIncome(runningActivation.reservation_amount || tier.active_investment, {
+        dailyRoiMin: tier.daily_roi_min,
+        dailyRoiMax: tier.daily_roi_max,
+        activationLimitPerDay: tier.activation_limit_per_day
+      });
+
+      return {
+        outcome: "running" as const,
+        message: "AI trading is already running. The current cycle is now active.",
+        activation: this.mapActivation(runningActivation),
+        expectedIncomeMin: expectedIncome.min,
+        expectedIncomeMax: expectedIncome.max,
+        remainingActivationsToday: Math.max(tier.activation_limit_per_day - reservationDayUsage.activation_count, 0)
+      };
     }
 
-    const reservationDayUsage = await this.getReservationDayUsage(userId);
     const usedActivations = reservationDayUsage.activation_count;
     if (usedActivations >= tier.activation_limit_per_day) {
       throw new BadRequestException(`Daily reservation limit reached for ${tier.name}. The next window starts at 5 AM.`);
