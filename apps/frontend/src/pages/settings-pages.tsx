@@ -58,6 +58,8 @@ type TransferRequest = {
   createdAt: string;
 };
 
+type LanguageCode = "en" | "fr" | "ar";
+
 const emptySummary: WalletSummary = {
   totalBalance: 0,
   activeInvestment: 0,
@@ -93,6 +95,41 @@ const readStoredUser = (): StoredUser => {
 const writeStoredUser = (user: StoredUser) => {
   const currentUser = readStoredUser();
   localStorage.setItem("nevo.user", JSON.stringify({ ...currentUser, ...user }));
+};
+
+const readLanguage = (): LanguageCode => {
+  const stored = localStorage.getItem("nevo.language");
+  return stored === "fr" || stored === "ar" ? stored : "en";
+};
+
+const applyLanguagePreference = (language: LanguageCode) => {
+  localStorage.setItem("nevo.language", language);
+  document.documentElement.lang = language;
+  document.documentElement.dir = language === "ar" ? "rtl" : "ltr";
+};
+
+const normalizeNotifications = (value: unknown): NotificationItem[] => {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is NotificationItem => {
+      if (!item || typeof item !== "object") {
+        return false;
+      }
+
+      const notification = item as Partial<NotificationItem>;
+      return (
+        typeof notification.id === "string" &&
+        typeof notification.title === "string" &&
+        typeof notification.message === "string" &&
+        typeof notification.createdAt === "string"
+      );
+    });
+  }
+
+  if (value && typeof value === "object" && "notifications" in value) {
+    return normalizeNotifications((value as { notifications?: unknown }).notifications);
+  }
+
+  return [];
 };
 
 const readWithdrawalSettings = (): WithdrawalSettings => {
@@ -589,16 +626,18 @@ export function ActivityInformationPage() {
 }
 
 export function LanguagePage() {
-  const [language, setLanguage] = useState<"en" | "fr">(() => {
-    const stored = localStorage.getItem("nevo.language");
-    return stored === "fr" ? "fr" : "en";
-  });
+  const [language, setLanguage] = useState<LanguageCode>(() => readLanguage());
 
-  const chooseLanguage = (nextLanguage: "en" | "fr") => {
+  const chooseLanguage = (nextLanguage: LanguageCode) => {
     setLanguage(nextLanguage);
-    localStorage.setItem("nevo.language", nextLanguage);
-    document.documentElement.lang = nextLanguage;
-    toast.success(nextLanguage === "fr" ? "Language set to Francais." : "Language set to English.");
+    applyLanguagePreference(nextLanguage);
+    toast.success(
+      nextLanguage === "ar"
+        ? "تم ضبط اللغة على العربية."
+        : nextLanguage === "fr"
+          ? "Language set to Francais."
+          : "Language set to English."
+    );
   };
 
   return (
@@ -606,7 +645,8 @@ export function LanguagePage() {
       <section className="neon-soft-panel grid gap-3 p-5">
         {[
           { id: "en" as const, label: "English" },
-          { id: "fr" as const, label: "Francais" }
+          { id: "fr" as const, label: "Francais" },
+          { id: "ar" as const, label: "العربية" }
         ].map((option) => (
           <button
             key={option.id}
@@ -690,8 +730,8 @@ export function NotificationsPage() {
 
     setLoading(true);
     try {
-      const response = await notificationApi.get<NotificationItem[]>("/notifications", { headers: authHeaders() });
-      setNotifications(response.data);
+      const response = await notificationApi.get<unknown>("/notifications", { headers: authHeaders() });
+      setNotifications(normalizeNotifications(response.data));
     } catch (error) {
       toast.error(resolveApiErrorMessage("Could not load notifications.", error));
     } finally {

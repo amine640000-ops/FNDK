@@ -15,13 +15,15 @@ type TeamGenerationEntry = {
   todayIncome: number;
 };
 
+type LanguageCode = "en" | "fr" | "ar";
+
 const pieColors = ["#245DFF", "#14D945", "#FFC21A"];
 
 export function ReferralsPage() {
   const referrals = useDashboardStore((state) => state.referrals);
-  const [language, setLanguage] = useState<"en" | "fr">(() => {
+  const [language, setLanguage] = useState<LanguageCode>(() => {
     const stored = localStorage.getItem("nevo.language");
-    return stored === "fr" ? "fr" : "en";
+    return stored === "fr" || stored === "ar" ? stored : "en";
   });
   const [teamMetric, setTeamMetric] = useState<"members" | "income">("members");
   const [generationTab, setGenerationTab] = useState<1 | 2 | 3>(1);
@@ -83,11 +85,18 @@ export function ReferralsPage() {
   };
 
   const toggleLanguage = () => {
-    const nextLanguage = language === "en" ? "fr" : "en";
+    const nextLanguage = language === "en" ? "fr" : language === "fr" ? "ar" : "en";
     setLanguage(nextLanguage);
     localStorage.setItem("nevo.language", nextLanguage);
     document.documentElement.lang = nextLanguage;
-    toast.success(nextLanguage === "fr" ? "Langue definie sur le francais." : "Language set to English.");
+    document.documentElement.dir = nextLanguage === "ar" ? "rtl" : "ltr";
+    toast.success(
+      nextLanguage === "ar"
+        ? "تم ضبط اللغة على العربية."
+        : nextLanguage === "fr"
+          ? "Langue definie sur le francais."
+          : "Language set to English."
+    );
   };
 
   return (

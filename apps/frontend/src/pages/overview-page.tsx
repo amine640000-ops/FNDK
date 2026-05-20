@@ -142,6 +142,8 @@ type MarketTicker = {
   logoUrl: string;
 };
 
+type LanguageCode = "en" | "fr" | "ar";
+
 type BinanceTicker = {
   symbol: string;
   lastPrice: string;
@@ -203,13 +205,14 @@ export function OverviewPage() {
   const [failedLogos, setFailedLogos] = useState<Record<string, boolean>>({});
   const [adSlides, setAdSlides] = useState<AdCarouselSlide[]>(defaultAdCarouselSlides);
   const [activeAdIndex, setActiveAdIndex] = useState(0);
-  const [language, setLanguage] = useState<"en" | "fr">(() => {
+  const [language, setLanguage] = useState<LanguageCode>(() => {
     const stored = localStorage.getItem("nevo.language");
-    return stored === "fr" ? "fr" : "en";
+    return stored === "fr" || stored === "ar" ? stored : "en";
   });
 
   useEffect(() => {
     document.documentElement.lang = language;
+    document.documentElement.dir = language === "ar" ? "rtl" : "ltr";
     localStorage.setItem("nevo.language", language);
   }, [language]);
 
@@ -379,9 +382,15 @@ export function OverviewPage() {
   };
 
   const toggleLanguage = () => {
-    const nextLanguage = language === "en" ? "fr" : "en";
+    const nextLanguage = language === "en" ? "fr" : language === "fr" ? "ar" : "en";
     setLanguage(nextLanguage);
-    toast.success(nextLanguage === "en" ? "Language set to English." : "Langue definie sur le francais.");
+    toast.success(
+      nextLanguage === "ar"
+        ? "تم ضبط اللغة على العربية."
+        : nextLanguage === "en"
+          ? "Language set to English."
+          : "Langue definie sur le francais."
+    );
   };
 
   const openSupport = () => {
@@ -497,7 +506,7 @@ export function OverviewPage() {
                       {!notification.isRead ? <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-cyan-300" /> : null}
                     </div>
                     <div className="mt-3 text-[11px] uppercase tracking-[0.22em] text-slate-400">
-                      {new Date(notification.createdAt).toLocaleString(language === "fr" ? "fr-FR" : "en-GB")}
+                      {new Date(notification.createdAt).toLocaleString(language === "ar" ? "ar-TN" : language === "fr" ? "fr-FR" : "en-GB")}
                     </div>
                   </div>
                 ))

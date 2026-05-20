@@ -24,6 +24,7 @@ const emptySummary: WalletSummary = {
 };
 
 type WalletTab = "assets" | "income";
+type LanguageCode = "en" | "fr" | "ar";
 
 const typeLabel: Record<DashboardTransaction["type"], string> = {
   deposit: "Deposit",
@@ -42,9 +43,9 @@ export function WalletPage() {
   const [walletApiOffline, setWalletApiOffline] = useState(false);
   const [walletTab, setWalletTab] = useState<WalletTab>("assets");
   const [amountsVisible, setAmountsVisible] = useState(true);
-  const [language, setLanguage] = useState<"en" | "fr">(() => {
+  const [language, setLanguage] = useState<LanguageCode>(() => {
     const stored = localStorage.getItem("nevo.language");
-    return stored === "fr" ? "fr" : "en";
+    return stored === "fr" || stored === "ar" ? stored : "en";
   });
   const recordsRef = useRef<HTMLDivElement | null>(null);
   const loadedRef = useRef(false);
@@ -120,11 +121,18 @@ export function WalletPage() {
   );
 
   const toggleLanguage = () => {
-    const nextLanguage = language === "en" ? "fr" : "en";
+    const nextLanguage = language === "en" ? "fr" : language === "fr" ? "ar" : "en";
     setLanguage(nextLanguage);
     localStorage.setItem("nevo.language", nextLanguage);
     document.documentElement.lang = nextLanguage;
-    toast.success(nextLanguage === "fr" ? "Langue definie sur le francais." : "Language set to English.");
+    document.documentElement.dir = nextLanguage === "ar" ? "rtl" : "ltr";
+    toast.success(
+      nextLanguage === "ar"
+        ? "تم ضبط اللغة على العربية."
+        : nextLanguage === "fr"
+          ? "Langue definie sur le francais."
+          : "Language set to English."
+    );
   };
 
   return (

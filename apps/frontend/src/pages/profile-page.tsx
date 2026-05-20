@@ -2,15 +2,12 @@ import { ChangeEvent, useEffect, useId, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import {
   Activity,
-  ArrowLeftRight,
-  Award,
   Bell,
   Camera,
   ChevronLeft,
   ChevronRight,
   CircleAlert,
   Copy,
-  CreditCard,
   FileText,
   Headset,
   IdCard,
@@ -479,9 +476,6 @@ export function ProfilePage() {
 
       <section className="fndk-settings-card mt-5 overflow-hidden">
         <SettingsRow icon={UserRound} label="Personal Information" onClick={() => navigate("/app/settings/personal-information")} />
-        <SettingsRow icon={CreditCard} label="Manage Your Card" onClick={() => navigate("/app/settings/withdrawal-address")} />
-        <SettingsRow icon={ArrowLeftRight} label="Asset Transfer" onClick={() => navigate("/app/settings/asset-transfer")} />
-        <SettingsRow icon={Award} label="My Mission" onClick={() => navigate("/app/mission")} />
         <SettingsRow icon={FileText} label="Department Order" onClick={() => navigate("/app/trades")} />
         <SettingsRow icon={LockKeyhole} label="Login Password" onClick={() => navigate("/app/settings/login-password")} />
         <SettingsRow icon={ShieldCheck} label="Security Center" onClick={() => setScreen("security")} />

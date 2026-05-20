@@ -51,6 +51,8 @@ type MissionCenterState = {
   tasks: MissionTaskProgress[];
 };
 
+type LanguageCode = "en" | "fr" | "ar";
+
 const compactNumber = new Intl.NumberFormat("en-US", {
   notation: "compact",
   maximumFractionDigits: 2
@@ -174,9 +176,9 @@ export function VipPage() {
   const [activationState, setActivationState] = useState<ActivationState | null>(null);
   const [loadingActivation, setLoadingActivation] = useState(false);
   const [now, setNow] = useState(Date.now());
-  const [language, setLanguage] = useState<"en" | "fr">(() => {
+  const [language, setLanguage] = useState<LanguageCode>(() => {
     const stored = localStorage.getItem("nevo.language");
-    return stored === "fr" ? "fr" : "en";
+    return stored === "fr" || stored === "ar" ? stored : "en";
   });
   const [activeTab, setActiveTab] = useState<(typeof missionTabs)[number]["id"]>(() =>
     location.pathname.endsWith("/mission") ? "tasks" : "strategy"
@@ -217,6 +219,7 @@ export function VipPage() {
 
   useEffect(() => {
     document.documentElement.lang = language;
+    document.documentElement.dir = language === "ar" ? "rtl" : "ltr";
     localStorage.setItem("nevo.language", language);
   }, [language]);
 
@@ -481,9 +484,15 @@ export function VipPage() {
   };
 
   const handleLanguage = () => {
-    const nextLanguage = language === "en" ? "fr" : "en";
+    const nextLanguage = language === "en" ? "fr" : language === "fr" ? "ar" : "en";
     setLanguage(nextLanguage);
-    toast.success(nextLanguage === "fr" ? "Langue definie sur le francais." : "Language set to English.");
+    toast.success(
+      nextLanguage === "ar"
+        ? "تم ضبط اللغة على العربية."
+        : nextLanguage === "fr"
+          ? "Langue definie sur le francais."
+          : "Language set to English."
+    );
   };
 
   const handleSupport = () => {

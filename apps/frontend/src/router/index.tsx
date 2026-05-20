@@ -23,7 +23,6 @@ const ReferralsPage = lazy(() => import("@/pages/referrals-page").then(({ Referr
 const ActivityInformationPage = lazy(() =>
   import("@/pages/settings-pages").then(({ ActivityInformationPage }) => ({ default: ActivityInformationPage }))
 );
-const AssetTransferPage = lazy(() => import("@/pages/settings-pages").then(({ AssetTransferPage }) => ({ default: AssetTransferPage })));
 const EmailSettingsPage = lazy(() => import("@/pages/settings-pages").then(({ EmailSettingsPage }) => ({ default: EmailSettingsPage })));
 const LanguagePage = lazy(() => import("@/pages/settings-pages").then(({ LanguagePage }) => ({ default: LanguagePage })));
 const LoginPasswordPage = lazy(() => import("@/pages/settings-pages").then(({ LoginPasswordPage }) => ({ default: LoginPasswordPage })));
@@ -88,7 +87,7 @@ export const router = createBrowserRouter([
           { path: "profile", element: withSuspense(<ProfilePage />) },
           { path: "settings", element: <Navigate replace to="/app/profile" /> },
           { path: "settings/activity", element: withSuspense(<ActivityInformationPage />) },
-          { path: "settings/asset-transfer", element: withSuspense(<AssetTransferPage />) },
+          { path: "settings/asset-transfer", element: <Navigate replace to="/app/profile" /> },
           { path: "settings/email", element: withSuspense(<EmailSettingsPage />) },
           { path: "settings/help", element: withSuspense(<SupportPage />) },
           { path: "settings/language", element: withSuspense(<LanguagePage />) },
