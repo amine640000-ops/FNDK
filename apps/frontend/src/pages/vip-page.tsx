@@ -102,6 +102,17 @@ const formatCountdown = (seconds: number) => {
   return `${hours}:${minutes}:${remainingSeconds}`;
 };
 
+const getNextLocalFiveAm = (timestamp: number) => {
+  const resetAt = new Date(timestamp);
+  resetAt.setHours(5, 0, 0, 0);
+
+  if (timestamp >= resetAt.getTime()) {
+    resetAt.setDate(resetAt.getDate() + 1);
+  }
+
+  return resetAt.getTime();
+};
+
 const formatDepositBand = (tier: VipTier, nextTier?: VipTier) => {
   const min = compactNumber.format(tier.minDeposit);
   if (!nextTier) {
@@ -192,6 +203,7 @@ export function VipPage() {
   const [failedReservation, setFailedReservation] = useState<StartActivationResponse | null>(null);
   const [vipListOpen, setVipListOpen] = useState(false);
   const completionRefreshInFlight = useRef<string | null>(null);
+  const reservationResetRefreshInFlight = useRef(false);
 
   const fallbackActivationState = useMemo<ActivationState>(
     () => ({
@@ -327,6 +339,15 @@ export function VipPage() {
     ? Math.max(Math.ceil((new Date(runningActivation.endsAt).getTime() - now) / 1000), 0)
     : 0;
   const liveRunningActivation = runningActivation && countdownSeconds > 0 ? runningActivation : null;
+  const reservationResetAt = liveState.reservationWindowEndsAt
+    ? new Date(liveState.reservationWindowEndsAt).getTime()
+    : getNextLocalFiveAm(now);
+  const reservationResetCountdownSeconds = Math.max(
+    Math.ceil(((Number.isFinite(reservationResetAt) ? reservationResetAt : getNextLocalFiveAm(now)) - now) / 1000),
+    0
+  );
+  const reservationLimitReached =
+    hasActiveInvestment && !liveRunningActivation && liveState.remainingActivationsToday <= 0;
   const canStartActivation =
     !loadingActivation && !liveRunningActivation && liveState.remainingActivationsToday > 0 && hasActiveInvestment;
 
@@ -363,6 +384,38 @@ export function VipPage() {
       active = false;
     };
   }, [countdownSeconds, runningActivation]);
+
+  useEffect(() => {
+    if (!reservationLimitReached || reservationResetCountdownSeconds > 0 || reservationResetRefreshInFlight.current) {
+      return;
+    }
+
+    const token = getAccessToken();
+    if (!token) {
+      return;
+    }
+
+    let active = true;
+    reservationResetRefreshInFlight.current = true;
+
+    taskApi
+      .get<ActivationState>("/tasks/activations/me")
+      .then((response) => {
+        if (active) {
+          setActivationState(response.data);
+        }
+      })
+      .catch(() => {
+        // The regular polling loop will retry state refresh if this request fails.
+      })
+      .finally(() => {
+        reservationResetRefreshInFlight.current = false;
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [reservationLimitReached, reservationResetCountdownSeconds]);
 
   const completedHistory = useMemo(
     () => liveState.history.filter((activation) => activation.status === "completed"),
@@ -462,7 +515,9 @@ export function VipPage() {
       key: "strategy",
       label: "Fonds De Strategie Disponibles",
       value: formatMoneyValue(liveState.activeInvestment),
-      detail: `${liveState.remainingActivationsToday} slots left`,
+      detail: reservationLimitReached
+        ? `Resets in ${formatCountdown(reservationResetCountdownSeconds)}`
+        : `${liveState.remainingActivationsToday} slots left`,
       icon: Landmark
     },
     {
@@ -564,7 +619,7 @@ export function VipPage() {
 
   return (
     <div className="pb-6">
-      <header className="sticky top-0 z-10 border-b border-cyan-300/10 bg-[#050849]/94 px-4 py-4 backdrop-blur-md">
+      <header className="relative z-10 border-b border-cyan-300/10 bg-[#050849]/94 px-4 py-4 backdrop-blur-md">
         <div className="flex items-center justify-between gap-4">
           <BrandMark
             iconClassName="h-11 w-11 rounded-[18px] p-2"
@@ -1016,18 +1071,32 @@ export function VipPage() {
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <div className="text-[13px] font-semibold uppercase tracking-[0.18em] text-[#0c4b51]/80">
-                    {liveRunningActivation ? "Reservation live" : hasActiveInvestment ? "Next reservation" : "Deposit required"}
+                    {liveRunningActivation
+                      ? "Reservation live"
+                      : reservationLimitReached
+                        ? "Daily limit reached"
+                        : hasActiveInvestment
+                          ? "Next reservation"
+                          : "Deposit required"}
                   </div>
                   <div className="mt-2 text-[1.02rem] font-bold">
                     {liveRunningActivation
                       ? `${liveRunningActivation.strategy} ends in`
-                      : hasActiveInvestment
-                        ? "The current 5 AM reservation window is open now."
-                        : "Fund the account to unlock the reservation window."}
+                      : reservationLimitReached
+                        ? "All reservations are complete. Slots reset at 5:00 AM."
+                        : hasActiveInvestment
+                          ? "The current 5 AM reservation window is open now."
+                          : "Fund the account to unlock the reservation window."}
                   </div>
                 </div>
                 <div className="shrink-0 text-[1.25rem] font-extrabold">
-                  {liveRunningActivation ? formatCountdown(countdownSeconds) : hasActiveInvestment ? "Start now" : "Fund account"}
+                  {liveRunningActivation
+                    ? formatCountdown(countdownSeconds)
+                    : reservationLimitReached
+                      ? formatCountdown(reservationResetCountdownSeconds)
+                      : hasActiveInvestment
+                        ? "Start now"
+                        : "Fund account"}
                 </div>
               </div>
             </section>
@@ -1039,7 +1108,7 @@ export function VipPage() {
                   <div className="mt-2 text-sm text-cyan-200/80">{liveRunningActivation?.strategy ?? `${currentTier.name} execution track`}</div>
                 </div>
                 <div className="rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-1.5 text-[12px] font-semibold uppercase tracking-[0.18em] text-cyan-100">
-                  {liveRunningActivation ? "Running" : hasActiveInvestment ? "Ready" : "Locked"}
+                  {liveRunningActivation ? "Running" : reservationLimitReached ? "Reset at 5 AM" : hasActiveInvestment ? "Ready" : "Locked"}
                 </div>
               </div>
 
@@ -1085,17 +1154,22 @@ export function VipPage() {
 
               <div className="mt-6 rounded-[24px] border border-white/10 bg-[#04073d]/88 p-4">
                 <div className="flex items-center gap-2 text-cyan-200">
-                  {liveRunningActivation ? <Clock3 className="h-4 w-4" /> : <PlayCircle className="h-4 w-4" />}
+                  {liveRunningActivation || reservationLimitReached ? <Clock3 className="h-4 w-4" /> : <PlayCircle className="h-4 w-4" />}
                   <span className="text-sm uppercase tracking-[0.24em]">
-                    {liveRunningActivation ? "Run in progress" : "Ready to activate"}
+                    {liveRunningActivation ? "Run in progress" : reservationLimitReached ? "Daily limit reached" : "Ready to activate"}
                   </span>
                 </div>
                 <div className="mt-3 text-[1.02rem] font-bold text-white">
-                  {liveRunningActivation?.marketSummary ?? "Launch the next timed AI reservation directly from this strategy panel."}
+                  {liveRunningActivation?.marketSummary ??
+                    (reservationLimitReached
+                      ? `Reservations reset in ${formatCountdown(reservationResetCountdownSeconds)}.`
+                      : "Launch the next timed AI reservation directly from this strategy panel.")}
                 </div>
                 <div className="mt-2 text-[13px] leading-5 text-slate-300">
                   {liveRunningActivation?.thesis ??
-                    "Each reservation opens a short execution cycle, closes automatically, and posts the result to your record history."}
+                    (reservationLimitReached
+                      ? `You used all ${currentTier.activationLimitPerDay} reservations in this 5 AM window. You can start again when the counter reaches 00:00:00.`
+                      : "Each reservation opens a short execution cycle, closes automatically, and posts the result to your record history.")}
                 </div>
 
                 {!hasActiveInvestment ? (
@@ -1111,7 +1185,13 @@ export function VipPage() {
                     onClick={openReservationModal}
                     type="button"
                   >
-                    {loadingActivation ? "Starting..." : liveRunningActivation ? "Reservation Running" : "Open Reservation"}
+                    {loadingActivation
+                      ? "Starting..."
+                      : liveRunningActivation
+                        ? "Reservation Running"
+                        : reservationLimitReached
+                          ? "Wait For 5 AM"
+                          : "Open Reservation"}
                   </button>
                   {!hasActiveInvestment ? (
                     <Link
@@ -1135,7 +1215,9 @@ export function VipPage() {
               <div className="mt-2 text-[13px] text-slate-300">
                 {liveRunningActivation
                   ? `A run is live and closes in ${formatCountdown(countdownSeconds)}.`
-                  : `${liveState.remainingActivationsToday} activation slots remain in the current 5 AM window.`}
+                  : reservationLimitReached
+                    ? `All reservations are used. The number resets in ${formatCountdown(reservationResetCountdownSeconds)} at 5:00 AM.`
+                    : `${liveState.remainingActivationsToday} activation slots remain in the current 5 AM window.`}
               </div>
             </article>
 
@@ -1151,6 +1233,21 @@ export function VipPage() {
                 </div>
               </div>
             </article>
+
+            {reservationLimitReached ? (
+              <article className="neon-panel p-5">
+                <div className="flex items-center gap-2 text-cyan-200">
+                  <Clock3 className="h-4 w-4" />
+                  <span className="text-sm uppercase tracking-[0.24em]">Next reset</span>
+                </div>
+                <div className="mt-3 text-[2rem] font-extrabold leading-none text-white">
+                  {formatCountdown(reservationResetCountdownSeconds)}
+                </div>
+                <div className="mt-2 text-[13px] leading-5 text-slate-300">
+                  Reservation number resets at 5:00 AM, then you can open a new reservation cycle.
+                </div>
+              </article>
+            ) : null}
           </section>
         ) : null}
 

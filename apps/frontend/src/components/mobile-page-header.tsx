@@ -15,7 +15,7 @@ export function MobilePageHeader({ title, subtitle }: MobilePageHeaderProps) {
   };
 
   return (
-    <header className="sticky top-0 z-10 border-b border-cyan-300/15 bg-[#050747]/95 px-4 py-3.5 shadow-[0_1px_0_rgba(117,236,255,0.08)] backdrop-blur-md">
+    <header className="relative z-10 border-b border-cyan-300/15 bg-[#050747]/95 px-4 py-3.5 shadow-[0_1px_0_rgba(117,236,255,0.08)] backdrop-blur-md">
       <div className="grid grid-cols-[40px_minmax(0,1fr)_40px] items-center">
         <button
           className="flex h-10 w-10 items-center justify-center rounded-full text-white/90 transition hover:bg-cyan-300/10 hover:text-cyan-100"
