@@ -6,10 +6,11 @@ import {
   ChevronRight,
   CircleDollarSign,
   Clock3,
+  Eye,
+  EyeOff,
   Globe,
   HandCoins,
   Headset,
-  KeyRound,
   Landmark,
   LogOut,
   PlayCircle,
@@ -91,6 +92,7 @@ const missionCategoryTabs: Array<{ id: MissionTaskCategory; label: string }> = [
 ];
 
 const formatMoneyValue = (value: number) => formatCurrency(value).replace("$", "");
+const reservationContactMessage = "Impossible De Participer, Veuillez Contacter Votre Gestionnaire De Compte";
 
 const formatUsdtRange = (min: number, max: number) => `${min.toFixed(4)} ~ ${max.toFixed(4)} USDT`;
 
@@ -200,6 +202,8 @@ export function VipPage() {
   const [reservationModalOpen, setReservationModalOpen] = useState(false);
   const [reservationAmount, setReservationAmount] = useState("");
   const [securityPasscode, setSecurityPasscode] = useState("");
+  const [reservationError, setReservationError] = useState("");
+  const [passcodeVisible, setPasscodeVisible] = useState(false);
   const [failedReservation, setFailedReservation] = useState<StartActivationResponse | null>(null);
   const [vipListOpen, setVipListOpen] = useState(false);
   const completionRefreshInFlight = useRef<string | null>(null);
@@ -568,7 +572,23 @@ export function VipPage() {
 
     setReservationAmount(liveState.activeInvestment.toFixed(2));
     setSecurityPasscode("");
+    setReservationError("");
+    setPasscodeVisible(false);
     setReservationModalOpen(true);
+  };
+
+  const closeReservationModal = () => {
+    setReservationModalOpen(false);
+    setSecurityPasscode("");
+    setReservationError("");
+    setPasscodeVisible(false);
+  };
+
+  const showReservationError = (message = reservationContactMessage) => {
+    setReservationError(message);
+    window.setTimeout(() => {
+      setReservationError((currentMessage) => (currentMessage === message ? "" : currentMessage));
+    }, 3600);
   };
 
   const startActivation = async () => {
@@ -578,27 +598,28 @@ export function VipPage() {
 
     const token = getAccessToken();
     if (!token) {
-      toast.error("Login first to trigger AI trading.");
+      showReservationError("Veuillez Vous Connecter Avant De Confirmer");
       return;
     }
 
     if (!hasActiveInvestment) {
-      toast.error("Activate a VIP tier with an approved deposit before starting AI trading.");
+      showReservationError(reservationContactMessage);
       return;
     }
 
     if (!Number.isFinite(parsedReservationAmount) || parsedReservationAmount <= 0) {
-      toast.error("Enter a reservation amount greater than zero.");
+      showReservationError("Montant De Réservation Invalide");
       return;
     }
 
     if (!/^\d{6}$/.test(securityPasscode)) {
-      toast.error("Enter your 6-digit security passcode.");
+      showReservationError("Veuillez Saisir Votre Mot De Passe");
       return;
     }
 
     activationStartInFlight.current = true;
     setLoadingActivation(true);
+    setReservationError("");
     try {
       const response = await taskApi.post<StartActivationResponse>(
         "/tasks/activations/start",
@@ -606,26 +627,24 @@ export function VipPage() {
       );
 
       if (response.data.outcome === "failed") {
-        setFailedReservation(response.data);
-        toast.error(response.data.message);
+        showReservationError(response.data.message || reservationContactMessage);
+        return;
       } else {
         toast.success(response.data.message);
       }
 
-      setReservationModalOpen(false);
-      setSecurityPasscode("");
+      closeReservationModal();
       const latestState = await taskApi.get<ActivationState>("/tasks/activations/me");
       setActivationState(latestState.data);
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "Unable to start AI activation."));
+      showReservationError(getApiErrorMessage(error, reservationContactMessage));
 
       try {
         const latestState = await taskApi.get<ActivationState>("/tasks/activations/me");
         setActivationState(latestState.data);
 
         if (latestState.data.runningActivation) {
-          setReservationModalOpen(false);
-          setSecurityPasscode("");
+          closeReservationModal();
         }
       } catch {
         // The regular polling loop will retry state refresh if this request fails.
@@ -685,35 +704,30 @@ export function VipPage() {
       </header>
 
       {reservationModalOpen ? (
-        <div className="fixed inset-0 z-40 bg-[#020223]/75 backdrop-blur-sm">
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-[#020223]/72 px-4">
           <button
             aria-label="Close reservation confirmation"
             className="absolute inset-0"
-            onClick={() => {
-              setReservationModalOpen(false);
-              setSecurityPasscode("");
-            }}
+            onClick={closeReservationModal}
             type="button"
           />
-          <div className="absolute inset-x-4 top-[18%] rounded-[30px] border border-cyan-300/15 bg-[linear-gradient(180deg,rgba(14,19,142,0.98)_0%,rgba(9,11,110,0.99)_45%,rgba(6,8,82,1)_100%)] p-5 shadow-[0_28px_60px_rgba(0,0,0,0.4)]">
+          <div className="relative w-full max-w-[448px] rounded-[28px] border border-[#1427b3]/80 bg-[#06078f] px-5 pb-5 pt-6 shadow-[0_28px_70px_rgba(0,0,0,0.42),inset_0_1px_0_rgba(178,196,255,0.08)]">
             <div className="flex items-center justify-between gap-3">
-              <div className="text-[1.9rem] font-extrabold tracking-[-0.04em] text-white">Reservation Confirmation</div>
+              <div className="text-[1.55rem] font-extrabold leading-tight text-white">Confirmation De Réservation</div>
               <button
-                className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white"
-                onClick={() => {
-                  setReservationModalOpen(false);
-                  setSecurityPasscode("");
-                }}
+                aria-label="Close reservation confirmation"
+                className="flex h-10 w-10 shrink-0 items-center justify-center text-white transition hover:text-cyan-100"
+                onClick={closeReservationModal}
                 type="button"
               >
-                <X className="h-5 w-5" />
+                <X className="h-9 w-9 stroke-[2.2]" />
               </button>
             </div>
 
-            <div className="mt-6 text-sm text-slate-300">Reservation Amount</div>
-            <div className="mt-3 flex items-center gap-3 rounded-[24px] border border-cyan-300/15 bg-[#08106a]/90 p-3 shadow-[inset_0_0_0_1px_rgba(115,122,255,0.12)]">
+            <div className="mt-8 text-[1.35rem] font-medium text-white">Montant De Réservation</div>
+            <div className="mt-5 flex min-h-[4.6rem] items-center gap-3 rounded-[17px] border border-[#2c40d6] bg-[linear-gradient(180deg,#08099b_0%,#060880_100%)] px-5 shadow-[inset_0_0_0_1px_rgba(93,111,255,0.25),0_0_16px_rgba(44,64,214,0.55)]">
               <input
-                className="min-w-0 flex-1 bg-transparent px-2 text-[1.35rem] font-semibold text-white outline-none"
+                className="min-w-0 flex-1 bg-transparent text-[1.55rem] font-extrabold text-white outline-none"
                 inputMode="decimal"
                 min="0"
                 step="0.01"
@@ -722,57 +736,50 @@ export function VipPage() {
                 onChange={(event) => setReservationAmount(event.target.value)}
               />
               <button
-                className="rounded-[18px] bg-[#6875ff] px-5 py-3 text-[1.1rem] font-semibold text-white shadow-[0_10px_18px_rgba(104,117,255,0.28)]"
+                className="min-h-[3.35rem] rounded-[14px] bg-[#5960e8] px-8 text-[1.45rem] font-semibold text-white shadow-[0_12px_20px_rgba(42,49,180,0.36)]"
                 onClick={() => setReservationAmount(liveState.activeInvestment.toFixed(2))}
                 type="button"
               >
-                All
+                Tout
               </button>
             </div>
 
-            <div className="mt-4 rounded-[20px] border border-white/10 bg-[#04073d]/88 px-4 py-4 text-[13px] leading-6 text-slate-300">
-              <div>Available strategy funds: <span className="font-semibold text-white">{formatCurrency(liveState.activeInvestment)}</span></div>
-              <div className="mt-1">
-                Expected income:{" "}
-                <span className="font-semibold text-cyan-100">
-                    {formatCurrency(
-                      parsedReservationAmount > 0
-                        ? (parsedReservationAmount * currentTier.dailyRoiMin) / currentTier.activationLimitPerDay
-                        : 0
-                    )}{" "}
-                    -{" "}
-                    {formatCurrency(
-                      parsedReservationAmount > 0
-                        ? (parsedReservationAmount * currentTier.dailyRoiMax) / currentTier.activationLimitPerDay
-                        : 0
-                    )}
-                </span>
+            <label className="mt-8 block">
+              <span className="text-[1.35rem] font-medium text-white">Mot De Passe</span>
+              <div className="mt-5 flex min-h-[4.6rem] items-center gap-4 rounded-[17px] border border-[#2c40d6] bg-[linear-gradient(180deg,#08099b_0%,#060880_100%)] px-5 shadow-[inset_0_0_0_1px_rgba(93,111,255,0.25),0_0_16px_rgba(44,64,214,0.55)]">
+                <input
+                  className="min-w-0 flex-1 bg-transparent text-[1.55rem] font-extrabold tracking-[0.32em] text-white outline-none placeholder:text-white"
+                  inputMode="numeric"
+                  maxLength={6}
+                  placeholder="••••••"
+                  type={passcodeVisible ? "text" : "password"}
+                  value={securityPasscode}
+                  onChange={(event) => setSecurityPasscode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                />
+                <button
+                  aria-label={passcodeVisible ? "Hide passcode" : "Show passcode"}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center text-white/70"
+                  onClick={() => setPasscodeVisible((visible) => !visible)}
+                  type="button"
+                >
+                  {passcodeVisible ? <EyeOff className="h-8 w-8" /> : <Eye className="h-8 w-8 fill-white/30" />}
+                </button>
               </div>
-            </div>
-
-            <label className="mt-4 grid gap-2">
-              <span className="flex items-center gap-2 text-sm text-slate-300">
-                <KeyRound className="h-4 w-4 text-cyan-200" />
-                Security passcode
-              </span>
-              <input
-                className="rounded-[20px] border border-white/10 bg-[#080b56]/90 px-4 py-4 text-center text-[18px] font-semibold tracking-[0.28em] text-white outline-none"
-                inputMode="numeric"
-                maxLength={6}
-                placeholder="000000"
-                type="password"
-                value={securityPasscode}
-                onChange={(event) => setSecurityPasscode(event.target.value.replace(/\D/g, "").slice(0, 6))}
-              />
             </label>
 
+            {reservationError ? (
+              <div className="absolute left-1/2 top-[45%] z-10 w-[82%] -translate-x-1/2 rounded-[10px] bg-[#2c2d35] px-5 py-4 text-center text-[1.2rem] font-medium leading-snug text-white shadow-[0_14px_32px_rgba(0,0,0,0.36)]">
+                {reservationError}
+              </div>
+            ) : null}
+
             <button
-              className="mt-6 w-full rounded-[22px] bg-cyan-300 px-4 py-4 text-[1.15rem] font-semibold text-[#032932] shadow-[0_14px_24px_rgba(39,231,212,0.28)] disabled:opacity-60"
+              className="mt-9 min-h-[4.85rem] w-full rounded-[18px] bg-[linear-gradient(90deg,#20eaf3_0%,#12f0bc_100%)] px-4 text-[1.55rem] font-extrabold text-[#041859] shadow-[0_16px_30px_rgba(24,235,202,0.28)] disabled:opacity-60"
               disabled={loadingActivation}
               onClick={startActivation}
               type="button"
             >
-              {loadingActivation ? "Confirming..." : "Confirm"}
+              {loadingActivation ? "Confirmation..." : "Confirmer"}
             </button>
           </div>
         </div>
