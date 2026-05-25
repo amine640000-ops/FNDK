@@ -1,6 +1,7 @@
 import { ChevronLeft, LogOut } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { clearAuthSession } from "@/lib/auth";
+import { translateText, useAppLanguage } from "@/lib/i18n";
 
 type MobilePageHeaderProps = {
   title: string;
@@ -9,6 +10,7 @@ type MobilePageHeaderProps = {
 
 export function MobilePageHeader({ title, subtitle }: MobilePageHeaderProps) {
   const navigate = useNavigate();
+  const language = useAppLanguage();
   const handleLogout = () => {
     clearAuthSession();
     navigate("/login");
@@ -25,8 +27,8 @@ export function MobilePageHeader({ title, subtitle }: MobilePageHeaderProps) {
           <ChevronLeft className="h-6 w-6" />
         </button>
         <div className="text-center">
-          <div className="text-[1.35rem] font-extrabold tracking-[-0.02em] text-white">{title}</div>
-          {subtitle ? <div className="mt-0.5 text-[10px] uppercase tracking-[0.22em] text-slate-400">{subtitle}</div> : null}
+          <div className="text-[1.35rem] font-extrabold tracking-[-0.02em] text-white">{translateText(language, title)}</div>
+          {subtitle ? <div className="mt-0.5 text-[10px] uppercase tracking-[0.22em] text-slate-400">{translateText(language, subtitle)}</div> : null}
         </div>
         <button
           aria-label="Sign out"

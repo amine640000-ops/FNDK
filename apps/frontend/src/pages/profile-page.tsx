@@ -24,6 +24,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { getApiErrorMessage, identityApi } from "@/api/client";
 import { clearAuthSession, getAccessToken } from "@/lib/auth";
+import { translateText, useAppLanguage } from "@/lib/i18n";
 
 type KycSubmission = {
   id: string;
@@ -113,6 +114,8 @@ const resolvePublicId = (user: StoredUser) => {
 };
 
 function ScreenHeader({ title, onBack }: { title: string; onBack: () => void }) {
+  const language = useAppLanguage();
+
   return (
     <header className="relative z-20 border-b border-cyan-200/10 bg-[#06074c]/95 px-4 py-4 backdrop-blur-md">
       <div className="grid grid-cols-[42px_minmax(0,1fr)_42px] items-center">
@@ -124,7 +127,7 @@ function ScreenHeader({ title, onBack }: { title: string; onBack: () => void }) 
         >
           <ChevronLeft className="h-6 w-6" />
         </button>
-        <div className="truncate text-center text-[1.15rem] font-extrabold tracking-[-0.02em] text-white">{title}</div>
+        <div className="truncate text-center text-[1.15rem] font-extrabold tracking-[-0.02em] text-white">{translateText(language, title)}</div>
         <div />
       </div>
     </header>
@@ -132,6 +135,8 @@ function ScreenHeader({ title, onBack }: { title: string; onBack: () => void }) 
 }
 
 function SettingsRow({ icon: Icon, label, onClick }: SettingsRowProps) {
+  const language = useAppLanguage();
+
   return (
     <button
       className="flex min-h-[54px] w-full items-center justify-between gap-3 border-b border-cyan-200/10 px-4 py-3.5 text-left text-white last:border-b-0 transition hover:bg-cyan-300/5"
@@ -142,7 +147,7 @@ function SettingsRow({ icon: Icon, label, onClick }: SettingsRowProps) {
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-cyan-300/[0.08] text-cyan-200">
           <Icon className="h-[18px] w-[18px]" />
         </span>
-        <span className="truncate text-[0.96rem] font-semibold">{label}</span>
+        <span className="truncate text-[0.96rem] font-semibold">{translateText(language, label)}</span>
       </span>
       <ChevronRight className="h-5 w-5 shrink-0 text-slate-400" />
     </button>
@@ -150,6 +155,8 @@ function SettingsRow({ icon: Icon, label, onClick }: SettingsRowProps) {
 }
 
 function SecurityRow({ icon: Icon, label, status, active, onClick }: SecurityRowProps) {
+  const language = useAppLanguage();
+
   return (
     <button
       className={`grid min-h-[94px] w-full grid-cols-[minmax(0,1fr)_70px] items-center gap-4 border-b border-cyan-200/10 px-4 py-4 text-left last:border-b-0 transition hover:bg-cyan-300/5 ${
@@ -159,9 +166,9 @@ function SecurityRow({ icon: Icon, label, status, active, onClick }: SecurityRow
       type="button"
     >
       <span className="min-w-0">
-        <span className="block truncate text-[1.02rem] font-extrabold text-white">{label}</span>
+        <span className="block truncate text-[1.02rem] font-extrabold text-white">{translateText(language, label)}</span>
         <span className="mt-3 inline-flex max-w-full items-center rounded-[6px] border border-cyan-300/10 bg-[#050a4f] px-3 py-1.5 text-[0.78rem] font-semibold text-slate-300">
-          {status}
+          {translateText(language, status)}
         </span>
       </span>
       <span className="flex h-14 w-14 items-center justify-center rounded-[14px] border border-cyan-300/20 bg-[#0d1680] text-cyan-200 shadow-[0_0_20px_rgba(59,104,255,0.25)]">
@@ -242,6 +249,8 @@ function VerificationUploadField({ title, helper, fileName, onChange }: UploadFi
 
 export function ProfilePage() {
   const navigate = useNavigate();
+  const language = useAppLanguage();
+  const tt = (text: string) => translateText(language, text);
   const [screen, setScreen] = useState<ProfileScreen>("settings");
   const [storedUser, setStoredUser] = useState<StoredUser>(() => readStoredUser());
   const [documentType, setDocumentType] = useState("Passport");
@@ -449,16 +458,16 @@ export function ProfilePage() {
 
         <div className="mt-4 grid gap-2 border-t border-cyan-200/10 pt-4 text-[0.78rem]">
           <div className="flex min-h-10 items-center justify-between gap-3 rounded-[10px] bg-white/[0.04] px-3">
-            <span className="font-semibold text-slate-300">User ID</span>
+            <span className="font-semibold text-slate-300">{tt("User ID")}</span>
             <span className="font-mono text-sm font-extrabold tracking-[0.18em] text-cyan-100">
               {displayPublicId || "------"}
             </span>
           </div>
           <div className="flex min-h-10 items-center justify-between gap-3 rounded-[10px] bg-white/[0.04] px-3">
-            <span className="font-semibold text-slate-300">Referral code</span>
+            <span className="font-semibold text-slate-300">{tt("Referral code")}</span>
             <span className="flex min-w-0 items-center gap-2">
               <span className="truncate font-mono text-sm font-extrabold text-cyan-100">
-                {referralCode || "Not available"}
+                {referralCode || tt("Not available")}
               </span>
               <button
                 aria-label="Copy referral code"
@@ -490,7 +499,7 @@ export function ProfilePage() {
         onClick={handleLogout}
         type="button"
       >
-        Logout
+        {tt("Logout")}
       </button>
     </div>
   );

@@ -13,6 +13,7 @@ import { formatCurrency } from "@nevo/shared-utils";
 import { isApiAuthError, walletApi } from "@/api/client";
 import { BrandMark } from "@/components/brand-mark";
 import { clearAuthSession, getAccessToken } from "@/lib/auth";
+import { applyLanguagePreference, getNextLanguage, translateText, useAppLanguage } from "@/lib/i18n";
 import { Link, useNavigate } from "react-router-dom";
 
 const emptySummary: WalletSummary = {
@@ -24,7 +25,6 @@ const emptySummary: WalletSummary = {
 };
 
 type WalletTab = "assets" | "income";
-type LanguageCode = "en" | "fr" | "ar";
 
 const typeLabel: Record<DashboardTransaction["type"], string> = {
   deposit: "Deposit",
@@ -43,10 +43,8 @@ export function WalletPage() {
   const [walletApiOffline, setWalletApiOffline] = useState(false);
   const [walletTab, setWalletTab] = useState<WalletTab>("assets");
   const [amountsVisible, setAmountsVisible] = useState(true);
-  const [language, setLanguage] = useState<LanguageCode>(() => {
-    const stored = localStorage.getItem("nevo.language");
-    return stored === "fr" || stored === "ar" ? stored : "en";
-  });
+  const language = useAppLanguage();
+  const tt = (text: string) => translateText(language, text);
   const recordsRef = useRef<HTMLDivElement | null>(null);
   const loadedRef = useRef(false);
 
@@ -121,11 +119,8 @@ export function WalletPage() {
   );
 
   const toggleLanguage = () => {
-    const nextLanguage = language === "en" ? "fr" : language === "fr" ? "ar" : "en";
-    setLanguage(nextLanguage);
-    localStorage.setItem("nevo.language", nextLanguage);
-    document.documentElement.lang = nextLanguage;
-    document.documentElement.dir = nextLanguage === "ar" ? "rtl" : "ltr";
+    const nextLanguage = getNextLanguage(language);
+    applyLanguagePreference(nextLanguage);
     toast.success(
       nextLanguage === "ar"
         ? "تم ضبط اللغة على العربية."
@@ -141,7 +136,7 @@ export function WalletPage() {
         <div className="flex items-center justify-between gap-4">
           <BrandMark
             iconClassName="h-11 w-11 rounded-[18px] p-2"
-            subtitle="Assets hub"
+            subtitle={tt("Assets hub")}
             textClassName="text-[1.65rem] tracking-[0.02em] text-cyan-200"
             subtitleClassName="text-[10px] tracking-[0.34em]"
           />
@@ -190,7 +185,7 @@ export function WalletPage() {
             onClick={() => setWalletTab("assets")}
             type="button"
           >
-            Apercu Des Actifs
+            {tt("Apercu Des Actifs")}
             {walletTab === "assets" ? (
               <span className="absolute -bottom-3 left-0 h-1 w-[92px] rounded-full bg-cyan-300 shadow-[0_0_14px_rgba(108,240,255,0.55)]" />
             ) : null}
@@ -200,7 +195,7 @@ export function WalletPage() {
             onClick={() => setWalletTab("income")}
             type="button"
           >
-            Mes Revenus
+            {tt("Mes Revenus")}
             {walletTab === "income" ? (
               <span className="absolute -bottom-3 left-0 h-1 w-[92px] rounded-full bg-cyan-300 shadow-[0_0_14px_rgba(108,240,255,0.55)]" />
             ) : null}
@@ -210,7 +205,7 @@ export function WalletPage() {
         <section className="neon-panel mt-5 rounded-[34px] p-5">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <div className="text-[13px] uppercase tracking-[0.18em] text-cyan-200/75">Total assets (USDT)</div>
+              <div className="text-[13px] uppercase tracking-[0.18em] text-cyan-200/75">{tt("Total assets (USDT)")}</div>
               <div className="mt-2 text-[2.45rem] font-extrabold leading-none text-[#f4b83f]">
                 {maskAmount(summary.totalBalance.toFixed(4), amountsVisible)}
               </div>
@@ -226,11 +221,11 @@ export function WalletPage() {
           </div>
 
           <div className="mt-6 grid grid-cols-2 gap-y-4 text-[15px]">
-            <div className="text-white/45">Actifs Disponibles</div>
+            <div className="text-white/45">{tt("Actifs Disponibles")}</div>
             <div className="text-right font-semibold text-white">{maskAmount(summary.availableToWithdraw.toFixed(4), amountsVisible)}</div>
-            <div className="text-white/45">En Attente De Sortie</div>
+            <div className="text-white/45">{tt("En Attente De Sortie")}</div>
             <div className="text-right font-semibold text-white">{maskAmount(pendingWithdrawals.toFixed(4), amountsVisible)}</div>
-            <div className="text-white/45">Total Verrouille</div>
+            <div className="text-white/45">{tt("Total Verrouille")}</div>
             <div className="text-right font-semibold text-white">{maskAmount(summary.activeInvestment.toFixed(4), amountsVisible)}</div>
           </div>
 
@@ -239,59 +234,59 @@ export function WalletPage() {
               className="rounded-[18px] bg-cyan-300 px-4 py-3 text-center text-base font-semibold text-[#032932]"
               to="/app/wallet/deposit"
             >
-              Deposer
+              {tt("Deposer")}
             </Link>
             <Link
               className="rounded-[18px] border border-cyan-300/30 bg-white/5 px-4 py-3 text-center text-base font-semibold text-cyan-100"
               to="/app/wallet/withdraw"
             >
-              Retirer
+              {tt("Retirer")}
             </Link>
             <button
               className="rounded-[18px] border border-cyan-300/30 bg-white/5 px-4 py-3 text-center text-base font-semibold text-cyan-100"
               onClick={() => recordsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
               type="button"
             >
-              Facture
+              {tt("Facture")}
             </button>
           </div>
         </section>
 
         <section className="mt-6">
           <div className="flex items-center justify-between gap-4">
-            <div className="text-[1.15rem] font-extrabold text-white">Mes Revenus</div>
+            <div className="text-[1.15rem] font-extrabold text-white">{tt("Mes Revenus")}</div>
             <button
               className="inline-flex items-center gap-2 text-sm font-semibold text-white/80"
               onClick={() => setWalletTab(walletTab === "assets" ? "income" : "assets")}
               type="button"
             >
-              Voir Les Revenus
+              {tt("Voir Les Revenus")}
               <ReceiptText className="h-4 w-4" />
             </button>
           </div>
 
           <div className="neon-soft-panel mt-4 rounded-[30px] p-5">
             <div className="grid grid-cols-[1.2fr_0.8fr] gap-y-5 text-[15px]">
-              <div className="text-white/45">Revenus Totaux (USDT)</div>
+              <div className="text-white/45">{tt("Revenus Totaux (USDT)")}</div>
               <div className="text-right text-[1.5rem] font-extrabold text-[#f4b83f]">
                 {maskAmount(revenueBreakdown.totalRevenue.toFixed(4), amountsVisible)}
               </div>
-              <div className="text-white/45">Revenus D'aujourd'hui (USDT)</div>
+              <div className="text-white/45">{tt("Revenus D'aujourd'hui (USDT)")}</div>
               <div className="text-right font-semibold text-white">{maskAmount(revenueBreakdown.todayRevenue.toFixed(4), amountsVisible)}</div>
-              <div className="text-white/45">Revenus De Trading Totaux (USDT)</div>
+              <div className="text-white/45">{tt("Revenus De Trading Totaux (USDT)")}</div>
               <div className="text-right font-semibold text-white">{maskAmount(revenueBreakdown.totalTradingRevenue.toFixed(4), amountsVisible)}</div>
-              <div className="text-white/45">Revenus De Trading D'aujourd'hui (USDT)</div>
+              <div className="text-white/45">{tt("Revenus De Trading D'aujourd'hui (USDT)")}</div>
               <div className="text-right font-semibold text-white">{maskAmount(revenueBreakdown.todayTradingRevenue.toFixed(4), amountsVisible)}</div>
-              <div className="text-white/45">Revenus D'equipe Totaux (USDT)</div>
+              <div className="text-white/45">{tt("Revenus D'equipe Totaux (USDT)")}</div>
               <div className="text-right font-semibold text-white">{maskAmount(revenueBreakdown.totalTeamRevenue.toFixed(4), amountsVisible)}</div>
-              <div className="text-white/45">Revenus D'equipe D'aujourd'hui (USDT)</div>
+              <div className="text-white/45">{tt("Revenus D'equipe D'aujourd'hui (USDT)")}</div>
               <div className="text-right font-semibold text-white">{maskAmount(revenueBreakdown.todayTeamRevenue.toFixed(4), amountsVisible)}</div>
             </div>
           </div>
         </section>
 
         <section className="mt-6">
-          <div className="text-[1.15rem] font-extrabold text-white">Liste Des Actifs</div>
+          <div className="text-[1.15rem] font-extrabold text-white">{tt("Liste Des Actifs")}</div>
           <div className="mt-4 space-y-3">
             {summary.assets.length ? (
               summary.assets.map((asset) => (
@@ -300,35 +295,35 @@ export function WalletPage() {
                     <div>
                       <div className="text-[15px] font-semibold text-white">{asset.asset}</div>
                       <div className="mt-1 text-[13px] text-slate-400">
-                        Active investment {maskAmount(asset.activeInvestment.toFixed(2), amountsVisible)}
+                        {tt("Active investment")} {maskAmount(asset.activeInvestment.toFixed(2), amountsVisible)}
                       </div>
                     </div>
                     <div className="text-right">
                       <div className="text-[1rem] font-semibold text-cyan-100">
                         {maskAmount(asset.balance.toFixed(2), amountsVisible)}
                       </div>
-                      <div className="mt-1 text-[12px] text-white/35">Available</div>
+                      <div className="mt-1 text-[12px] text-white/35">{tt("Available")}</div>
                     </div>
                   </div>
                 </div>
               ))
             ) : (
               <div className="rounded-[24px] border border-dashed border-white/10 bg-white/5 px-4 py-8 text-center text-sm text-white/45">
-                {loading ? "Loading balances..." : "No wallet balances yet."}
+                {loading ? tt("Loading balances...") : tt("No wallet balances yet.")}
               </div>
             )}
           </div>
         </section>
 
         <section className="mt-6" ref={recordsRef}>
-          <div className="text-[1.15rem] font-extrabold text-white">Facture</div>
+          <div className="text-[1.15rem] font-extrabold text-white">{tt("Facture")}</div>
           <div className="mt-4 space-y-3">
             {visibleTransactions.length ? (
               visibleTransactions.map((transaction) => (
                 <article key={transaction.id} className="neon-panel rounded-[24px] p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <div className="text-[15px] font-semibold text-white">{typeLabel[transaction.type]}</div>
+                      <div className="text-[15px] font-semibold text-white">{tt(typeLabel[transaction.type])}</div>
                       <div className="mt-1 text-[13px] text-slate-400">{transaction.asset}</div>
                       <div className="mt-1 text-[12px] text-white/35">
                         {new Date(transaction.createdAt).toLocaleString("en-GB")}
@@ -345,7 +340,7 @@ export function WalletPage() {
               ))
             ) : (
               <div className="rounded-[24px] border border-dashed border-white/10 bg-white/5 px-4 py-8 text-center text-sm text-white/45">
-                {loading ? "Loading records..." : "No asset invoices yet."}
+                {loading ? tt("Loading records...") : tt("No asset invoices yet.")}
               </div>
             )}
           </div>

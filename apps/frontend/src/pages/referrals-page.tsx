@@ -3,6 +3,7 @@ import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts";
 import toast from "react-hot-toast";
 import { Bell, CircleDollarSign, Globe, HandCoins, Headset, Users } from "lucide-react";
 import { BrandMark } from "@/components/brand-mark";
+import { applyLanguagePreference, getNextLanguage, translateText, useAppLanguage } from "@/lib/i18n";
 import { useDashboardStore } from "@/store/use-dashboard-store";
 
 type TeamGenerationEntry = {
@@ -13,8 +14,6 @@ type TeamGenerationEntry = {
   todayMembers: number;
   todayIncome: number;
 };
-
-type LanguageCode = "en" | "fr" | "ar";
 
 const pieColors = ["#126dff", "#05d24a", "#ffc21a"];
 const generationTargets: Record<1 | 2 | 3, number> = {
@@ -40,11 +39,9 @@ export function ReferralsPage() {
   const referrals = useDashboardStore((state) => state.referrals);
   const wallet = useDashboardStore((state) => state.wallet);
   const transactions = useDashboardStore((state) => state.transactions);
-  const [language, setLanguage] = useState<LanguageCode>(() => {
-    const stored = localStorage.getItem("nevo.language");
-    return stored === "fr" || stored === "ar" ? stored : "en";
-  });
+  const language = useAppLanguage();
   const [teamMetric, setTeamMetric] = useState<"members" | "income">("members");
+  const tt = (text: string) => translateText(language, text);
 
   const generationGroups = useMemo(() => {
     const groups: Record<1 | 2 | 3, TeamGenerationEntry[]> = { 1: [], 2: [], 3: [] };
@@ -126,11 +123,8 @@ export function ReferralsPage() {
   }));
 
   const toggleLanguage = () => {
-    const nextLanguage = language === "en" ? "fr" : language === "fr" ? "ar" : "en";
-    setLanguage(nextLanguage);
-    localStorage.setItem("nevo.language", nextLanguage);
-    document.documentElement.lang = nextLanguage;
-    document.documentElement.dir = nextLanguage === "ar" ? "rtl" : "ltr";
+    const nextLanguage = getNextLanguage(language);
+    applyLanguagePreference(nextLanguage);
     toast.success(
       nextLanguage === "ar"
         ? "تم ضبط اللغة على العربية."
@@ -146,7 +140,7 @@ export function ReferralsPage() {
         <div className="flex items-center justify-between gap-4">
           <BrandMark
             iconClassName="h-11 w-11 rounded-[18px] p-2"
-            subtitle="Equipe"
+            subtitle={tt("Equipe")}
             textClassName="text-[1.65rem] tracking-[0.02em] text-cyan-200"
             subtitleClassName="text-[10px] tracking-[0.34em]"
           />
@@ -187,7 +181,7 @@ export function ReferralsPage() {
           <div className="grid grid-cols-[1fr_auto] items-start gap-4">
             <div>
               <div className="max-w-[11rem] text-[1.65rem] font-semibold leading-[1.05] text-white">
-                Revenus Totaux(USDT)
+                {tt("Revenus Totaux(USDT)")}
               </div>
               <div className="mt-5 text-[2.65rem] font-semibold leading-none text-white">
                 {formatUsdt(revenueStats.totalRevenue)}
@@ -198,45 +192,45 @@ export function ReferralsPage() {
               onClick={() => toast("Enregistrements de revenus indisponibles.")}
               type="button"
             >
-              Enregistrements De Revenus
+              {tt("Enregistrements De Revenus")}
             </button>
           </div>
 
           <div className="mt-8 grid grid-cols-[1.35fr_1fr] gap-y-7 pl-4 text-[1.25rem] leading-tight">
-            <div className="text-white/55">Revenus D'aujourd'hui(USDT)</div>
+            <div className="text-white/55">{tt("Revenus D'aujourd'hui(USDT)")}</div>
             <div className="text-right font-semibold text-white">{formatUsdt(revenueStats.todayRevenue)}</div>
-            <div className="text-white/55">Revenus D'équipe Totaux(USDT)</div>
+            <div className="text-white/55">{tt("Revenus D'équipe Totaux(USDT)")}</div>
             <div className="text-right font-semibold text-white">{formatUsdt(revenueStats.totalTeamRevenue)}</div>
-            <div className="text-white/55">Revenus D'équipe D'aujourd'hui(USDT)</div>
+            <div className="text-white/55">{tt("Revenus D'équipe D'aujourd'hui(USDT)")}</div>
             <div className="text-right font-semibold text-white">{formatUsdt(revenueStats.todayTeamRevenue)}</div>
           </div>
         </section>
 
         <section className="nevo-team-panel mt-6 rounded-[28px] px-5 pb-8 pt-5">
-          <div className="text-[1.85rem] font-extrabold text-white">Mon Équipe</div>
+          <div className="text-[1.85rem] font-extrabold text-white">{tt("Mon Équipe")}</div>
           <div className="mt-6 border-t border-[#2e3bb0]/70 pt-7">
             <div className="grid grid-cols-2 gap-4">
               <div className="text-center">
                 <div className="flex items-center justify-center gap-2 text-[1.2rem] font-semibold text-white">
                   <Users className="h-6 w-6 fill-white/15" />
-                  <span>Comptage D'équipe</span>
+                  <span>{tt("Comptage D'équipe")}</span>
                 </div>
                 <div className="mt-4 h-9 text-[2rem] font-semibold leading-none text-white">
                   {hasTeamData ? totalMembers : ""}
                 </div>
                 <div className="mt-2 text-[1.05rem] font-semibold text-white/48">
-                  Aujourd'hui Ajouté <span className="text-[#16dce5]">+{todayMembers}</span>
+                  {tt("Aujourd'hui Ajouté")} <span className="text-[#16dce5]">+{todayMembers}</span>
                 </div>
               </div>
 
               <div className="text-center">
                 <div className="flex items-center justify-center gap-2 text-[1.2rem] font-semibold text-white">
                   <HandCoins className="h-6 w-6 fill-white/15" />
-                  <span>Revenus D'équipe</span>
+                  <span>{tt("Revenus D'équipe")}</span>
                 </div>
                 <div className="mt-4 text-[2rem] font-semibold leading-none text-white">{formatUsdt(totalIncome)}</div>
                 <div className="mt-2 text-[1.05rem] font-semibold text-white/48">
-                  Aujourd'hui Ajouté <span className="text-[#16dce5]">+{formatUsdt(todayIncome)}</span>
+                  {tt("Aujourd'hui Ajouté")} <span className="text-[#16dce5]">+{formatUsdt(todayIncome)}</span>
                 </div>
               </div>
             </div>
@@ -251,7 +245,7 @@ export function ReferralsPage() {
                 onClick={() => setTeamMetric("members")}
                 type="button"
               >
-                Comptage D'équipe
+                {tt("Comptage D'équipe")}
               </button>
               <button
                 className={`min-h-[3.9rem] rounded-[9px] px-3 text-[1.28rem] font-semibold transition ${
@@ -262,7 +256,7 @@ export function ReferralsPage() {
                 onClick={() => setTeamMetric("income")}
                 type="button"
               >
-                Revenus D'équipe
+                {tt("Revenus D'équipe")}
               </button>
             </div>
 
@@ -293,7 +287,7 @@ export function ReferralsPage() {
                   <div key={item.generation} className="flex items-center gap-3">
                     <span className="h-6 w-6 shrink-0 rounded-[5px]" style={{ backgroundColor: pieColors[index] }} />
                     <span>
-                      {item.generation} générations({item.members}/{item.target})
+                      {item.generation} {tt("générations")}({item.members}/{item.target})
                     </span>
                   </div>
                 ))}
@@ -306,7 +300,7 @@ export function ReferralsPage() {
           <section className="nevo-team-panel mt-6 rounded-[28px] px-5 py-5">
             <div className="flex items-center gap-2 text-[1.15rem] font-semibold text-white">
               <CircleDollarSign className="h-5 w-5" />
-              Liste D'équipe
+              {tt("Liste D'équipe")}
             </div>
             <div className="mt-4 space-y-3">
               {Object.values(generationGroups)

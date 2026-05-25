@@ -1,5 +1,6 @@
 import { House, Lightbulb, UserRound, UsersRound, WalletCards } from "lucide-react";
 import { NavLink } from "react-router-dom";
+import { translateText, useAppLanguage } from "@/lib/i18n";
 
 const items = [
   { to: "/app", label: "Home", icon: House },
@@ -10,6 +11,8 @@ const items = [
 ];
 
 export function AppBottomNav() {
+  const language = useAppLanguage();
+
   return (
     <div className="bottom-nav-glow relative z-20 shrink-0 border-t border-cyan-300/15 px-3 pb-[calc(0.85rem+env(safe-area-inset-bottom))] pt-2.5">
       <nav className="grid grid-cols-5 gap-1">
@@ -28,7 +31,7 @@ export function AppBottomNav() {
             {({ isActive }) => (
               <>
                 <Icon className={`h-6 w-6 ${isActive ? "drop-shadow-[0_0_10px_rgba(103,232,255,0.65)]" : ""}`} />
-                <span className="text-center leading-tight">{label}</span>
+                <span className="text-center leading-tight">{translateText(language, label)}</span>
               </>
             )}
           </NavLink>

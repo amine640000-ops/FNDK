@@ -25,6 +25,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { getApiErrorMessage, isApiAuthError, taskApi, walletApi } from "@/api/client";
 import { BrandMark } from "@/components/brand-mark";
 import { clearAuthSession, getAccessToken } from "@/lib/auth";
+import { applyLanguagePreference, getNextLanguage, translateText, useAppLanguage } from "@/lib/i18n";
 import { useDashboardStore } from "@/store/use-dashboard-store";
 
 type ActivationState = {
@@ -51,8 +52,6 @@ type MissionCenterState = {
   totalRewardAmount: number;
   tasks: MissionTaskProgress[];
 };
-
-type LanguageCode = "en" | "fr" | "ar";
 
 const compactNumber = new Intl.NumberFormat("en-US", {
   notation: "compact",
@@ -189,10 +188,7 @@ export function VipPage() {
   const [activationState, setActivationState] = useState<ActivationState | null>(null);
   const [loadingActivation, setLoadingActivation] = useState(false);
   const [now, setNow] = useState(Date.now());
-  const [language, setLanguage] = useState<LanguageCode>(() => {
-    const stored = localStorage.getItem("nevo.language");
-    return stored === "fr" || stored === "ar" ? stored : "en";
-  });
+  const language = useAppLanguage();
   const [activeTab, setActiveTab] = useState<(typeof missionTabs)[number]["id"]>(() =>
     location.pathname.endsWith("/mission") ? "tasks" : "strategy"
   );
@@ -233,12 +229,6 @@ export function VipPage() {
       history: []
     };
   };
-
-  useEffect(() => {
-    document.documentElement.lang = language;
-    document.documentElement.dir = language === "ar" ? "rtl" : "ltr";
-    localStorage.setItem("nevo.language", language);
-  }, [language]);
 
   useEffect(() => {
     setActiveTab(location.pathname.endsWith("/mission") ? "tasks" : "strategy");
@@ -480,6 +470,7 @@ export function VipPage() {
     () => missionCenter.tasks.filter((task) => task.enabled && task.category === missionCategory),
     [missionCategory, missionCenter.tasks]
   );
+  const tt = (text: string) => translateText(language, text);
 
   useEffect(() => {
     if (!reservationModalOpen) {
@@ -490,35 +481,35 @@ export function VipPage() {
   const metricCards = [
     {
       key: "tier",
-      label: "Mon Niveau",
+      label: tt("Mon Niveau"),
       value: `VIP ${currentTier.id}`,
       detail: currentTier.name,
       icon: Sparkles
     },
     {
       key: "today",
-      label: "Revenus D'aujourd'hui",
+      label: tt("Revenus D'aujourd'hui"),
       value: formatMoneyValue(todayProfit),
       detail: "USDT",
       icon: CircleDollarSign
     },
     {
       key: "balance",
-      label: "Solde Du Compte",
+      label: tt("Solde Du Compte"),
       value: formatMoneyValue(overview.totalBalance),
       detail: "USD balance",
       icon: Wallet
     },
     {
       key: "profit",
-      label: "Revenus Totaux",
+      label: tt("Revenus Totaux"),
       value: formatMoneyValue(wallet.totalEarned || totalActivationProfit),
       detail: "All runs",
       icon: HandCoins
     },
     {
       key: "strategy",
-      label: "Fonds De Strategie Disponibles",
+      label: tt("Fonds De Strategie Disponibles"),
       value: formatMoneyValue(liveState.activeInvestment),
       detail: reservationLimitReached
         ? `Resets in ${formatCountdown(reservationResetCountdownSeconds)}`
@@ -527,7 +518,7 @@ export function VipPage() {
     },
     {
       key: "team",
-      label: "Revenus D'equipe",
+      label: tt("Revenus D'equipe"),
       value: formatMoneyValue(0),
       detail: "Referral stream",
       icon: Users
@@ -544,8 +535,8 @@ export function VipPage() {
   };
 
   const handleLanguage = () => {
-    const nextLanguage = language === "en" ? "fr" : language === "fr" ? "ar" : "en";
-    setLanguage(nextLanguage);
+    const nextLanguage = getNextLanguage(language);
+    applyLanguagePreference(nextLanguage);
     toast.success(
       nextLanguage === "ar"
         ? "تم ضبط اللغة على العربية."
@@ -584,7 +575,7 @@ export function VipPage() {
     setPasscodeVisible(false);
   };
 
-  const showReservationError = (message = reservationContactMessage) => {
+  const showReservationError = (message = tt(reservationContactMessage)) => {
     setReservationError(message);
     window.setTimeout(() => {
       setReservationError((currentMessage) => (currentMessage === message ? "" : currentMessage));
@@ -598,22 +589,22 @@ export function VipPage() {
 
     const token = getAccessToken();
     if (!token) {
-      showReservationError("Veuillez Vous Connecter Avant De Confirmer");
+      showReservationError(tt("Veuillez Vous Connecter Avant De Confirmer"));
       return;
     }
 
     if (!hasActiveInvestment) {
-      showReservationError(reservationContactMessage);
+      showReservationError(tt(reservationContactMessage));
       return;
     }
 
     if (!Number.isFinite(parsedReservationAmount) || parsedReservationAmount <= 0) {
-      showReservationError("Montant De Réservation Invalide");
+      showReservationError(tt("Montant De Réservation Invalide"));
       return;
     }
 
     if (!/^\d{6}$/.test(securityPasscode)) {
-      showReservationError("Veuillez Saisir Votre Mot De Passe");
+      showReservationError(tt("Veuillez Saisir Votre Mot De Passe"));
       return;
     }
 
@@ -627,7 +618,7 @@ export function VipPage() {
       );
 
       if (response.data.outcome === "failed") {
-        showReservationError(response.data.message || reservationContactMessage);
+        showReservationError(response.data.message || tt(reservationContactMessage));
         return;
       } else {
         toast.success(response.data.message);
@@ -637,7 +628,7 @@ export function VipPage() {
       const latestState = await taskApi.get<ActivationState>("/tasks/activations/me");
       setActivationState(latestState.data);
     } catch (error) {
-      showReservationError(getApiErrorMessage(error, reservationContactMessage));
+      showReservationError(getApiErrorMessage(error, tt(reservationContactMessage)));
 
       try {
         const latestState = await taskApi.get<ActivationState>("/tasks/activations/me");
@@ -661,7 +652,7 @@ export function VipPage() {
         <div className="flex items-center justify-between gap-4">
           <BrandMark
             iconClassName="h-11 w-11 rounded-[18px] p-2"
-            subtitle="Strategy hub"
+            subtitle={tt("Strategy hub")}
             textClassName="text-[1.65rem] tracking-[0.02em] text-cyan-200"
             subtitleClassName="text-[10px] tracking-[0.34em]"
           />
@@ -713,7 +704,7 @@ export function VipPage() {
           />
           <div className="relative w-full max-w-[448px] rounded-[28px] border border-[#1427b3]/80 bg-[#06078f] px-5 pb-5 pt-6 shadow-[0_28px_70px_rgba(0,0,0,0.42),inset_0_1px_0_rgba(178,196,255,0.08)]">
             <div className="flex items-center justify-between gap-3">
-              <div className="text-[1.55rem] font-extrabold leading-tight text-white">Confirmation De Réservation</div>
+              <div className="text-[1.55rem] font-extrabold leading-tight text-white">{tt("Confirmation De Réservation")}</div>
               <button
                 aria-label="Close reservation confirmation"
                 className="flex h-10 w-10 shrink-0 items-center justify-center text-white transition hover:text-cyan-100"
@@ -724,7 +715,7 @@ export function VipPage() {
               </button>
             </div>
 
-            <div className="mt-8 text-[1.35rem] font-medium text-white">Montant De Réservation</div>
+            <div className="mt-8 text-[1.35rem] font-medium text-white">{tt("Montant De Réservation")}</div>
             <div className="mt-5 flex min-h-[4.6rem] items-center gap-3 rounded-[17px] border border-[#2c40d6] bg-[linear-gradient(180deg,#08099b_0%,#060880_100%)] px-5 shadow-[inset_0_0_0_1px_rgba(93,111,255,0.25),0_0_16px_rgba(44,64,214,0.55)]">
               <input
                 className="min-w-0 flex-1 bg-transparent text-[1.55rem] font-extrabold text-white outline-none"
@@ -740,12 +731,12 @@ export function VipPage() {
                 onClick={() => setReservationAmount(liveState.activeInvestment.toFixed(2))}
                 type="button"
               >
-                Tout
+                {tt("Tout")}
               </button>
             </div>
 
             <label className="mt-8 block">
-              <span className="text-[1.35rem] font-medium text-white">Mot De Passe</span>
+              <span className="text-[1.35rem] font-medium text-white">{tt("Mot De Passe")}</span>
               <div className="mt-5 flex min-h-[4.6rem] items-center gap-4 rounded-[17px] border border-[#2c40d6] bg-[linear-gradient(180deg,#08099b_0%,#060880_100%)] px-5 shadow-[inset_0_0_0_1px_rgba(93,111,255,0.25),0_0_16px_rgba(44,64,214,0.55)]">
                 <input
                   className="min-w-0 flex-1 bg-transparent text-[1.55rem] font-extrabold tracking-[0.32em] text-white outline-none placeholder:text-white"
@@ -779,7 +770,7 @@ export function VipPage() {
               onClick={startActivation}
               type="button"
             >
-              {loadingActivation ? "Confirmation..." : "Confirmer"}
+              {loadingActivation ? tt("Confirmation...") : tt("Confirmer")}
             </button>
           </div>
         </div>
@@ -971,7 +962,7 @@ export function VipPage() {
               onClick={() => setActiveTab(tab.id)}
               type="button"
             >
-              {tab.label}
+              {tt(tab.label)}
               {activeTab === tab.id ? (
                 <span className="absolute -bottom-3 left-0 h-1 w-20 rounded-full bg-cyan-300 shadow-[0_0_14px_rgba(108,240,255,0.55)]" />
               ) : null}
@@ -1086,33 +1077,38 @@ export function VipPage() {
                 <div className="flex items-center gap-3">
                   <div className="text-right">
                     <div className="text-[1.2rem] font-semibold text-white">{formatDepositBand(currentTier, nextTier)}</div>
-                    <div className="mt-1 text-[12px] uppercase tracking-[0.18em] text-cyan-200/70">Tap for all VIPs</div>
+                    <div className="mt-1 text-[12px] uppercase tracking-[0.18em] text-cyan-200/70">{tt("Tap for all VIPs")}</div>
                   </div>
                   <ChevronRight className="h-5 w-5 text-cyan-200/80" />
                 </div>
               </div>
             </button>
 
-            <section className="rounded-[22px] bg-[#27e7d4] px-5 py-4 text-[#073133] shadow-[0_16px_28px_rgba(39,231,212,0.28)]">
+            <button
+              className="w-full rounded-[22px] bg-[linear-gradient(90deg,#69f2ff_0%,#75f6c8_100%)] px-5 py-4 text-left text-[#073133] shadow-[0_16px_28px_rgba(39,231,212,0.28)] transition enabled:active:translate-y-px disabled:cursor-not-allowed disabled:opacity-75"
+              disabled={!canStartActivation}
+              onClick={openReservationModal}
+              type="button"
+            >
               <div className="flex items-center justify-between gap-4">
                 <div>
                   <div className="text-[13px] font-semibold uppercase tracking-[0.18em] text-[#0c4b51]/80">
                     {liveRunningActivation
-                      ? "Reservation live"
+                      ? tt("Reservation live")
                       : reservationLimitReached
-                        ? "Daily limit reached"
+                        ? tt("Daily limit reached")
                         : hasActiveInvestment
-                          ? "Next reservation"
-                          : "Deposit required"}
+                          ? tt("Next reservation")
+                          : tt("Deposit required")}
                   </div>
                   <div className="mt-2 text-[1.02rem] font-bold">
                     {liveRunningActivation
                       ? `${liveRunningActivation.strategy} ends in`
                       : reservationLimitReached
-                        ? "All reservations are complete. Slots reset at 5:00 AM."
+                        ? tt("All reservations are complete. Slots reset at 5:00 AM.")
                         : hasActiveInvestment
-                          ? "The current 5 AM reservation window is open now."
-                          : "Fund the account to unlock the reservation window."}
+                          ? tt("The current 5 AM reservation window is open now.")
+                          : tt("Fund the account to unlock the reservation window.")}
                   </div>
                 </div>
                 <div className="shrink-0 text-[1.25rem] font-extrabold">
@@ -1121,20 +1117,20 @@ export function VipPage() {
                     : reservationLimitReached
                       ? formatCountdown(reservationResetCountdownSeconds)
                       : hasActiveInvestment
-                        ? "Start now"
-                        : "Fund account"}
+                        ? tt("Start now")
+                        : tt("Fund account")}
                 </div>
               </div>
-            </section>
+            </button>
 
             <section className="neon-soft-panel overflow-hidden rounded-[30px] p-5">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <div className="text-[1.8rem] font-extrabold leading-none text-white">Strategie V{currentTier.id}</div>
-                  <div className="mt-2 text-sm text-cyan-200/80">{liveRunningActivation?.strategy ?? `${currentTier.name} execution track`}</div>
+                  <div className="text-[1.8rem] font-extrabold leading-none text-white">{tt("Strategie")} V{currentTier.id}</div>
+                  <div className="mt-2 text-sm text-cyan-200/80">{liveRunningActivation?.strategy ?? `VIP${currentTier.id} ${tt("execution track")}`}</div>
                 </div>
                 <div className="rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-1.5 text-[12px] font-semibold uppercase tracking-[0.18em] text-cyan-100">
-                  {liveRunningActivation ? "Running" : reservationLimitReached ? "Reset at 5 AM" : hasActiveInvestment ? "Ready" : "Locked"}
+                  {liveRunningActivation ? tt("Running") : reservationLimitReached ? tt("Reset at 5 AM") : hasActiveInvestment ? tt("Ready") : tt("Locked")}
                 </div>
               </div>
 
@@ -1153,25 +1149,25 @@ export function VipPage() {
 
               <div className="mt-6 space-y-4 border-t border-white/10 pt-5">
                 <div className="flex items-center justify-between gap-4 text-[15px]">
-                  <span className="text-white/45">Taux De Rendement Quotidien</span>
+                  <span className="text-white/45">{tt("Taux De Rendement Quotidien")}</span>
                   <span className="font-semibold text-white">{formatRoiBand(currentTier)}</span>
                 </div>
                 <div className="flex items-center justify-between gap-4 text-[15px]">
-                  <span className="text-white/45">Depot Minimum</span>
+                  <span className="text-white/45">{tt("Depot Minimum")}</span>
                   <span className="font-semibold text-white">{formatCurrency(currentTier.minDeposit)}</span>
                 </div>
                 <div className="flex items-center justify-between gap-4 text-[15px]">
-                  <span className="text-white/45">Actifs Participants</span>
+                  <span className="text-white/45">{tt("Actifs Participants")}</span>
                   <span className="font-semibold text-white">{currentTier.activationAssets.length}</span>
                 </div>
                 <div className="flex items-center justify-between gap-4 text-[15px]">
-                  <span className="text-white/45">Utilisations Quotidiennes</span>
+                  <span className="text-white/45">{tt("Utilisations Quotidiennes")}</span>
                   <span className="font-semibold text-white">
                     {liveState.usedActivationsToday}/{currentTier.activationLimitPerDay}
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-4 text-[15px]">
-                  <span className="text-white/45">Reservation Amount</span>
+                  <span className="text-white/45">{tt("Reservation Amount")}</span>
                   <span className="font-semibold text-white">
                     {formatCurrency(liveRunningActivation?.reservationAmount ?? liveState.activeInvestment)}
                   </span>
@@ -1182,7 +1178,7 @@ export function VipPage() {
                 <div className="flex items-center gap-2 text-cyan-200">
                   {liveRunningActivation || reservationLimitReached ? <Clock3 className="h-4 w-4" /> : <PlayCircle className="h-4 w-4" />}
                   <span className="text-sm uppercase tracking-[0.24em]">
-                    {liveRunningActivation ? "Run in progress" : reservationLimitReached ? "Daily limit reached" : "Ready to activate"}
+                    {liveRunningActivation ? tt("Run in progress") : reservationLimitReached ? tt("Daily limit reached") : tt("Ready to activate")}
                   </span>
                 </div>
                 <div className="mt-3 text-[1.02rem] font-bold text-white">
@@ -1204,30 +1200,16 @@ export function VipPage() {
                   </div>
                 ) : null}
 
-                <div className="mt-4 flex items-center gap-3">
-                  <button
-                    className="flex-1 rounded-[20px] bg-cyan-300 px-4 py-3.5 text-base font-semibold text-[#032932] shadow-[0_14px_24px_rgba(39,231,212,0.28)] disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={!canStartActivation}
-                    onClick={openReservationModal}
-                    type="button"
-                  >
-                    {loadingActivation
-                      ? "Starting..."
-                      : liveRunningActivation
-                        ? "Reservation Running"
-                        : reservationLimitReached
-                          ? "Wait For 5 AM"
-                          : "Open Reservation"}
-                  </button>
-                  {!hasActiveInvestment ? (
+                {!hasActiveInvestment ? (
+                  <div className="mt-4 flex items-center gap-3">
                     <Link
-                      className="rounded-[20px] border border-cyan-300/25 bg-white/5 px-4 py-3.5 text-sm font-semibold text-cyan-100"
+                      className="w-full rounded-[20px] border border-cyan-300/25 bg-white/5 px-4 py-3.5 text-center text-sm font-semibold text-cyan-100"
                       to="/app/wallet"
                     >
-                      Deposit
+                      {tt("Deposit")}
                     </Link>
-                  ) : null}
-                </div>
+                  </div>
+                ) : null}
               </div>
             </section>
           </div>

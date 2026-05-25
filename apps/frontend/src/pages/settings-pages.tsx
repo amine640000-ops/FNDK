@@ -22,6 +22,7 @@ import { SUPPORTED_ASSETS, formatCurrency } from "@nevo/shared-utils";
 import { getApiErrorMessage, identityApi, notificationApi, walletApi } from "@/api/client";
 import { MobilePageHeader } from "@/components/mobile-page-header";
 import { authHeaders, getAccessToken } from "@/lib/auth";
+import { applyLanguagePreference as applyStoredLanguagePreference, translateText, useAppLanguage } from "@/lib/i18n";
 
 type StoredUser = {
   id?: string;
@@ -103,9 +104,7 @@ const readLanguage = (): LanguageCode => {
 };
 
 const applyLanguagePreference = (language: LanguageCode) => {
-  localStorage.setItem("nevo.language", language);
-  document.documentElement.lang = language;
-  document.documentElement.dir = language === "ar" ? "rtl" : "ltr";
+  applyStoredLanguagePreference(language);
 };
 
 const normalizeNotifications = (value: unknown): NotificationItem[] => {
@@ -186,6 +185,8 @@ function StatusCard({
   description: string;
   action?: React.ReactNode;
 }) {
+  const language = useAppLanguage();
+
   return (
     <section className="neon-panel p-5">
       <div className="flex items-start gap-3">
@@ -193,8 +194,8 @@ function StatusCard({
           <Icon className="h-5 w-5" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-[1.12rem] font-extrabold text-white">{title}</div>
-          <div className="mt-1 text-[13px] leading-5 text-slate-300">{description}</div>
+          <div className="text-[1.12rem] font-extrabold text-white">{translateText(language, title)}</div>
+          <div className="mt-1 text-[13px] leading-5 text-slate-300">{translateText(language, description)}</div>
           {action ? <div className="mt-4">{action}</div> : null}
         </div>
       </div>
@@ -203,9 +204,11 @@ function StatusCard({
 }
 
 function EmptyState({ text }: { text: string }) {
+  const language = useAppLanguage();
+
   return (
     <div className="rounded-[18px] border border-cyan-300/15 bg-white/[0.04] px-4 py-5 text-center text-sm text-slate-300">
-      {text}
+      {translateText(language, text)}
     </div>
   );
 }

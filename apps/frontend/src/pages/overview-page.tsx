@@ -21,6 +21,7 @@ import type { AdCarouselSlide, WalletSummary } from "@nevo/shared-types";
 import { adminApi, isApiAuthError, notificationApi, uploadBaseUrls, walletApi } from "@/api/client";
 import { BrandMark } from "@/components/brand-mark";
 import { clearAuthSession, getAccessToken } from "@/lib/auth";
+import { applyLanguagePreference, getNextLanguage, translateText } from "@/lib/i18n";
 import { useDashboardStore } from "@/store/use-dashboard-store";
 
 const compactNumber = new Intl.NumberFormat("en-US", {
@@ -382,8 +383,9 @@ export function OverviewPage() {
   };
 
   const toggleLanguage = () => {
-    const nextLanguage = language === "en" ? "fr" : language === "fr" ? "ar" : "en";
+    const nextLanguage = getNextLanguage(language);
     setLanguage(nextLanguage);
+    applyLanguagePreference(nextLanguage);
     toast.success(
       nextLanguage === "ar"
         ? "تم ضبط اللغة على العربية."
@@ -424,6 +426,7 @@ export function OverviewPage() {
   const overviewWalletActiveInvestment = liveWallet?.activeInvestment ?? overview.activeInvestment;
   const activeAdSlide = adSlides[activeAdIndex] ?? defaultAdCarouselSlides[0];
   const activeAdImageUrl = resolveAdminAssetUrl(activeAdSlide.imageUrl);
+  const tt = (text: string) => translateText(language, text);
 
   const goToPreviousAd = () => {
     setActiveAdIndex((current) => (current - 1 + adSlides.length) % adSlides.length);
@@ -439,7 +442,7 @@ export function OverviewPage() {
         <div className="flex items-center justify-between">
           <BrandMark
             iconClassName="h-10 w-10 rounded-xl p-1.5"
-            subtitle="AI trading hub"
+            subtitle={tt("AI trading hub")}
             textClassName="text-xl tracking-[0.08em]"
             subtitleClassName="text-[11px] tracking-[0.3em]"
           />
@@ -478,8 +481,8 @@ export function OverviewPage() {
           <div className="absolute inset-x-4 top-20 rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(12,14,96,0.98)_0%,rgba(7,9,79,0.99)_38%,rgba(4,8,58,1)_100%)] p-5 shadow-[0_24px_50px_rgba(0,0,0,0.35)]">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="text-sm uppercase tracking-[0.26em] text-cyan-200/75">Notifications</div>
-                <div className="mt-1 text-lg font-semibold text-white">Recent account activity</div>
+                <div className="text-sm uppercase tracking-[0.26em] text-cyan-200/75">{tt("Notifications")}</div>
+                <div className="mt-1 text-lg font-semibold text-white">{tt("Recent account activity")}</div>
               </div>
               <button
                 className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-cyan-200"
@@ -493,7 +496,7 @@ export function OverviewPage() {
             <div className="mt-4 max-h-[52vh] space-y-3 overflow-y-auto">
               {notificationsLoading ? (
                 <div className="rounded-[22px] border border-white/10 bg-white/5 px-4 py-4 text-sm text-slate-300">
-                  Loading notifications...
+                  {tt("Loading notifications...")}
                 </div>
               ) : notifications.length ? (
                 notifications.map((notification) => (
@@ -512,7 +515,7 @@ export function OverviewPage() {
                 ))
               ) : (
                 <div className="rounded-[22px] border border-white/10 bg-white/5 px-4 py-4 text-sm text-slate-300">
-                  No notifications yet.
+                  {tt("No notifications yet.")}
                 </div>
               )}
             </div>
@@ -625,7 +628,7 @@ export function OverviewPage() {
                 <Icon className="h-5 w-5" />
               </div>
             </div>
-            <div className="mt-2 whitespace-pre-line text-[12px] font-medium leading-4 text-white/92">{title}</div>
+            <div className="mt-2 whitespace-pre-line text-[12px] font-medium leading-4 text-white/92">{tt(title)}</div>
           </Link>
         ))}
       </section>
@@ -634,15 +637,15 @@ export function OverviewPage() {
         <div className="grid grid-cols-3 gap-3">
           <div>
             <div className="text-[1.45rem] font-extrabold leading-none text-white">${compactNumber.format(adminMetrics.totalDeposited)}</div>
-            <div className="mt-2 text-[12px] leading-4 text-cyan-200/85">Strategy Scale</div>
+            <div className="mt-2 text-[12px] leading-4 text-cyan-200/85">{tt("Strategy Scale")}</div>
           </div>
           <div>
             <div className="text-[1.45rem] font-extrabold leading-none text-white">{compactNumber.format(adminMetrics.totalUsers)}</div>
-            <div className="mt-2 text-[12px] leading-4 text-cyan-200/85">Cumulative Participants</div>
+            <div className="mt-2 text-[12px] leading-4 text-cyan-200/85">{tt("Cumulative Participants")}</div>
           </div>
           <div>
             <div className="text-[1.45rem] font-extrabold leading-none text-white">{compactNumber.format(2950000)}</div>
-            <div className="mt-2 text-[12px] leading-4 text-cyan-200/85">Cumulative Orders</div>
+            <div className="mt-2 text-[12px] leading-4 text-cyan-200/85">{tt("Cumulative Orders")}</div>
           </div>
         </div>
       </section>
@@ -651,8 +654,8 @@ export function OverviewPage() {
         <div className="border-b border-white/10 bg-[#060a52]/95 px-4 pt-3">
           <div className="grid grid-cols-2">
             {[
-              { id: "hot" as const, label: "Hot List" },
-              { id: "gain" as const, label: "Gain List" }
+              { id: "hot" as const, label: tt("Hot List") },
+              { id: "gain" as const, label: tt("Gain List") }
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -673,15 +676,15 @@ export function OverviewPage() {
 
         <div className="bg-[#08106a]/88 px-4 py-3">
           <div className="grid grid-cols-[minmax(0,1.2fr)_minmax(88px,0.7fr)_minmax(96px,0.8fr)_24px] items-center gap-3 border-b border-white/10 pb-3 text-[12px] font-semibold uppercase tracking-[0.18em] text-white/45">
-            <div>Currency</div>
-            <div className="text-right">Price</div>
-            <div className="text-right">24H Change</div>
+            <div>{tt("Currency")}</div>
+            <div className="text-right">{tt("Price")}</div>
+            <div className="text-right">{tt("24H Change")}</div>
             <div />
           </div>
 
           <div className="divide-y divide-white/[0.06]">
             {marketFeedLoading ? (
-              <div className="py-8 text-center text-sm text-white/45">Loading market feed...</div>
+              <div className="py-8 text-center text-sm text-white/45">{tt("Loading market feed...")}</div>
             ) : displayedMarkets.length ? (
               displayedMarkets.map((market) => (
                 <div
@@ -739,7 +742,7 @@ export function OverviewPage() {
               ))
             ) : (
               <div className="py-8 text-center text-sm text-white/45">
-                Market feed is unavailable right now.
+                {tt("Market feed is unavailable right now.")}
               </div>
             )}
           </div>
@@ -749,19 +752,19 @@ export function OverviewPage() {
       <section className="neon-soft-panel mt-6 p-4">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="text-sm uppercase tracking-[0.28em] text-cyan-200/75">Live wallet</div>
+            <div className="text-sm uppercase tracking-[0.28em] text-cyan-200/75">{tt("Live wallet")}</div>
             <div className="mt-2 text-[1.75rem] font-extrabold leading-none text-white">
               {formatCurrency(overviewWalletTotal)}
             </div>
             <div className="mt-2 text-[13px] text-slate-300">
-              Active investment {formatCurrency(overviewWalletActiveInvestment)}
+              {tt("Active investment")} {formatCurrency(overviewWalletActiveInvestment)}
             </div>
           </div>
           <Link
             className="rounded-full border border-cyan-300/25 bg-cyan-300/10 px-4 py-2 text-[13px] font-semibold leading-4 text-cyan-100"
             to="/app/wallet"
           >
-            Deposit Records
+            {tt("Deposit Records")}
           </Link>
         </div>
       </section>
