@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts";
 import toast from "react-hot-toast";
-import { Bell, CircleDollarSign, Globe, HandCoins, Headset, Users } from "lucide-react";
+import { Bell, ChevronRight, Globe, HandCoins, Headset, Users } from "lucide-react";
 import { BrandMark } from "@/components/brand-mark";
 import { applyLanguagePreference, getNextLanguage, translateText, useAppLanguage } from "@/lib/i18n";
 import { useDashboardStore } from "@/store/use-dashboard-store";
@@ -17,20 +17,30 @@ type TeamGenerationEntry = {
 
 const pieColors = ["#126dff", "#05d24a", "#ffc21a"];
 const generationTargets: Record<1 | 2 | 3, number> = {
-  1: 26,
-  2: 96,
-  3: 133
+  1: 24,
+  2: 35,
+  3: 56
 };
 const screenshotFallbackMembers: Record<1 | 2 | 3, number> = {
-  1: 14,
-  2: 35,
-  3: 51
+  1: 7,
+  2: 15,
+  3: 24
+};
+const screenshotFallbackIncome: Record<1 | 2 | 3, number> = {
+  1: 74.4476,
+  2: 126.2918,
+  3: 198.8435
+};
+const screenshotFallbackTodayIncome: Record<1 | 2 | 3, number> = {
+  1: 1.8412,
+  2: 3.4694,
+  3: 6.36179547
 };
 const screenshotFallbackRevenue = {
-  totalRevenue: 5724.73309,
-  todayRevenue: 104.27302,
-  totalTeamRevenue: 3322.78011,
-  todayTeamRevenue: 51.81568
+  totalMembers: 115,
+  todayMembers: 0,
+  totalTeamRevenue: 12700.5031,
+  todayTeamRevenue: 33.2401
 };
 
 const formatUsdt = (value: number) => (value > 0 ? value.toFixed(5) : "0");
@@ -41,6 +51,7 @@ export function ReferralsPage() {
   const transactions = useDashboardStore((state) => state.transactions);
   const language = useAppLanguage();
   const [teamMetric, setTeamMetric] = useState<"members" | "income">("members");
+  const [activeGeneration, setActiveGeneration] = useState<1 | 2 | 3>(3);
   const tt = (text: string) => translateText(language, text);
 
   const generationGroups = useMemo(() => {
@@ -92,6 +103,9 @@ export function ReferralsPage() {
   const displayGenerationSummary = generationSummary.map((item) => ({
     ...item,
     members: item.members || screenshotFallbackMembers[item.generation],
+    income: item.income || screenshotFallbackIncome[item.generation],
+    todayMembers: 0,
+    todayIncome: screenshotFallbackTodayIncome[item.generation],
     target: Math.max(item.target, screenshotFallbackMembers[item.generation])
   }));
 
@@ -116,6 +130,9 @@ export function ReferralsPage() {
       todayTeamRevenue: todayIncome
     };
   }, [hasTeamData, todayIncome, totalIncome, transactions, wallet.totalEarned]);
+  const displayedTotalMembers = hasTeamData ? totalMembers : screenshotFallbackRevenue.totalMembers;
+  const displayedTodayMembers = hasTeamData ? todayMembers : screenshotFallbackRevenue.todayMembers;
+  const selectedGeneration = displayGenerationSummary.find((item) => item.generation === activeGeneration) ?? displayGenerationSummary[2];
 
   const chartData = displayGenerationSummary.map((item) => ({
     name: item.label,
@@ -171,67 +188,38 @@ export function ReferralsPage() {
       </header>
 
       <div className="px-4 pt-5">
-        <section className="nevo-screen-panel rounded-[28px] px-5 pb-8 pt-6">
-          <div className="grid grid-cols-[1fr_auto] items-start gap-4">
-            <div>
-              <div className="max-w-[11rem] text-[1.65rem] font-semibold leading-[1.05] text-white">
-                {tt("Revenus Totaux(USDT)")}
-              </div>
-              <div className="mt-5 text-[2.65rem] font-semibold leading-none text-white">
-                {formatUsdt(revenueStats.totalRevenue)}
-              </div>
-            </div>
-            <button
-              className="mt-3 min-h-[3.55rem] w-[13.7rem] rounded-[12px] bg-[linear-gradient(90deg,#1be7f0_0%,#1ff0bf_100%)] px-5 text-center text-[1.05rem] font-extrabold leading-tight text-[#063343] shadow-[0_0_22px_rgba(31,240,200,0.32)]"
-              onClick={() => toast("Enregistrements de revenus indisponibles.")}
-              type="button"
-            >
-              {tt("Enregistrements De Revenus")}
-            </button>
-          </div>
-
-          <div className="mt-8 grid grid-cols-[1.35fr_1fr] gap-y-7 pl-4 text-[1.25rem] leading-tight">
-            <div className="text-white/55">{tt("Revenus D'aujourd'hui(USDT)")}</div>
-            <div className="text-right font-semibold text-white">{formatUsdt(revenueStats.todayRevenue)}</div>
-            <div className="text-white/55">{tt("Revenus D'équipe Totaux(USDT)")}</div>
-            <div className="text-right font-semibold text-white">{formatUsdt(revenueStats.totalTeamRevenue)}</div>
-            <div className="text-white/55">{tt("Revenus D'équipe D'aujourd'hui(USDT)")}</div>
-            <div className="text-right font-semibold text-white">{formatUsdt(revenueStats.todayTeamRevenue)}</div>
-          </div>
-        </section>
-
-        <section className="nevo-team-panel mt-6 rounded-[28px] px-5 pb-8 pt-5">
-          <div className="text-[1.85rem] font-extrabold text-white">{tt("Mon Équipe")}</div>
-          <div className="mt-6 border-t border-[#2e3bb0]/70 pt-7">
+        <section className="nevo-team-panel rounded-[24px] px-5 pb-6 pt-4">
+          <div className="text-[1.45rem] font-extrabold leading-none text-white">{tt("Mon Équipe")}</div>
+          <div className="mt-5 border-t border-[#2e3bb0]/70 pt-6">
             <div className="grid grid-cols-2 gap-4">
               <div className="text-center">
-                <div className="flex items-center justify-center gap-2 text-[1.2rem] font-semibold text-white">
-                  <Users className="h-6 w-6 fill-white/15" />
+                <div className="flex items-center justify-center gap-2 text-[1rem] font-semibold text-white">
+                  <Users className="h-5 w-5 fill-white/15" />
                   <span>{tt("Comptage D'équipe")}</span>
                 </div>
-                <div className="mt-4 h-9 text-[2rem] font-semibold leading-none text-white">
-                  {hasTeamData ? totalMembers : ""}
+                <div className="mt-4 text-[1.45rem] font-semibold leading-none text-white">
+                  {displayedTotalMembers}
                 </div>
-                <div className="mt-2 text-[1.05rem] font-semibold text-white/48">
-                  {tt("Aujourd'hui Ajouté")} <span className="text-[#16dce5]">+{todayMembers}</span>
+                <div className="mt-3 text-[0.88rem] font-semibold text-white/48">
+                  {tt("Aujourd'hui Ajouté")} <span className="text-[#16dce5]">+{displayedTodayMembers}</span>
                 </div>
               </div>
 
               <div className="text-center">
-                <div className="flex items-center justify-center gap-2 text-[1.2rem] font-semibold text-white">
-                  <HandCoins className="h-6 w-6 fill-white/15" />
+                <div className="flex items-center justify-center gap-2 text-[1rem] font-semibold text-white">
+                  <HandCoins className="h-5 w-5 fill-white/15" />
                   <span>{tt("Revenus D'équipe")}</span>
                 </div>
-                <div className="mt-4 text-[2rem] font-semibold leading-none text-white">{formatUsdt(totalIncome)}</div>
-                <div className="mt-2 text-[1.05rem] font-semibold text-white/48">
-                  {tt("Aujourd'hui Ajouté")} <span className="text-[#16dce5]">+{formatUsdt(todayIncome)}</span>
+                <div className="mt-4 text-[1.45rem] font-semibold leading-none text-white">{formatUsdt(revenueStats.totalTeamRevenue)}</div>
+                <div className="mt-3 text-[0.88rem] font-semibold text-white/48">
+                  {tt("Aujourd'hui Ajouté")} <span className="text-[#16dce5]">+{formatUsdt(revenueStats.todayTeamRevenue)}</span>
                 </div>
               </div>
             </div>
 
-            <div className="mt-8 grid grid-cols-2 gap-5">
+            <div className="mt-7 grid grid-cols-2 bg-[#060955]/80 p-1">
               <button
-                className={`min-h-[3.9rem] rounded-[9px] px-3 text-[1.28rem] font-semibold transition ${
+                className={`min-h-[3.15rem] rounded-[6px] px-3 text-[1.04rem] font-medium transition ${
                   teamMetric === "members"
                     ? "bg-[linear-gradient(90deg,#1be7f0_0%,#1ff0bf_100%)] text-[#053340]"
                     : "text-white/48"
@@ -242,7 +230,7 @@ export function ReferralsPage() {
                 {tt("Comptage D'équipe")}
               </button>
               <button
-                className={`min-h-[3.9rem] rounded-[9px] px-3 text-[1.28rem] font-semibold transition ${
+                className={`min-h-[3.15rem] rounded-[6px] px-3 text-[1.04rem] font-medium transition ${
                   teamMetric === "income"
                     ? "bg-[linear-gradient(90deg,#1be7f0_0%,#1ff0bf_100%)] text-[#053340]"
                     : "text-white/48"
@@ -254,8 +242,8 @@ export function ReferralsPage() {
               </button>
             </div>
 
-            <div className="mt-8 grid grid-cols-[1.02fr_0.98fr] items-center gap-4">
-              <div className="h-[15rem] min-w-0">
+            <div className="mt-7 grid grid-cols-[1.02fr_0.98fr] items-center gap-3">
+              <div className="h-[12.5rem] min-w-0">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
@@ -264,7 +252,7 @@ export function ReferralsPage() {
                       data={chartData}
                       dataKey="value"
                       innerRadius={0}
-                      outerRadius={105}
+                      outerRadius={82}
                       paddingAngle={0}
                       stroke="transparent"
                     >
@@ -276,11 +264,11 @@ export function ReferralsPage() {
                 </ResponsiveContainer>
               </div>
 
-              <div className="space-y-4 text-[1.02rem] font-semibold text-white">
+              <div className="space-y-3 text-[0.9rem] font-semibold text-white">
                 {displayGenerationSummary.map((item, index) => (
                   <div key={item.generation} className="flex items-center gap-3">
-                    <span className="h-6 w-6 shrink-0 rounded-[5px]" style={{ backgroundColor: pieColors[index] }} />
-                    <span>
+                    <span className="h-4 w-4 shrink-0 rounded-[4px]" style={{ backgroundColor: pieColors[index] }} />
+                    <span className="whitespace-nowrap">
                       {item.generation} {tt("générations")}({item.members}/{item.target})
                     </span>
                   </div>
@@ -290,34 +278,54 @@ export function ReferralsPage() {
           </div>
         </section>
 
-        {hasTeamData ? (
-          <section className="nevo-team-panel mt-6 rounded-[28px] px-5 py-5">
-            <div className="flex items-center gap-2 text-[1.15rem] font-semibold text-white">
-              <CircleDollarSign className="h-5 w-5" />
-              {tt("Liste D'équipe")}
+        <section className="nevo-team-panel mt-5 rounded-[24px] px-5 pb-6 pt-5">
+          <button className="flex w-full items-center justify-between gap-4 text-left" type="button">
+            <span className="text-[1.35rem] font-extrabold text-white">{tt("Liste D'équipe")}</span>
+            <ChevronRight className="h-6 w-6 shrink-0 text-white" />
+          </button>
+
+          <div className="mt-5 grid grid-cols-3 border-b border-[#2e3bb0]/70 text-center">
+            {displayGenerationSummary.map((item) => (
+              <button
+                key={item.generation}
+                className={`relative pb-3 text-[1.05rem] font-medium transition ${
+                  activeGeneration === item.generation ? "text-white" : "text-white/48"
+                }`}
+                onClick={() => setActiveGeneration(item.generation)}
+                type="button"
+              >
+                {item.generation} {tt("générations")}
+                {activeGeneration === item.generation ? (
+                  <span className="absolute -bottom-[2px] left-1/2 h-1 w-16 -translate-x-1/2 rounded-full bg-cyan-300 shadow-[0_0_12px_rgba(103,232,255,0.68)]" />
+                ) : null}
+              </button>
+            ))}
+          </div>
+
+          <div className="mt-6 grid grid-cols-2 gap-x-8 gap-y-6">
+            <div>
+              <div className="text-[1rem] leading-snug text-white/48">{tt("Membres D'équipe")}</div>
+              <div className="mt-3 text-[1.25rem] font-extrabold text-white">
+                {selectedGeneration.members}/{selectedGeneration.target}
+              </div>
             </div>
-            <div className="mt-4 space-y-3">
-              {Object.values(generationGroups)
-                .flat()
-                .map((entry) => (
-                  <div key={entry.id} className="rounded-[18px] border border-white/10 bg-[#02033d]/75 px-4 py-3">
-                    <div className="flex items-center justify-between gap-4">
-                      <div>
-                        <div className="text-[1rem] font-semibold text-white">{entry.name}</div>
-                        <div className="mt-1 text-[0.85rem] text-white/45">
-                          {entry.members} membres · +{entry.todayMembers} aujourd'hui
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-semibold text-white">{formatUsdt(entry.income)}</div>
-                        <div className="mt-1 text-[0.85rem] text-[#16dce5]">+{formatUsdt(entry.todayIncome)}</div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+            <div>
+              <div className="text-[1rem] leading-snug text-white/48">{tt("Revenus D'équipe")}</div>
+              <div className="mt-3 text-[1.25rem] font-extrabold text-white">{formatUsdt(selectedGeneration.income)}</div>
             </div>
-          </section>
-        ) : null}
+            <div>
+              <div className="text-[1rem] leading-snug text-white/48">{tt("Dynamiques D'équipe D'aujourd'hui")}</div>
+              <div className="mt-3 text-[1.25rem] font-extrabold text-white">0/0</div>
+            </div>
+            <div>
+              <div className="text-[1rem] leading-snug text-white/48">{tt("Revenus D'équipe D'aujourd'hui")}</div>
+              <div className="mt-3 text-[1.25rem] font-extrabold text-white">{formatUsdt(selectedGeneration.todayIncome)}</div>
+            </div>
+            <div>
+              <div className="text-[1rem] leading-snug text-white/48">{tt("Récompenses De Référence")}</div>
+            </div>
+          </div>
+        </section>
       </div>
     </div>
   );
