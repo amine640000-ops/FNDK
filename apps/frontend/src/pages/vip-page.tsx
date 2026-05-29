@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import {
   Bell,
-  Bot,
   ChevronRight,
   CircleDollarSign,
   Clock3,
@@ -13,15 +12,14 @@ import {
   Headset,
   Landmark,
   LogOut,
-  PlayCircle,
   Sparkles,
   Users,
   Wallet,
   X
 } from "lucide-react";
 import type { AiTradingActivation, AssetType, MissionTaskCategory, MissionTaskProgress, VipTier, WalletSummary } from "@nevo/shared-types";
-import { formatCurrency, formatPercent, resolveTierByDeposit } from "@nevo/shared-utils";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { formatCurrency, resolveTierByDeposit } from "@nevo/shared-utils";
+import { useLocation, useNavigate } from "react-router-dom";
 import { getApiErrorMessage, isApiAuthError, taskApi, walletApi } from "@/api/client";
 import { BrandMark } from "@/components/brand-mark";
 import { clearAuthSession, getAccessToken } from "@/lib/auth";
@@ -329,7 +327,6 @@ export function VipPage() {
   const currentTier = liveState.currentTier;
   const runningActivation = liveState.runningActivation;
   const nextTier = vipTiers.find((tier) => tier.id === currentTier.id + 1);
-  const hasActiveInvestment = liveState.activeInvestment > 0;
   const countdownSeconds = runningActivation
     ? Math.max(Math.ceil((new Date(runningActivation.endsAt).getTime() - now) / 1000), 0)
     : 0;
@@ -341,10 +338,16 @@ export function VipPage() {
     Math.ceil(((Number.isFinite(reservationResetAt) ? reservationResetAt : getNextLocalFiveAm(now)) - now) / 1000),
     0
   );
+  const hasMinimumDeposit = liveState.activeInvestment >= currentTier.minDeposit;
   const reservationLimitReached =
-    hasActiveInvestment && !liveRunningActivation && liveState.remainingActivationsToday <= 0;
+    hasMinimumDeposit && !liveRunningActivation && liveState.remainingActivationsToday <= 0;
   const canStartActivation =
-    !loadingActivation && !liveRunningActivation && liveState.remainingActivationsToday > 0 && hasActiveInvestment;
+    !loadingActivation && !liveRunningActivation && liveState.remainingActivationsToday > 0 && hasMinimumDeposit;
+  const reservationStripCountdown = liveRunningActivation
+    ? formatCountdown(countdownSeconds)
+    : reservationLimitReached || !hasMinimumDeposit
+      ? formatCountdown(reservationResetCountdownSeconds)
+      : "00:00:00";
 
   useEffect(() => {
     if (!runningActivation || countdownSeconds > 0 || completionRefreshInFlight.current === runningActivation.id) {
@@ -556,7 +559,7 @@ export function VipPage() {
   };
 
   const openReservationModal = () => {
-    if (!hasActiveInvestment) {
+    if (!hasMinimumDeposit) {
       toast.error("Activate a VIP tier with an approved deposit before starting AI trading.");
       return;
     }
@@ -593,7 +596,7 @@ export function VipPage() {
       return;
     }
 
-    if (!hasActiveInvestment) {
+    if (!hasMinimumDeposit) {
       showReservationError(tt(reservationContactMessage));
       return;
     }
@@ -695,30 +698,30 @@ export function VipPage() {
       </header>
 
       {reservationModalOpen ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-[#020223]/72 px-4">
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/75 px-4">
           <button
             aria-label="Close reservation confirmation"
             className="absolute inset-0"
             onClick={closeReservationModal}
             type="button"
           />
-          <div className="relative w-full max-w-[448px] rounded-[28px] border border-[#1427b3]/80 bg-[#06078f] px-5 pb-5 pt-6 shadow-[0_28px_70px_rgba(0,0,0,0.42),inset_0_1px_0_rgba(178,196,255,0.08)]">
+          <div className="relative w-full max-w-[448px] rounded-[18px] border border-[#1427b3]/80 bg-[#06078f] px-5 pb-5 pt-5 shadow-[0_28px_70px_rgba(0,0,0,0.52),inset_0_1px_0_rgba(178,196,255,0.08)]">
             <div className="flex items-center justify-between gap-3">
-              <div className="text-[1.55rem] font-extrabold leading-tight text-white">{tt("Confirmation De Réservation")}</div>
+              <div className="text-[1.35rem] font-extrabold leading-tight text-white">{tt("Confirmation De Réservation")}</div>
               <button
                 aria-label="Close reservation confirmation"
-                className="flex h-10 w-10 shrink-0 items-center justify-center text-white transition hover:text-cyan-100"
+                className="flex h-9 w-9 shrink-0 items-center justify-center text-white transition hover:text-cyan-100"
                 onClick={closeReservationModal}
                 type="button"
               >
-                <X className="h-9 w-9 stroke-[2.2]" />
+                <X className="h-7 w-7 stroke-[2.2]" />
               </button>
             </div>
 
-            <div className="mt-8 text-[1.35rem] font-medium text-white">{tt("Montant De Réservation")}</div>
-            <div className="mt-5 flex min-h-[4.6rem] items-center gap-3 rounded-[17px] border border-[#2c40d6] bg-[linear-gradient(180deg,#08099b_0%,#060880_100%)] px-5 shadow-[inset_0_0_0_1px_rgba(93,111,255,0.25),0_0_16px_rgba(44,64,214,0.55)]">
+            <div className="mt-7 text-[1.08rem] font-medium text-white">{tt("Montant De Réservation")}</div>
+            <div className="mt-4 flex min-h-[3.9rem] items-center gap-3 rounded-[14px] border border-[#2c40d6] bg-[linear-gradient(180deg,#08099b_0%,#060880_100%)] px-4 shadow-[inset_0_0_0_1px_rgba(93,111,255,0.25),0_0_16px_rgba(44,64,214,0.55)]">
               <input
-                className="min-w-0 flex-1 bg-transparent text-[1.55rem] font-extrabold text-white outline-none"
+                className="min-w-0 flex-1 bg-transparent text-[1.2rem] font-extrabold text-white outline-none"
                 inputMode="decimal"
                 min="0"
                 step="0.01"
@@ -727,7 +730,7 @@ export function VipPage() {
                 onChange={(event) => setReservationAmount(event.target.value)}
               />
               <button
-                className="min-h-[3.35rem] rounded-[14px] bg-[#5960e8] px-8 text-[1.45rem] font-semibold text-white shadow-[0_12px_20px_rgba(42,49,180,0.36)]"
+                className="min-h-[3rem] rounded-[12px] bg-[#5960e8] px-7 text-[1.08rem] font-semibold text-white shadow-[0_12px_20px_rgba(42,49,180,0.36)]"
                 onClick={() => setReservationAmount(liveState.activeInvestment.toFixed(2))}
                 type="button"
               >
@@ -735,11 +738,11 @@ export function VipPage() {
               </button>
             </div>
 
-            <label className="mt-8 block">
-              <span className="text-[1.35rem] font-medium text-white">{tt("Mot De Passe")}</span>
-              <div className="mt-5 flex min-h-[4.6rem] items-center gap-4 rounded-[17px] border border-[#2c40d6] bg-[linear-gradient(180deg,#08099b_0%,#060880_100%)] px-5 shadow-[inset_0_0_0_1px_rgba(93,111,255,0.25),0_0_16px_rgba(44,64,214,0.55)]">
+            <label className="mt-7 block">
+              <span className="text-[1.08rem] font-medium text-white">{tt("Mot De Passe")}</span>
+              <div className="mt-4 flex min-h-[3.9rem] items-center gap-4 rounded-[14px] border border-[#2c40d6] bg-[linear-gradient(180deg,#08099b_0%,#060880_100%)] px-4 shadow-[inset_0_0_0_1px_rgba(93,111,255,0.25),0_0_16px_rgba(44,64,214,0.55)]">
                 <input
-                  className="min-w-0 flex-1 bg-transparent text-[1.55rem] font-extrabold tracking-[0.32em] text-white outline-none placeholder:text-white"
+                  className="min-w-0 flex-1 bg-transparent text-[1.2rem] font-extrabold tracking-[0.32em] text-white outline-none placeholder:text-white"
                   inputMode="numeric"
                   maxLength={6}
                   placeholder="••••••"
@@ -749,23 +752,23 @@ export function VipPage() {
                 />
                 <button
                   aria-label={passcodeVisible ? "Hide passcode" : "Show passcode"}
-                  className="flex h-11 w-11 shrink-0 items-center justify-center text-white/70"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center text-white/70"
                   onClick={() => setPasscodeVisible((visible) => !visible)}
                   type="button"
                 >
-                  {passcodeVisible ? <EyeOff className="h-8 w-8" /> : <Eye className="h-8 w-8 fill-white/30" />}
+                  {passcodeVisible ? <EyeOff className="h-7 w-7" /> : <Eye className="h-7 w-7 fill-white/30" />}
                 </button>
               </div>
             </label>
 
             {reservationError ? (
-              <div className="absolute left-1/2 top-[45%] z-10 w-[82%] -translate-x-1/2 rounded-[10px] bg-[#2c2d35] px-5 py-4 text-center text-[1.2rem] font-medium leading-snug text-white shadow-[0_14px_32px_rgba(0,0,0,0.36)]">
+              <div className="absolute left-1/2 top-[45%] z-10 w-[82%] -translate-x-1/2 rounded-[10px] bg-[#2c2d35] px-5 py-4 text-center text-[1.02rem] font-medium leading-snug text-white shadow-[0_14px_32px_rgba(0,0,0,0.36)]">
                 {reservationError}
               </div>
             ) : null}
 
             <button
-              className="mt-9 min-h-[4.85rem] w-full rounded-[18px] bg-[linear-gradient(90deg,#20eaf3_0%,#12f0bc_100%)] px-4 text-[1.55rem] font-extrabold text-[#041859] shadow-[0_16px_30px_rgba(24,235,202,0.28)] disabled:opacity-60"
+              className="mt-8 min-h-[4.1rem] w-full rounded-[14px] bg-[linear-gradient(90deg,#20eaf3_0%,#12f0bc_100%)] px-4 text-[1.25rem] font-extrabold text-[#041859] shadow-[0_16px_30px_rgba(24,235,202,0.28)] disabled:opacity-60"
               disabled={loadingActivation}
               onClick={startActivation}
               type="button"
@@ -1085,41 +1088,14 @@ export function VipPage() {
             </button>
 
             <button
-              className="w-full rounded-[22px] bg-[linear-gradient(90deg,#69f2ff_0%,#75f6c8_100%)] px-5 py-4 text-left text-[#073133] shadow-[0_16px_28px_rgba(39,231,212,0.28)] transition enabled:active:translate-y-px disabled:cursor-not-allowed disabled:opacity-75"
+              className="w-full rounded-[10px] bg-[linear-gradient(90deg,#16e7ec_0%,#07efaf_100%)] px-5 py-4 text-[#073133] shadow-[0_16px_28px_rgba(39,231,212,0.25)] transition enabled:active:translate-y-px disabled:cursor-not-allowed disabled:opacity-70 disabled:saturate-[0.68]"
               disabled={!canStartActivation}
               onClick={openReservationModal}
               type="button"
             >
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <div className="text-[13px] font-semibold uppercase tracking-[0.18em] text-[#0c4b51]/80">
-                    {liveRunningActivation
-                      ? tt("Reservation live")
-                      : reservationLimitReached
-                        ? tt("Daily limit reached")
-                        : hasActiveInvestment
-                          ? tt("Next reservation")
-                          : tt("Deposit required")}
-                  </div>
-                  <div className="mt-2 text-[1.02rem] font-bold">
-                    {liveRunningActivation
-                      ? `${liveRunningActivation.strategy} ends in`
-                      : reservationLimitReached
-                        ? tt("All reservations are complete. Slots reset at 5:00 AM.")
-                        : hasActiveInvestment
-                          ? tt("The current 5 AM reservation window is open now.")
-                          : tt("Fund the account to unlock the reservation window.")}
-                  </div>
-                </div>
-                <div className="shrink-0 text-[1.25rem] font-extrabold">
-                  {liveRunningActivation
-                    ? formatCountdown(countdownSeconds)
-                    : reservationLimitReached
-                      ? formatCountdown(reservationResetCountdownSeconds)
-                      : hasActiveInvestment
-                        ? tt("Start now")
-                        : tt("Fund account")}
-                </div>
+              <div className="flex min-h-[3.6rem] items-center justify-center gap-5 text-center text-[1.16rem] font-medium leading-tight">
+                <span>{liveRunningActivation ? tt("Réservation En Cours") : tt("Prochain Tour De Réservation")}</span>
+                <span className="shrink-0 tabular-nums">{reservationStripCountdown}</span>
               </div>
             </button>
 
@@ -1130,7 +1106,7 @@ export function VipPage() {
                   <div className="mt-2 text-sm text-cyan-200/80">{liveRunningActivation?.strategy ?? `VIP${currentTier.id} ${tt("execution track")}`}</div>
                 </div>
                 <div className="rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-1.5 text-[12px] font-semibold uppercase tracking-[0.18em] text-cyan-100">
-                  {liveRunningActivation ? tt("Running") : reservationLimitReached ? tt("Reset at 5 AM") : hasActiveInvestment ? tt("Ready") : tt("Locked")}
+                  {liveRunningActivation ? tt("Running") : reservationLimitReached ? tt("Reset at 5 AM") : hasMinimumDeposit ? tt("Ready") : tt("Locked")}
                 </div>
               </div>
 
@@ -1156,60 +1132,6 @@ export function VipPage() {
                   <span className="text-white/45">{tt("Depot Minimum")}</span>
                   <span className="font-semibold text-white">{formatCurrency(currentTier.minDeposit)}</span>
                 </div>
-                <div className="flex items-center justify-between gap-4 text-[15px]">
-                  <span className="text-white/45">{tt("Actifs Participants")}</span>
-                  <span className="font-semibold text-white">{currentTier.activationAssets.length}</span>
-                </div>
-                <div className="flex items-center justify-between gap-4 text-[15px]">
-                  <span className="text-white/45">{tt("Utilisations Quotidiennes")}</span>
-                  <span className="font-semibold text-white">
-                    {liveState.usedActivationsToday}/{currentTier.activationLimitPerDay}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between gap-4 text-[15px]">
-                  <span className="text-white/45">{tt("Reservation Amount")}</span>
-                  <span className="font-semibold text-white">
-                    {formatCurrency(liveRunningActivation?.reservationAmount ?? liveState.activeInvestment)}
-                  </span>
-                </div>
-              </div>
-
-              <div className="mt-6 rounded-[24px] border border-white/10 bg-[#04073d]/88 p-4">
-                <div className="flex items-center gap-2 text-cyan-200">
-                  {liveRunningActivation || reservationLimitReached ? <Clock3 className="h-4 w-4" /> : <PlayCircle className="h-4 w-4" />}
-                  <span className="text-sm uppercase tracking-[0.24em]">
-                    {liveRunningActivation ? tt("Run in progress") : reservationLimitReached ? tt("Daily limit reached") : tt("Ready to activate")}
-                  </span>
-                </div>
-                <div className="mt-3 text-[1.02rem] font-bold text-white">
-                  {liveRunningActivation?.marketSummary ??
-                    (reservationLimitReached
-                      ? `Reservations reset in ${formatCountdown(reservationResetCountdownSeconds)}.`
-                      : "Launch the next timed AI reservation directly from this strategy panel.")}
-                </div>
-                <div className="mt-2 text-[13px] leading-5 text-slate-300">
-                  {liveRunningActivation?.thesis ??
-                    (reservationLimitReached
-                      ? `You used all ${currentTier.activationLimitPerDay} reservations in this 5 AM window. You can start again when the counter reaches 00:00:00.`
-                      : "Each reservation opens a short execution cycle, closes automatically, and posts the result to your record history.")}
-                </div>
-
-                {!hasActiveInvestment ? (
-                  <div className="mt-4 rounded-[18px] border border-amber-300/25 bg-amber-300/10 px-4 py-3 text-[13px] text-amber-100">
-                    Approved deposited funds are required before you can launch an AI run.
-                  </div>
-                ) : null}
-
-                {!hasActiveInvestment ? (
-                  <div className="mt-4 flex items-center gap-3">
-                    <Link
-                      className="w-full rounded-[20px] border border-cyan-300/25 bg-white/5 px-4 py-3.5 text-center text-sm font-semibold text-cyan-100"
-                      to="/app/wallet"
-                    >
-                      {tt("Deposit")}
-                    </Link>
-                  </div>
-                ) : null}
               </div>
             </section>
           </div>

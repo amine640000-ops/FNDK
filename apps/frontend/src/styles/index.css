@@ -28,6 +28,16 @@ body,
   min-height: 100%;
 }
 
+html {
+  font-size: 14px;
+}
+
+@media (min-width: 768px) {
+  html {
+    font-size: 15px;
+  }
+}
+
 body {
   margin: 0;
   font-family: "Plus Jakarta Sans", Inter, sans-serif;
