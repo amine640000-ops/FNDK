@@ -10,9 +10,12 @@ import {
 import { formatCurrency } from "@nevo/shared-utils";
 import { MobilePageHeader } from "@/components/mobile-page-header";
 import { SectionCard } from "@/components/section-card";
+import { translateText, useAppLanguage } from "@/lib/i18n";
 import { useDashboardStore } from "@/store/use-dashboard-store";
 
 export function TradeHistoryPage() {
+  const language = useAppLanguage();
+  const tt = (text: string) => translateText(language, text);
   const trades = useDashboardStore((state) => state.trades);
   const series = useDashboardStore((state) => state.profitSeries);
 
@@ -44,22 +47,22 @@ export function TradeHistoryPage() {
               >
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <div className="text-sm text-[#7d84bd]">Asset</div>
+                    <div className="text-sm text-[#7d84bd]">{tt("Asset")}</div>
                     <div className="font-semibold text-white">{trade.asset}</div>
                   </div>
                   <div className="text-right">
-                    <div className="text-sm text-[#7d84bd]">Profit</div>
+                    <div className="text-sm text-[#7d84bd]">{tt("Profit")}</div>
                     <div className="font-semibold text-cyan-200">{formatCurrency(trade.profit)}</div>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div>
-                    <div className="text-[#7d84bd]">Strategy</div>
+                    <div className="text-[#7d84bd]">{tt("Strategy")}</div>
                     <div className="font-medium text-white">{trade.strategy}</div>
                   </div>
                   <div>
-                    <div className="text-[#7d84bd]">Entry / Exit</div>
+                    <div className="text-[#7d84bd]">{tt("Entry / Exit")}</div>
                     <div className="font-medium text-white">
                       {trade.entryPrice} / {trade.exitPrice}
                     </div>

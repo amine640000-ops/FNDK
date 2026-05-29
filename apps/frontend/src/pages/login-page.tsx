@@ -1,15 +1,18 @@
 import { useState } from "react";
-import { Eye, Headphones, Loader2, Mail, Phone, ShieldQuestion } from "lucide-react";
+import { Eye, Headphones, Languages, Loader2, Mail, Phone, ShieldQuestion } from "lucide-react";
 import toast from "react-hot-toast";
 import { Link, useNavigate } from "react-router-dom";
 import { axios, getApiErrorMessage, identityApi } from "@/api/client";
 import { FndkLogo } from "@/components/brand-mark";
 import { saveAuthSession } from "@/lib/auth";
+import { applyLanguagePreference, getNextLanguage, translateText, useAppLanguage } from "@/lib/i18n";
 
 type LoginMode = "phone" | "email";
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const language = useAppLanguage();
+  const tt = (text: string) => translateText(language, text);
   const [loginMode, setLoginMode] = useState<LoginMode>("email");
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -27,17 +30,23 @@ export function LoginPage() {
         password
       });
       saveAuthSession(response.data);
-      toast.success("Login successful");
+      toast.success(tt("Login successful"));
       navigate(response.data.user.role === "ADMIN" ? "/admin" : "/app");
     } catch (error) {
       if (axios.isAxiosError(error) && !error.response) {
-        toast.error("Login service is unreachable. Check the identity API status.");
+        toast.error(tt("Login service is unreachable. Check the identity API status."));
       } else {
-        toast.error(getApiErrorMessage(error, "Login failed. Check your credentials."));
+        toast.error(getApiErrorMessage(error, tt("Login failed. Check your credentials.")));
       }
     } finally {
       setLoading(false);
     }
+  };
+
+  const toggleLanguage = () => {
+    const nextLanguage = getNextLanguage(language);
+    applyLanguagePreference(nextLanguage);
+    toast.success(translateText(nextLanguage, nextLanguage === "fr" ? "Language set to Francais." : nextLanguage === "ar" ? "Language set to Arabic." : "Language set to English."));
   };
 
   return (
@@ -51,14 +60,22 @@ export function LoginPage() {
             </div>
             <div className="flex items-center gap-4 text-cyan-300">
               <button
-                aria-label="Help"
+                aria-label={tt("Help")}
                 className="flex h-9 w-9 items-center justify-center rounded-full text-cyan-300 transition hover:bg-cyan-300/10"
                 type="button"
               >
                 <ShieldQuestion className="h-6 w-6" />
               </button>
               <button
-                aria-label="Support"
+                aria-label={tt("Language")}
+                className="flex h-9 w-9 items-center justify-center rounded-full text-cyan-300 transition hover:bg-cyan-300/10"
+                onClick={toggleLanguage}
+                type="button"
+              >
+                <Languages className="h-6 w-6" />
+              </button>
+              <button
+                aria-label={tt("Support")}
                 className="flex h-9 w-9 items-center justify-center rounded-full text-cyan-300 transition hover:bg-cyan-300/10"
                 type="button"
               >
@@ -68,7 +85,7 @@ export function LoginPage() {
           </header>
 
           <main className="relative z-10 flex-1 pt-16">
-            <h1 className="text-[2.05rem] font-extrabold tracking-[-0.02em] text-white">Login</h1>
+            <h1 className="text-[2.05rem] font-extrabold tracking-[-0.02em] text-white">{tt("Login")}</h1>
 
             <form className="mt-11 space-y-7" onSubmit={handleSubmit}>
               <div className="grid grid-cols-2 items-end gap-4">
@@ -80,7 +97,7 @@ export function LoginPage() {
                   type="button"
                 >
                   <Phone className="h-4 w-4" />
-                  Phone Number
+                  {tt("Phone Number")}
                   {loginMode === "phone" ? (
                     <span className="absolute bottom-0 h-1 w-14 rounded-full bg-cyan-300 shadow-[0_0_16px_rgba(103,232,255,0.7)]" />
                   ) : null}
@@ -93,7 +110,7 @@ export function LoginPage() {
                   type="button"
                 >
                   <Mail className="h-4 w-4" />
-                  Email
+                  {tt("Email")}
                   {loginMode === "email" ? (
                     <span className="absolute bottom-0 h-1 w-14 rounded-full bg-cyan-300 shadow-[0_0_16px_rgba(103,232,255,0.7)]" />
                   ) : null}
@@ -101,12 +118,12 @@ export function LoginPage() {
               </div>
 
               <label className="block">
-                <span className="sr-only">{loginMode === "email" ? "Email" : "Phone number"}</span>
+                <span className="sr-only">{loginMode === "email" ? tt("Email") : tt("Phone number")}</span>
                 <input
                   className="fndk-auth-input"
                   autoComplete={loginMode === "email" ? "email" : "tel"}
                   inputMode={loginMode === "email" ? "email" : "tel"}
-                  placeholder={loginMode === "email" ? "Enter email" : "Enter phone number"}
+                  placeholder={loginMode === "email" ? tt("Enter email") : tt("Enter phone number")}
                   type={loginMode === "email" ? "email" : "tel"}
                   value={identifier}
                   onChange={(event) => setIdentifier(event.target.value)}
@@ -115,20 +132,20 @@ export function LoginPage() {
               </label>
 
               <label className="block">
-                <span className="mb-4 block text-[1.15rem] font-extrabold text-white">Password</span>
+                <span className="mb-4 block text-[1.15rem] font-extrabold text-white">{tt("Password")}</span>
                 <span className="relative block">
                   <input
                     className="fndk-auth-input pr-14"
                     autoComplete="current-password"
                     minLength={8}
-                    placeholder="Enter password"
+                    placeholder={tt("Enter password")}
                     type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
                     required
                   />
                   <button
-                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    aria-label={showPassword ? tt("Hide password") : tt("Show password")}
                     className="absolute right-4 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full text-white/85 transition hover:bg-white/5"
                     onClick={() => setShowPassword((current) => !current)}
                     type="button"
@@ -155,10 +172,10 @@ export function LoginPage() {
                     onChange={(event) => setRememberAccount(event.target.checked)}
                     type="checkbox"
                   />
-                  <span className="truncate">Remember Account</span>
+                  <span className="truncate">{tt("Remember Account")}</span>
                 </label>
                 <Link className="shrink-0 text-cyan-300 transition hover:text-cyan-100" to="/forgot-password">
-                  Forgot Password
+                  {tt("Forgot Password")}
                 </Link>
               </div>
 
@@ -170,18 +187,18 @@ export function LoginPage() {
                 {loading ? (
                   <>
                     <Loader2 className="h-5 w-5 animate-spin" />
-                    Login
+                    {tt("Login")}
                   </>
                 ) : (
-                  "Login"
+                  tt("Login")
                 )}
               </button>
             </form>
 
             <div className="mt-8 text-center text-[1rem] font-extrabold">
-              <span className="text-white">No Account Yet? </span>
+              <span className="text-white">{tt("No Account Yet?")} </span>
               <Link className="text-cyan-300" to="/register">
-                Register Now
+                {tt("Register Now")}
               </Link>
             </div>
           </main>

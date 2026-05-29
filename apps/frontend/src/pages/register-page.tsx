@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Eye, Headphones, Loader2, ShieldQuestion } from "lucide-react";
+import { Eye, Headphones, Languages, Loader2, ShieldQuestion } from "lucide-react";
 import toast from "react-hot-toast";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { axios, identityApi } from "@/api/client";
 import { FndkLogo } from "@/components/brand-mark";
+import { applyLanguagePreference, getNextLanguage, translateText, useAppLanguage } from "@/lib/i18n";
 
 type RegisterResponse = {
   message: string;
@@ -55,6 +56,8 @@ const isRegisterResponse = (value: unknown): value is RegisterResponse =>
 
 export function RegisterPage() {
   const navigate = useNavigate();
+  const language = useAppLanguage();
+  const tt = (text: string) => translateText(language, text);
   const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [verificationLoading, setVerificationLoading] = useState(false);
@@ -80,14 +83,14 @@ export function RegisterPage() {
     const trimmedFullName = fullName.trim();
 
     if (!internationalPhonePattern.test(normalizedPhone)) {
-      const message = "Enter a valid phone number with country code, for example +21656109879.";
+      const message = tt("Enter a valid phone number with country code, for example +21656109879.");
       setFormError(message);
       toast.error(message);
       return;
     }
 
     if (!strongPasswordPattern.test(password)) {
-      const message = "Password must be at least 8 characters and include uppercase, lowercase, number, and symbol.";
+      const message = tt("Password must be at least 8 characters and include uppercase, lowercase, number, and symbol.");
       setFormError(message);
       toast.error(message);
       return;
@@ -105,7 +108,7 @@ export function RegisterPage() {
       });
 
       if (!isRegisterResponse(response.data)) {
-        const message = "Registration service returned an invalid response. Check VITE_IDENTITY_API_URL.";
+        const message = tt("Registration service returned an invalid response. Check VITE_IDENTITY_API_URL.");
         setFormError(message);
         toast.error(message);
         return;
@@ -115,12 +118,12 @@ export function RegisterPage() {
       setVerificationDeliveryFailed(!response.data.emailVerificationSent);
       setAwaitingEmailVerification(true);
       if (response.data.emailVerificationSent) {
-        toast.success("Account created. Check your email code.");
+        toast.success(tt("Account created. Check your email code."));
       } else {
         toast(response.data.message);
       }
     } catch (error) {
-      const message = resolveApiErrorMessage(error, "Registration failed. Check your referral code and input values.");
+      const message = resolveApiErrorMessage(error, tt("Registration failed. Check your referral code and input values."));
       setFormError(message);
       toast.error(message);
     } finally {
@@ -133,12 +136,12 @@ export function RegisterPage() {
     const targetEmail = verificationEmail || email.trim().toLowerCase();
 
     if (!targetEmail) {
-      toast.error("Enter your email first.");
+      toast.error(tt("Enter your email first."));
       return;
     }
 
     if (verificationCode.trim().length < 4) {
-      toast.error("Enter the email verification code.");
+      toast.error(tt("Enter the email verification code."));
       return;
     }
 
@@ -148,10 +151,10 @@ export function RegisterPage() {
         email: targetEmail,
         code: verificationCode.trim()
       });
-      toast.success("Email verified. You can sign in now.");
+      toast.success(tt("Email verified. You can sign in now."));
       navigate("/login");
     } catch (error) {
-      toast.error(resolveApiErrorMessage(error, "Could not verify email code."));
+      toast.error(resolveApiErrorMessage(error, tt("Could not verify email code.")));
     } finally {
       setVerificationLoading(false);
     }
@@ -160,7 +163,7 @@ export function RegisterPage() {
   const resendVerificationCode = async () => {
     const targetEmail = verificationEmail || email.trim().toLowerCase();
     if (!targetEmail) {
-      toast.error("Enter your email first.");
+      toast.error(tt("Enter your email first."));
       return;
     }
 
@@ -172,12 +175,12 @@ export function RegisterPage() {
       );
       setVerificationDeliveryFailed(!response.data.emailVerificationSent);
       if (response.data.emailVerificationSent) {
-        toast.success("Verification code sent.");
+        toast.success(tt("Verification code sent."));
       } else {
         toast(response.data.message);
       }
     } catch (error) {
-      toast.error(resolveApiErrorMessage(error, "Could not resend verification code."));
+      toast.error(resolveApiErrorMessage(error, tt("Could not resend verification code.")));
     } finally {
       setResendingVerification(false);
     }
@@ -194,8 +197,8 @@ export function RegisterPage() {
     <form className="mt-10 space-y-6" onSubmit={handleVerifyEmail}>
       <div className="fndk-info-panel px-4 py-3.5 text-sm font-semibold leading-6 text-cyan-100">
         {verificationDeliveryFailed
-          ? "The account was created, but the verification email was not sent. Use Resend code after checking the email delivery settings."
-          : "Enter the 6-digit code sent to "}
+          ? tt("The account was created, but the verification email was not sent. Use Resend code after checking the email delivery settings.")
+          : tt("Enter the 6-digit code sent to ")}
         {!verificationDeliveryFailed ? <span className="font-extrabold text-white">{verificationEmail || email}</span> : null}
         {!verificationDeliveryFailed ? "." : null}
       </div>
@@ -216,10 +219,10 @@ export function RegisterPage() {
         {verificationLoading ? (
           <>
             <Loader2 className="h-5 w-5 animate-spin" />
-            Verify Email
+            {tt("Verify Email")}
           </>
         ) : (
-          "Verify Email"
+          tt("Verify Email")
         )}
       </button>
       <button
@@ -228,10 +231,16 @@ export function RegisterPage() {
         onClick={() => void resendVerificationCode()}
         type="button"
       >
-        {resendingVerification ? "Sending Code..." : "Resend Code"}
+        {resendingVerification ? tt("Sending Code...") : tt("Resend Code")}
       </button>
     </form>
   );
+
+  const toggleLanguage = () => {
+    const nextLanguage = getNextLanguage(language);
+    applyLanguagePreference(nextLanguage);
+    toast.success(translateText(nextLanguage, nextLanguage === "fr" ? "Language set to Francais." : nextLanguage === "ar" ? "Language set to Arabic." : "Language set to English."));
+  };
 
   return (
     <div className="fndk-auth-bg min-h-screen text-white">
@@ -244,14 +253,22 @@ export function RegisterPage() {
             </div>
             <div className="flex items-center gap-4 text-cyan-300">
               <button
-                aria-label="Help"
+                aria-label={tt("Help")}
                 className="flex h-9 w-9 items-center justify-center rounded-full text-cyan-300 transition hover:bg-cyan-300/10"
                 type="button"
               >
                 <ShieldQuestion className="h-6 w-6" />
               </button>
               <button
-                aria-label="Support"
+                aria-label={tt("Language")}
+                className="flex h-9 w-9 items-center justify-center rounded-full text-cyan-300 transition hover:bg-cyan-300/10"
+                onClick={toggleLanguage}
+                type="button"
+              >
+                <Languages className="h-6 w-6" />
+              </button>
+              <button
+                aria-label={tt("Support")}
                 className="flex h-9 w-9 items-center justify-center rounded-full text-cyan-300 transition hover:bg-cyan-300/10"
                 type="button"
               >
@@ -262,7 +279,7 @@ export function RegisterPage() {
 
           <main className="relative z-10 flex-1 pt-12">
             <h1 className="text-[2.05rem] font-extrabold tracking-[-0.02em] text-white">
-              {awaitingEmailVerification ? "Verify Email" : "Register"}
+              {awaitingEmailVerification ? tt("Verify Email") : tt("Register")}
             </h1>
 
             {awaitingEmailVerification ? (
@@ -273,7 +290,7 @@ export function RegisterPage() {
                 <input
                   className="fndk-auth-input"
                   autoComplete="name"
-                  placeholder="Full name"
+                  placeholder={tt("Full name")}
                   value={fullName}
                   onChange={(event) => setFullName(event.target.value)}
                   required
@@ -282,7 +299,7 @@ export function RegisterPage() {
                   className="fndk-auth-input"
                   autoComplete="tel"
                   inputMode="tel"
-                  placeholder="Phone number"
+                  placeholder={tt("Phone number")}
                   type="tel"
                   value={phone}
                   onChange={(event) => setPhone(event.target.value)}
@@ -292,7 +309,7 @@ export function RegisterPage() {
                   className="fndk-auth-input"
                   autoComplete="email"
                   inputMode="email"
-                  placeholder="Email"
+                  placeholder={tt("Email")}
                   type="email"
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
@@ -303,14 +320,14 @@ export function RegisterPage() {
                     className="fndk-auth-input pr-14"
                     autoComplete="new-password"
                     minLength={8}
-                    placeholder="Password"
+                    placeholder={tt("Password")}
                     type={showPassword ? "text" : "password"}
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
                     required
                   />
                   <button
-                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    aria-label={showPassword ? tt("Hide password") : tt("Show password")}
                     className="absolute right-4 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full text-white/85 transition hover:bg-white/5"
                     onClick={() => setShowPassword((current) => !current)}
                     type="button"
@@ -320,7 +337,7 @@ export function RegisterPage() {
                 </span>
                 <input
                   className="fndk-auth-input"
-                  placeholder="Referral code"
+                  placeholder={tt("Referral code")}
                   value={referralCode}
                   onChange={(event) => setReferralCode(event.target.value)}
                 />
@@ -333,19 +350,19 @@ export function RegisterPage() {
                   {loading ? (
                     <>
                       <Loader2 className="h-5 w-5 animate-spin" />
-                      Register
+                      {tt("Register")}
                     </>
                   ) : (
-                    "Register"
+                    tt("Register")
                   )}
                 </button>
               </form>
             )}
 
             <div className="mt-8 text-center text-[1rem] font-extrabold">
-              <span className="text-white">Already Have Account? </span>
+              <span className="text-white">{tt("Already Have Account?")} </span>
               <Link className="text-cyan-300" to="/login">
-                Login Now
+                {tt("Login Now")}
               </Link>
             </div>
           </main>

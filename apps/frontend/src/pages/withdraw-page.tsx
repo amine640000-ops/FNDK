@@ -6,6 +6,7 @@ import { SUPPORTED_ASSETS, formatCurrency } from "@nevo/shared-utils";
 import { getApiErrorMessage, walletApi } from "@/api/client";
 import { MobilePageHeader } from "@/components/mobile-page-header";
 import { getAccessToken } from "@/lib/auth";
+import { translateText, useAppLanguage } from "@/lib/i18n";
 
 const emptySummary: WalletSummary = {
   totalBalance: 0,
@@ -42,6 +43,8 @@ type WithdrawalResponse = {
 };
 
 export function WithdrawPage() {
+  const language = useAppLanguage();
+  const tt = (text: string) => translateText(language, text);
   const [summary, setSummary] = useState<WalletSummary>(emptySummary);
   const [loadingSummary, setLoadingSummary] = useState(true);
   const [asset, setAsset] = useState<AssetType>("USD");
@@ -71,7 +74,7 @@ export function WithdrawPage() {
           setAsset(firstAssetWithBalance);
         }
       })
-      .catch(() => toast.error("Could not load wallet balances."))
+      .catch(() => toast.error(tt("Could not load wallet balances.")))
       .finally(() => setLoadingSummary(false));
   }, []);
 
@@ -90,17 +93,17 @@ export function WithdrawPage() {
   const validateWithdrawalForm = () => {
     const token = getAccessToken();
     if (!token) {
-      toast.error("Sign in first.");
+      toast.error(tt("Sign in first."));
       return null;
     }
 
     if (!parsedAmount || parsedAmount < 1) {
-      toast.error("Enter a withdrawal amount of at least 1.");
+      toast.error(tt("Enter a withdrawal amount of at least 1."));
       return null;
     }
 
     if (!destinationAddress.trim()) {
-      toast.error("Enter a destination address.");
+      toast.error(tt("Enter a destination address."));
       return null;
     }
 
@@ -125,9 +128,9 @@ export function WithdrawPage() {
       );
 
       setVerificationCodeSent(response.data.emailVerificationSent);
-      toast.success(response.data.emailVerificationSent ? "Verification code sent to your email." : response.data.message);
+      toast.success(response.data.emailVerificationSent ? tt("Verification code sent to your email.") : response.data.message);
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "Could not send withdrawal code."));
+      toast.error(getApiErrorMessage(error, tt("Could not send withdrawal code.")));
     } finally {
       setSendingVerificationCode(false);
     }
@@ -140,12 +143,12 @@ export function WithdrawPage() {
     }
 
     if (verificationCode.trim().length < 4) {
-      toast.error("Enter the email verification code.");
+      toast.error(tt("Enter the email verification code."));
       return;
     }
 
     if (!/^\d{6}$/.test(securityPasscode)) {
-      toast.error("Enter your 6-digit security passcode.");
+      toast.error(tt("Enter your 6-digit security passcode."));
       return;
     }
 
@@ -168,7 +171,7 @@ export function WithdrawPage() {
       setVerificationCodeSent(false);
       toast.success(response.data.message);
     } catch (error) {
-      toast.error(getApiErrorMessage(error, "Could not submit withdrawal."));
+      toast.error(getApiErrorMessage(error, tt("Could not submit withdrawal.")));
     } finally {
       setSubmitting(false);
     }
@@ -189,8 +192,8 @@ export function WithdrawPage() {
           <div className="absolute inset-x-4 bottom-6 rounded-[30px] border border-cyan-300/15 bg-[linear-gradient(180deg,rgba(14,19,142,0.98)_0%,rgba(9,11,110,0.99)_45%,rgba(6,8,82,1)_100%)] p-5 shadow-[0_28px_60px_rgba(0,0,0,0.4)]">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="text-[1.35rem] font-extrabold text-white">Choose asset</div>
-                <div className="mt-1 text-sm text-slate-300">Select the balance you want to withdraw from.</div>
+                <div className="text-[1.35rem] font-extrabold text-white">{tt("Choose asset")}</div>
+                <div className="mt-1 text-sm text-slate-300">{tt("Select the balance you want to withdraw from.")}</div>
               </div>
               <button
                 className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white"
@@ -234,9 +237,9 @@ export function WithdrawPage() {
               <HandCoins className="h-5 w-5" />
             </div>
             <div>
-              <div className="text-[1.15rem] font-bold text-white">Create a withdrawal request</div>
+              <div className="text-[1.15rem] font-bold text-white">{tt("Create a withdrawal request")}</div>
               <div className="mt-1 text-[13px] leading-5 text-slate-300">
-                Withdrawals carry a fixed 5% fee and enter a 72-hour hold before admin approval is allowed.
+                {tt("Withdrawals carry a fixed 5% fee and enter a 72-hour hold before admin approval is allowed.")}
               </div>
             </div>
           </div>
@@ -244,7 +247,7 @@ export function WithdrawPage() {
 
         <section className="neon-soft-panel mt-5 grid gap-4 p-5">
           <label className="grid gap-2">
-            <span className="text-sm text-slate-300">Asset</span>
+            <span className="text-sm text-slate-300">{tt("Asset")}</span>
             <button
               className="fndk-app-input flex items-center justify-between text-left disabled:opacity-60"
               disabled={loadingSummary}
@@ -257,11 +260,11 @@ export function WithdrawPage() {
           </label>
 
           <div className="rounded-[20px] border border-white/10 bg-white/5 px-4 py-3 text-[13px] text-slate-300">
-            Available balance for {asset}: <span className="font-semibold text-white">{formatCurrency(selectedAssetBalance)}</span>
+            {tt("Available balance")} {asset}: <span className="font-semibold text-white">{formatCurrency(selectedAssetBalance)}</span>
           </div>
 
           <label className="grid gap-2">
-            <span className="text-sm text-slate-300">Amount</span>
+            <span className="text-sm text-slate-300">{tt("Amount")}</span>
             <input
               className="fndk-app-input"
               inputMode="decimal"
@@ -278,10 +281,10 @@ export function WithdrawPage() {
           </label>
 
           <label className="grid gap-2">
-            <span className="text-sm text-slate-300">Destination address</span>
+            <span className="text-sm text-slate-300">{tt("Destination address")}</span>
             <textarea
               className="fndk-app-input min-h-28 resize-none"
-              placeholder="Wallet address, IBAN, or payout destination"
+              placeholder={tt("Wallet address, IBAN, or payout destination")}
               value={destinationAddress}
               onChange={(event) => {
                 setDestinationAddress(event.target.value);
@@ -294,7 +297,7 @@ export function WithdrawPage() {
           <div className="grid gap-3">
             <div className="flex items-center gap-3 rounded-[20px] border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-[13px] leading-5 text-cyan-100">
               <MailCheck className="h-4 w-4 shrink-0" />
-              <span>Send a verification code to your account email before submitting this withdrawal.</span>
+              <span>{tt("Send a verification code to your account email before submitting this withdrawal.")}</span>
             </div>
             <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
               <input
@@ -311,7 +314,7 @@ export function WithdrawPage() {
                 onClick={() => void requestWithdrawalCode()}
                 type="button"
               >
-                {sendingVerificationCode ? "Sending..." : verificationCodeSent ? "Resend code" : "Send code"}
+                {sendingVerificationCode ? tt("Sending...") : verificationCodeSent ? tt("Resend code") : tt("Send Code")}
               </button>
             </div>
           </div>
@@ -319,7 +322,7 @@ export function WithdrawPage() {
           <label className="grid gap-2">
             <span className="flex items-center gap-2 text-sm text-slate-300">
               <KeyRound className="h-4 w-4 text-cyan-200" />
-              Security passcode
+              {tt("Security passcode")}
             </span>
             <input
               className="fndk-app-input text-center text-[18px] tracking-[0.28em]"
@@ -334,11 +337,11 @@ export function WithdrawPage() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-[20px] border border-white/10 bg-white/5 px-4 py-4">
-              <div className="text-sm text-slate-400">Fee (5%)</div>
+              <div className="text-sm text-slate-400">{tt("Fee (5%)")}</div>
               <div className="mt-2 text-[1.2rem] font-bold text-white">{formatCurrency(feeAmount)}</div>
             </div>
             <div className="rounded-[20px] border border-white/10 bg-white/5 px-4 py-4">
-              <div className="text-sm text-slate-400">Net payout</div>
+              <div className="text-sm text-slate-400">{tt("Net payout")}</div>
               <div className="mt-2 text-[1.2rem] font-bold text-cyan-300">{formatCurrency(netAmount > 0 ? netAmount : 0)}</div>
             </div>
           </div>
@@ -349,7 +352,7 @@ export function WithdrawPage() {
             onClick={submitWithdrawal}
             type="button"
           >
-            {submitting ? "Submitting..." : "Submit withdrawal"}
+            {submitting ? tt("Submitting...") : tt("Submit withdrawal")}
           </button>
         </section>
 
@@ -357,17 +360,17 @@ export function WithdrawPage() {
           <section className="neon-panel mt-5 p-5">
             <div className="flex items-center gap-2 text-cyan-200">
               <Clock3 className="h-4 w-4" />
-              <span className="text-sm uppercase tracking-[0.22em]">Withdrawal queued</span>
+              <span className="text-sm uppercase tracking-[0.22em]">{tt("Withdrawal queued")}</span>
             </div>
 
             <div className="mt-4 grid gap-3">
               <div className="rounded-[20px] border border-white/10 bg-white/5 px-4 py-4 text-[13px] leading-6 text-slate-300">
-                <div>Request ID: <span className="font-medium text-white">{withdrawalResponse.id}</span></div>
-                <div className="mt-1">Gross amount: <span className="font-medium text-white">{formatCurrency(withdrawalResponse.amount)}</span></div>
-                <div className="mt-1">Fee: <span className="font-medium text-white">{formatCurrency(withdrawalResponse.feeAmount)}</span></div>
-                <div className="mt-1">Net payout: <span className="font-medium text-cyan-100">{formatCurrency(withdrawalResponse.netAmount)}</span></div>
-                <div className="mt-1">Admin release after: <span className="font-medium text-white">{new Date(withdrawalResponse.releaseAt).toLocaleString("en-GB")}</span></div>
-                <div className="mt-1">Monthly usage: <span className="font-medium text-white">{withdrawalResponse.monthlyUsed}/{withdrawalResponse.monthlyLimit}</span></div>
+                <div>{tt("Request ID")}: <span className="font-medium text-white">{withdrawalResponse.id}</span></div>
+                <div className="mt-1">{tt("Gross amount")}: <span className="font-medium text-white">{formatCurrency(withdrawalResponse.amount)}</span></div>
+                <div className="mt-1">{tt("Fee")}: <span className="font-medium text-white">{formatCurrency(withdrawalResponse.feeAmount)}</span></div>
+                <div className="mt-1">{tt("Net payout")}: <span className="font-medium text-cyan-100">{formatCurrency(withdrawalResponse.netAmount)}</span></div>
+                <div className="mt-1">{tt("Admin release after")}: <span className="font-medium text-white">{new Date(withdrawalResponse.releaseAt).toLocaleString(language === "ar" ? "ar-TN" : "en-GB")}</span></div>
+                <div className="mt-1">{tt("Monthly usage")}: <span className="font-medium text-white">{withdrawalResponse.monthlyUsed}/{withdrawalResponse.monthlyLimit}</span></div>
               </div>
             </div>
           </section>

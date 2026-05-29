@@ -1,9 +1,10 @@
 import { type FormEvent, useState } from "react";
-import { ChevronLeft, Eye, Headphones, KeyRound, Loader2, Mail, ShieldQuestion } from "lucide-react";
+import { ChevronLeft, Eye, Headphones, KeyRound, Languages, Loader2, Mail, ShieldQuestion } from "lucide-react";
 import toast from "react-hot-toast";
 import { Link, useNavigate } from "react-router-dom";
 import { axios, identityApi } from "@/api/client";
 import { FndkLogo } from "@/components/brand-mark";
+import { applyLanguagePreference, getNextLanguage, translateText, useAppLanguage } from "@/lib/i18n";
 
 const strongPasswordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 
@@ -31,6 +32,8 @@ const resolveApiErrorMessage = (error: unknown, fallback: string) => {
 
 export function ForgotPasswordPage() {
   const navigate = useNavigate();
+  const language = useAppLanguage();
+  const tt = (text: string) => translateText(language, text);
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
@@ -43,7 +46,7 @@ export function ForgotPasswordPage() {
   const sendResetCode = async () => {
     const normalizedEmail = email.trim().toLowerCase();
     if (!normalizedEmail) {
-      toast.error("Enter your email.");
+      toast.error(tt("Enter your email."));
       return;
     }
 
@@ -52,9 +55,9 @@ export function ForgotPasswordPage() {
       await identityApi.post("/auth/password-reset/request", { email: normalizedEmail });
       setEmail(normalizedEmail);
       setStep("reset");
-      toast.success("If the account exists, a reset code was sent.");
+      toast.success(tt("If the account exists, a reset code was sent."));
     } catch (error) {
-      toast.error(resolveApiErrorMessage(error, "Could not send reset code."));
+      toast.error(resolveApiErrorMessage(error, tt("Could not send reset code.")));
     } finally {
       setRequesting(false);
     }
@@ -70,17 +73,17 @@ export function ForgotPasswordPage() {
     const normalizedEmail = email.trim().toLowerCase();
 
     if (code.trim().length < 4) {
-      toast.error("Enter the reset code.");
+      toast.error(tt("Enter the reset code."));
       return;
     }
 
     if (!strongPasswordPattern.test(password)) {
-      toast.error("Password must include uppercase, lowercase, number, and symbol.");
+      toast.error(tt("Password must include uppercase, lowercase, number, and symbol."));
       return;
     }
 
     if (password !== confirmPassword) {
-      toast.error("Passwords do not match.");
+      toast.error(tt("Passwords do not match."));
       return;
     }
 
@@ -91,13 +94,19 @@ export function ForgotPasswordPage() {
         code: code.trim(),
         password
       });
-      toast.success("Password reset successful. Login now.");
+      toast.success(tt("Password reset successful. Login now."));
       navigate("/login");
     } catch (error) {
-      toast.error(resolveApiErrorMessage(error, "Could not reset password."));
+      toast.error(resolveApiErrorMessage(error, tt("Could not reset password.")));
     } finally {
       setResetting(false);
     }
+  };
+
+  const toggleLanguage = () => {
+    const nextLanguage = getNextLanguage(language);
+    applyLanguagePreference(nextLanguage);
+    toast.success(translateText(nextLanguage, nextLanguage === "fr" ? "Language set to Francais." : nextLanguage === "ar" ? "Language set to Arabic." : "Language set to English."));
   };
 
   return (
@@ -111,14 +120,22 @@ export function ForgotPasswordPage() {
             </div>
             <div className="flex items-center gap-4 text-cyan-300">
               <button
-                aria-label="Help"
+                aria-label={tt("Help")}
                 className="flex h-9 w-9 items-center justify-center rounded-full text-cyan-300 transition hover:bg-cyan-300/10"
                 type="button"
               >
                 <ShieldQuestion className="h-6 w-6" />
               </button>
               <button
-                aria-label="Support"
+                aria-label={tt("Language")}
+                className="flex h-9 w-9 items-center justify-center rounded-full text-cyan-300 transition hover:bg-cyan-300/10"
+                onClick={toggleLanguage}
+                type="button"
+              >
+                <Languages className="h-6 w-6" />
+              </button>
+              <button
+                aria-label={tt("Support")}
                 className="flex h-9 w-9 items-center justify-center rounded-full text-cyan-300 transition hover:bg-cyan-300/10"
                 type="button"
               >
@@ -134,10 +151,10 @@ export function ForgotPasswordPage() {
               type="button"
             >
               <ChevronLeft className="h-5 w-5" />
-              Back To Login
+              {tt("Back To Login")}
             </button>
 
-            <h1 className="text-[2.05rem] font-extrabold tracking-[-0.02em] text-white">Forgot Password</h1>
+            <h1 className="text-[2.05rem] font-extrabold tracking-[-0.02em] text-white">{tt("Forgot Password")}</h1>
 
             <div className="fndk-tab-rail mt-9 grid grid-cols-2 items-end gap-4">
               {resetSteps.map(({ id, label, icon: Icon }) => {
@@ -157,7 +174,7 @@ export function ForgotPasswordPage() {
                     type="button"
                   >
                     <Icon className="h-4 w-4" />
-                    {label}
+                    {tt(label)}
                   </button>
                 );
               })}
@@ -166,12 +183,12 @@ export function ForgotPasswordPage() {
             {step === "request" ? (
               <form className="mt-8 space-y-7" onSubmit={requestReset}>
                 <label className="block">
-                  <span className="mb-4 block text-[1.15rem] font-extrabold text-white">Email</span>
+                  <span className="mb-4 block text-[1.15rem] font-extrabold text-white">{tt("Email")}</span>
                   <input
                     className="fndk-auth-input"
                     autoComplete="email"
                     inputMode="email"
-                    placeholder="Enter email"
+                    placeholder={tt("Enter email")}
                     type="email"
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
@@ -187,21 +204,21 @@ export function ForgotPasswordPage() {
                   {requesting ? (
                     <>
                       <Loader2 className="h-5 w-5 animate-spin" />
-                      Send Code
+                      {tt("Send Code")}
                     </>
                   ) : (
-                    "Send Code"
+                    tt("Send Code")
                   )}
                 </button>
               </form>
             ) : (
               <form className="mt-8 space-y-5" onSubmit={confirmReset}>
                 <div className="fndk-info-panel px-4 py-3.5 text-sm font-semibold leading-6 text-cyan-100">
-                  Enter the reset code sent to <span className="font-extrabold text-white">{email}</span>.
+                  {tt("Enter the reset code sent to")} <span className="font-extrabold text-white">{email}</span>.
                 </div>
 
                 <label className="block">
-                  <span className="mb-3 block text-[1rem] font-extrabold text-white">Reset Code</span>
+                  <span className="mb-3 block text-[1rem] font-extrabold text-white">{tt("Reset Code")}</span>
                   <input
                     className="fndk-auth-input text-center text-2xl tracking-[0.32em]"
                     inputMode="numeric"
@@ -214,20 +231,20 @@ export function ForgotPasswordPage() {
                 </label>
 
                 <label className="block">
-                  <span className="mb-3 block text-[1rem] font-extrabold text-white">New Password</span>
+                  <span className="mb-3 block text-[1rem] font-extrabold text-white">{tt("New password")}</span>
                   <span className="relative block">
                     <input
                       className="fndk-auth-input pr-14"
                       autoComplete="new-password"
                       minLength={8}
-                      placeholder="Enter password"
+                      placeholder={tt("Enter password")}
                       type={showPassword ? "text" : "password"}
                       value={password}
                       onChange={(event) => setPassword(event.target.value)}
                       required
                     />
                     <button
-                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      aria-label={showPassword ? tt("Hide password") : tt("Show password")}
                       className="absolute right-4 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full text-white/85 transition hover:bg-white/5"
                       onClick={() => setShowPassword((current) => !current)}
                       type="button"
@@ -238,12 +255,12 @@ export function ForgotPasswordPage() {
                 </label>
 
                 <label className="block">
-                  <span className="mb-3 block text-[1rem] font-extrabold text-white">Confirm Password</span>
+                  <span className="mb-3 block text-[1rem] font-extrabold text-white">{tt("Confirm Password")}</span>
                   <input
                     className="fndk-auth-input"
                     autoComplete="new-password"
                     minLength={8}
-                    placeholder="Confirm password"
+                    placeholder={tt("Confirm Password")}
                     type={showPassword ? "text" : "password"}
                     value={confirmPassword}
                     onChange={(event) => setConfirmPassword(event.target.value)}
@@ -259,10 +276,10 @@ export function ForgotPasswordPage() {
                   {resetting ? (
                     <>
                       <Loader2 className="h-5 w-5 animate-spin" />
-                      Reset Password
+                      {tt("Reset Password")}
                     </>
                   ) : (
-                    "Reset Password"
+                    tt("Reset Password")
                   )}
                 </button>
 
@@ -272,15 +289,15 @@ export function ForgotPasswordPage() {
                   onClick={() => void sendResetCode()}
                   type="button"
                 >
-                  {requesting ? "Sending Code..." : "Resend Code"}
+                  {requesting ? tt("Sending Code...") : tt("Resend Code")}
                 </button>
               </form>
             )}
 
             <div className="mt-8 text-center text-[1rem] font-extrabold">
-              <span className="text-white">No Account Yet? </span>
+              <span className="text-white">{tt("No Account Yet?")} </span>
               <Link className="text-cyan-300" to="/register">
-                Register Now
+                {tt("Register Now")}
               </Link>
             </div>
           </main>

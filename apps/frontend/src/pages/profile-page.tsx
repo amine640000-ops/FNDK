@@ -190,23 +190,27 @@ function VerificationProgress({ step }: { step: 1 | 2 }) {
 }
 
 function VerificationNotice() {
+  const language = useAppLanguage();
+
   return (
     <div className="mt-4 flex gap-2 text-[0.77rem] font-medium leading-5 text-slate-300">
       <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 fill-amber-300 text-[#5b4300]" />
-      <span>After clicking real-name authentication, upload documents for approval. Add the document name and keep the document photo clear.</span>
+      <span>{translateText(language, "After clicking real-name authentication, upload documents for approval. Add the document name and keep the document photo clear.")}</span>
     </div>
   );
 }
 
 function ReminderPanel() {
+  const language = useAppLanguage();
+
   return (
     <section className="mt-7 rounded-[12px] border border-cyan-300/20 bg-[#111d92]/[0.82] p-4 shadow-[inset_0_1px_0_rgba(157,218,255,0.16),0_0_24px_rgba(54,89,255,0.25)]">
-      <div className="text-[1rem] font-extrabold text-cyan-200">Real-Name Authentication Reminder</div>
+      <div className="text-[1rem] font-extrabold text-cyan-200">{translateText(language, "Real-Name Authentication Reminder")}</div>
       <ol className="mt-3 list-decimal space-y-1 pl-5 text-[0.78rem] font-semibold leading-5 text-white">
-        <li>Government-issued identification documents.</li>
-        <li>Original, full-sized, uploaded photo.</li>
-        <li>Photo without mirror, border, watermark, and stray items.</li>
-        <li>Align the document with the viewfinder when taking the photo.</li>
+        <li>{translateText(language, "Government-issued identification documents.")}</li>
+        <li>{translateText(language, "Original, full-sized, uploaded photo.")}</li>
+        <li>{translateText(language, "Photo without mirror, border, watermark, and stray items.")}</li>
+        <li>{translateText(language, "Align the document with the viewfinder when taking the photo.")}</li>
       </ol>
     </section>
   );
@@ -214,10 +218,11 @@ function ReminderPanel() {
 
 function VerificationUploadField({ title, helper, fileName, onChange }: UploadFieldProps) {
   const inputId = useId();
+  const language = useAppLanguage();
 
   return (
     <div className="space-y-3">
-      <div className="text-[1rem] font-extrabold text-white">{title}</div>
+      <div className="text-[1rem] font-extrabold text-white">{translateText(language, title)}</div>
       <label
         className="block cursor-pointer overflow-hidden rounded-[10px] border border-[#263eaa] bg-[#0b147a] shadow-[inset_0_0_24px_rgba(48,78,220,0.32)]"
         htmlFor={inputId}
@@ -230,9 +235,9 @@ function VerificationUploadField({ title, helper, fileName, onChange }: UploadFi
               <Camera className="h-7 w-7" />
             </span>
           </div>
-          <div className="mt-3 max-w-[280px] text-[0.8rem] font-extrabold leading-5 text-white">{helper}</div>
+          <div className="mt-3 max-w-[280px] text-[0.8rem] font-extrabold leading-5 text-white">{translateText(language, helper)}</div>
           <div className="mt-2 max-w-full truncate text-[0.72rem] font-semibold text-cyan-200">
-            {fileName ?? "Tap to upload"}
+            {fileName ?? translateText(language, "Tap to upload")}
           </div>
         </div>
       </label>
@@ -337,21 +342,21 @@ export function ProfilePage() {
 
   const copySettingValue = async (value: string, label: string) => {
     if (!value) {
-      toast.error(`${label} is not available yet.`);
+      toast.error(`${tt(label)} ${tt("is not available yet.")}`);
       return;
     }
 
     try {
       await navigator.clipboard.writeText(value);
-      toast.success(`${label} copied.`);
+      toast.success(`${tt(label)} ${tt("copied.")}`);
     } catch {
-      toast.error(`Could not copy ${label.toLowerCase()}.`);
+      toast.error(`${tt("Could not copy")} ${tt(label).toLowerCase()}.`);
     }
   };
 
   const validateRealNameDetails = () => {
     if (!nationality.trim() || !lastName.trim() || !firstName.trim() || !documentNumber.trim()) {
-      toast.error("Complete all real-name verification fields.");
+      toast.error(tt("Complete all real-name verification fields."));
       return false;
     }
 
@@ -361,7 +366,7 @@ export function ProfilePage() {
   const submitKyc = async () => {
     const token = getAccessToken();
     if (!token) {
-      toast.error("Sign in first.");
+      toast.error(tt("Sign in first."));
       return;
     }
 
@@ -371,7 +376,7 @@ export function ProfilePage() {
     }
 
     if (!documentFile || !selfieFile) {
-      toast.error("Upload the front of the document and holding document photo.");
+      toast.error(tt("Upload the front of the document and holding document photo."));
       return;
     }
 
@@ -390,9 +395,9 @@ export function ProfilePage() {
 
       setSubmissions((current) => [response.data, ...current]);
       setScreen("security");
-      toast.success("Real-name verification submitted for review.");
+      toast.success(tt("Real-name verification submitted for review."));
     } catch (error) {
-      toast.error(resolveApiErrorMessage("Real-name verification failed.", error));
+      toast.error(resolveApiErrorMessage(tt("Real-name verification failed."), error));
     } finally {
       setSubmittingKyc(false);
     }
@@ -401,17 +406,17 @@ export function ProfilePage() {
   const saveSecurityPasscode = async () => {
     const token = getAccessToken();
     if (!token) {
-      toast.error("Sign in first.");
+      toast.error(tt("Sign in first."));
       return;
     }
 
     if (!/^\d{6}$/.test(securityPasscode)) {
-      toast.error("Transaction password must be exactly 6 digits.");
+      toast.error(tt("Transaction password must be exactly 6 digits."));
       return;
     }
 
     if (securityPasscode !== securityPasscodeConfirm) {
-      toast.error("Transaction passwords do not match.");
+      toast.error(tt("Transaction passwords do not match."));
       return;
     }
 
@@ -426,9 +431,9 @@ export function ProfilePage() {
       setSecurityPasscode("");
       setSecurityPasscodeConfirm("");
       setShowPasscodeEditor(false);
-      toast.success("Transaction password saved.");
+      toast.success(tt("Transaction password saved."));
     } catch (error) {
-      toast.error(resolveApiErrorMessage("Could not save transaction password.", error));
+      toast.error(resolveApiErrorMessage(tt("Could not save transaction password."), error));
     } finally {
       setSavingSecurityPasscode(false);
     }
@@ -450,7 +455,7 @@ export function ProfilePage() {
             <div className="truncate text-[1.05rem] font-extrabold text-white"># {displayName}</div>
             <div className="mt-2 flex flex-wrap gap-2 text-[0.68rem] font-semibold text-slate-300">
               <span className="rounded-full bg-cyan-300/10 px-2 py-1 text-cyan-200">VIP0</span>
-              <span className="rounded-full bg-white/5 px-2 py-1">{realNameStatus}</span>
+              <span className="rounded-full bg-white/5 px-2 py-1">{tt(realNameStatus)}</span>
             </div>
             <div className="mt-2 truncate text-[0.76rem] font-medium text-slate-300">{displayEmail}</div>
           </div>
@@ -508,7 +513,7 @@ export function ProfilePage() {
     <section className="mt-4 rounded-[10px] border border-cyan-300/15 bg-[#0b1479]/90 p-4 shadow-[0_0_22px_rgba(49,94,255,0.18)]">
       <div className="flex items-center gap-2 text-[0.92rem] font-extrabold text-cyan-200">
         <KeyRound className="h-4 w-4" />
-        Transaction Password
+        {tt("Transaction Password")}
       </div>
       <div className="mt-4 grid gap-3">
         <input
@@ -524,7 +529,7 @@ export function ProfilePage() {
           className={`${fieldClass} text-center tracking-[0.28em]`}
           inputMode="numeric"
           maxLength={6}
-          placeholder="Confirm"
+          placeholder={tt("Confirm")}
           type="password"
           value={securityPasscodeConfirm}
           onChange={(event) => setSecurityPasscodeConfirm(event.target.value.replace(/\D/g, "").slice(0, 6))}
@@ -535,7 +540,7 @@ export function ProfilePage() {
           onClick={() => void saveSecurityPasscode()}
           type="button"
         >
-          {savingSecurityPasscode ? "Saving..." : hasSecurityPasscode ? "Update Password" : "Set Password"}
+          {savingSecurityPasscode ? tt("Saving...") : hasSecurityPasscode ? tt("Update Password") : tt("Set Password")}
         </button>
       </div>
     </section>
@@ -586,7 +591,7 @@ export function ProfilePage() {
           }}
         >
           <label className="block">
-            <span className="mb-2 block text-[0.9rem] font-extrabold text-white">Nationality</span>
+            <span className="mb-2 block text-[0.9rem] font-extrabold text-white">{tt("Nationality")}</span>
             <select className={fieldClass} value={nationality} onChange={(event) => setNationality(event.target.value)}>
               <option>America</option>
               <option>Tunisia</option>
@@ -598,27 +603,27 @@ export function ProfilePage() {
           </label>
 
           <label className="block">
-            <span className="mb-2 block text-[0.9rem] font-extrabold text-white">Last Name</span>
+            <span className="mb-2 block text-[0.9rem] font-extrabold text-white">{tt("Last Name")}</span>
             <input
               className={fieldClass}
-              placeholder="Please enter last name"
+              placeholder={tt("Please enter last name")}
               value={lastName}
               onChange={(event) => setLastName(event.target.value)}
             />
           </label>
 
           <label className="block">
-            <span className="mb-2 block text-[0.9rem] font-extrabold text-white">First Name</span>
+            <span className="mb-2 block text-[0.9rem] font-extrabold text-white">{tt("First Name")}</span>
             <input
               className={fieldClass}
-              placeholder="Please enter first name"
+              placeholder={tt("Please enter first name")}
               value={firstName}
               onChange={(event) => setFirstName(event.target.value)}
             />
           </label>
 
           <label className="block">
-            <span className="mb-2 block text-[0.9rem] font-extrabold text-white">Document Type</span>
+            <span className="mb-2 block text-[0.9rem] font-extrabold text-white">{tt("Document Type")}</span>
             <select className={fieldClass} value={documentType} onChange={(event) => setDocumentType(event.target.value)}>
               <option>Passport</option>
               <option>National ID</option>
@@ -628,17 +633,17 @@ export function ProfilePage() {
           </label>
 
           <label className="block">
-            <span className="mb-2 block text-[0.9rem] font-extrabold text-white">Document Number</span>
+            <span className="mb-2 block text-[0.9rem] font-extrabold text-white">{tt("Document Number")}</span>
             <input
               className={fieldClass}
-              placeholder="Please fill correct number"
+              placeholder={tt("Please fill correct number")}
               value={documentNumber}
               onChange={(event) => setDocumentNumber(event.target.value)}
             />
           </label>
 
           <button className="fndk-primary-action w-full" type="submit">
-            Next Step
+            {tt("Next Step")}
           </button>
         </form>
 
@@ -675,7 +680,7 @@ export function ProfilePage() {
             onClick={() => void submitKyc()}
             type="button"
           >
-            {submittingKyc ? "Submitting..." : "Submit For Review"}
+            {submittingKyc ? tt("Submitting...") : tt("Submit For Review")}
           </button>
         </div>
 

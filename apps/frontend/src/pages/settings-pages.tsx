@@ -22,7 +22,7 @@ import { SUPPORTED_ASSETS, formatCurrency } from "@nevo/shared-utils";
 import { getApiErrorMessage, identityApi, notificationApi, walletApi } from "@/api/client";
 import { MobilePageHeader } from "@/components/mobile-page-header";
 import { authHeaders, getAccessToken } from "@/lib/auth";
-import { applyLanguagePreference as applyStoredLanguagePreference, translateText, useAppLanguage } from "@/lib/i18n";
+import { applyLanguagePreference, languageOptions, readLanguage, translateText, useAppLanguage, type LanguageCode } from "@/lib/i18n";
 
 type StoredUser = {
   id?: string;
@@ -59,8 +59,6 @@ type TransferRequest = {
   createdAt: string;
 };
 
-type LanguageCode = "en" | "fr" | "ar";
-
 const emptySummary: WalletSummary = {
   totalBalance: 0,
   activeInvestment: 0,
@@ -96,15 +94,6 @@ const readStoredUser = (): StoredUser => {
 const writeStoredUser = (user: StoredUser) => {
   const currentUser = readStoredUser();
   localStorage.setItem("nevo.user", JSON.stringify({ ...currentUser, ...user }));
-};
-
-const readLanguage = (): LanguageCode => {
-  const stored = localStorage.getItem("nevo.language");
-  return stored === "fr" || stored === "ar" ? stored : "en";
-};
-
-const applyLanguagePreference = (language: LanguageCode) => {
-  applyStoredLanguagePreference(language);
 };
 
 const normalizeNotifications = (value: unknown): NotificationItem[] => {
@@ -213,8 +202,14 @@ function EmptyState({ text }: { text: string }) {
   );
 }
 
+function useT() {
+  const language = useAppLanguage();
+  return (text: string) => translateText(language, text);
+}
+
 export function PersonalInformationPage() {
   const navigate = useNavigate();
+  const tt = useT();
   const [fullName, setFullName] = useState(() => readStoredUser().fullName ?? "");
   const [phone, setPhone] = useState(() => readStoredUser().phone ?? "");
   const [email, setEmail] = useState(() => readStoredUser().email ?? "");
@@ -241,7 +236,7 @@ export function PersonalInformationPage() {
     event.preventDefault();
     const token = getToken();
     if (!token) {
-      toast.error("Sign in first.");
+      toast.error(tt("Sign in first."));
       navigate("/login", { replace: true });
       return;
     }
@@ -254,9 +249,9 @@ export function PersonalInformationPage() {
         { headers: authHeaders() }
       );
       writeStoredUser(response.data);
-      toast.success("Personal information saved.");
+      toast.success(tt("Personal information saved."));
     } catch (error) {
-      toast.error(resolveApiErrorMessage("Could not save personal information.", error));
+      toast.error(resolveApiErrorMessage(tt("Could not save personal information."), error));
     } finally {
       setSaving(false);
     }
@@ -266,19 +261,19 @@ export function PersonalInformationPage() {
     <SettingsShell title="Personal Info" subtitle="account profile">
       <form className="neon-soft-panel grid gap-4 p-5" onSubmit={saveProfile}>
         <label className="grid gap-2">
-          <span className="text-sm font-semibold text-slate-300">Full name</span>
+          <span className="text-sm font-semibold text-slate-300">{tt("Full name")}</span>
           <input className="fndk-app-input" value={fullName} onChange={(event) => setFullName(event.target.value)} />
         </label>
         <label className="grid gap-2">
-          <span className="text-sm font-semibold text-slate-300">Email</span>
+          <span className="text-sm font-semibold text-slate-300">{tt("Email")}</span>
           <input className="fndk-app-input opacity-70" disabled value={email} />
         </label>
         <label className="grid gap-2">
-          <span className="text-sm font-semibold text-slate-300">Phone number</span>
+          <span className="text-sm font-semibold text-slate-300">{tt("Phone number")}</span>
           <input className="fndk-app-input" placeholder="+21656109879" value={phone} onChange={(event) => setPhone(event.target.value)} />
         </label>
         <button className="fndk-primary-action disabled:opacity-60" disabled={saving} type="submit">
-          {saving ? "Saving..." : "Save information"}
+          {saving ? tt("Saving...") : tt("Save information")}
         </button>
       </form>
     </SettingsShell>
@@ -290,12 +285,13 @@ export function PhoneSettingsPage() {
 }
 
 export function EmailSettingsPage() {
+  const tt = useT();
   const [email] = useState(() => readStoredUser().email ?? "");
   const [sending, setSending] = useState(false);
 
   const resendVerification = async () => {
     if (!email) {
-      toast.error("No email is saved for this account.");
+      toast.error(tt("No email is saved for this account."));
       return;
     }
 
@@ -318,7 +314,7 @@ export function EmailSettingsPage() {
         description="Your email is used for login, withdrawal codes, password recovery, and platform notifications."
         action={
           <button className="fndk-primary-action w-full disabled:opacity-60" disabled={sending} onClick={() => void resendVerification()} type="button">
-            {sending ? "Sending..." : "Resend verification email"}
+            {sending ? tt("Sending...") : tt("Resend verification email")}
           </button>
         }
       />
@@ -328,6 +324,7 @@ export function EmailSettingsPage() {
 
 export function LoginPasswordPage() {
   const navigate = useNavigate();
+  const tt = useT();
   const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -337,13 +334,13 @@ export function LoginPasswordPage() {
     event.preventDefault();
     const token = getToken();
     if (!token) {
-      toast.error("Sign in first.");
+      toast.error(tt("Sign in first."));
       navigate("/login", { replace: true });
       return;
     }
 
     if (password !== confirmPassword) {
-      toast.error("New passwords do not match.");
+      toast.error(tt("New passwords do not match."));
       return;
     }
 
@@ -357,9 +354,9 @@ export function LoginPasswordPage() {
       setCurrentPassword("");
       setPassword("");
       setConfirmPassword("");
-      toast.success("Login password updated.");
+      toast.success(tt("Login password updated."));
     } catch (error) {
-      toast.error(resolveApiErrorMessage("Could not update password.", error));
+      toast.error(resolveApiErrorMessage(tt("Could not update password."), error));
     } finally {
       setSaving(false);
     }
@@ -369,19 +366,19 @@ export function LoginPasswordPage() {
     <SettingsShell title="Login Password" subtitle="security">
       <form className="neon-soft-panel grid gap-4 p-5" onSubmit={savePassword}>
         <label className="grid gap-2">
-          <span className="text-sm font-semibold text-slate-300">Current password</span>
+          <span className="text-sm font-semibold text-slate-300">{tt("Current password")}</span>
           <input className="fndk-app-input" type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} />
         </label>
         <label className="grid gap-2">
-          <span className="text-sm font-semibold text-slate-300">New password</span>
+          <span className="text-sm font-semibold text-slate-300">{tt("New password")}</span>
           <input className="fndk-app-input" type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
         </label>
         <label className="grid gap-2">
-          <span className="text-sm font-semibold text-slate-300">Confirm new password</span>
+          <span className="text-sm font-semibold text-slate-300">{tt("Confirm new password")}</span>
           <input className="fndk-app-input" type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} />
         </label>
         <button className="fndk-primary-action disabled:opacity-60" disabled={saving} type="submit">
-          {saving ? "Saving..." : "Update password"}
+          {saving ? tt("Saving...") : tt("Update password")}
         </button>
       </form>
     </SettingsShell>
@@ -389,26 +386,27 @@ export function LoginPasswordPage() {
 }
 
 export function WithdrawalAddressPage() {
+  const tt = useT();
   const [settings, setSettings] = useState<WithdrawalSettings>(() => readWithdrawalSettings());
 
   const saveAddress = (event: FormEvent) => {
     event.preventDefault();
     if (!settings.address.trim()) {
-      toast.error("Enter a withdrawal address.");
+      toast.error(tt("Enter a withdrawal address."));
       return;
     }
 
     const nextSettings = { ...settings, address: settings.address.trim(), label: settings.label.trim() || "Default payout wallet" };
     localStorage.setItem("nevo.withdrawalAddress", JSON.stringify(nextSettings));
     setSettings(nextSettings);
-    toast.success("Withdrawal address saved.");
+    toast.success(tt("Withdrawal address saved."));
   };
 
   return (
     <SettingsShell title="Withdrawal Address" subtitle="payout destination">
       <form className="neon-soft-panel grid gap-4 p-5" onSubmit={saveAddress}>
         <label className="grid gap-2">
-          <span className="text-sm font-semibold text-slate-300">Asset</span>
+          <span className="text-sm font-semibold text-slate-300">{tt("Asset")}</span>
           <select
             className="fndk-app-input"
             value={settings.asset}
@@ -422,7 +420,7 @@ export function WithdrawalAddressPage() {
           </select>
         </label>
         <label className="grid gap-2">
-          <span className="text-sm font-semibold text-slate-300">Label</span>
+          <span className="text-sm font-semibold text-slate-300">{tt("Label")}</span>
           <input
             className="fndk-app-input"
             value={settings.label}
@@ -430,19 +428,19 @@ export function WithdrawalAddressPage() {
           />
         </label>
         <label className="grid gap-2">
-          <span className="text-sm font-semibold text-slate-300">Address</span>
+          <span className="text-sm font-semibold text-slate-300">{tt("Address")}</span>
           <textarea
             className="fndk-app-input min-h-28 resize-none"
-            placeholder="Wallet address, IBAN, or payout destination"
+            placeholder={tt("Wallet address, IBAN, or payout destination")}
             value={settings.address}
             onChange={(event) => setSettings((current) => ({ ...current, address: event.target.value }))}
           />
         </label>
         <button className="fndk-primary-action" type="submit">
-          Save withdrawal address
+          {tt("Save withdrawal address")}
         </button>
         <Link className="fndk-secondary-action block" to="/app/wallet/withdraw">
-          Open withdraw page
+          {tt("Open withdraw page")}
         </Link>
       </form>
     </SettingsShell>
@@ -450,6 +448,7 @@ export function WithdrawalAddressPage() {
 }
 
 export function AssetTransferPage() {
+  const tt = useT();
   const [summary, setSummary] = useState<WalletSummary>(emptySummary);
   const [asset, setAsset] = useState<AssetType>("USD");
   const [amount, setAmount] = useState("");
@@ -472,7 +471,7 @@ export function AssetTransferPage() {
   const submitTransfer = (event: FormEvent) => {
     event.preventDefault();
     if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
-      toast.error("Enter a transfer amount.");
+      toast.error(tt("Enter a transfer amount."));
       return;
     }
 
@@ -489,7 +488,7 @@ export function AssetTransferPage() {
     localStorage.setItem("nevo.transferRequests", JSON.stringify(nextRequests));
     setRequests(nextRequests);
     setAmount("");
-    toast.success("Transfer request created.");
+    toast.success(tt("Transfer request created."));
   };
 
   return (
@@ -497,18 +496,18 @@ export function AssetTransferPage() {
       <StatusCard
         icon={ArrowLeftRight}
         title="Available transfer"
-        description={`Available balance: ${formatCurrency(summary.availableToWithdraw)}. Active strategy funds: ${formatCurrency(summary.activeInvestment)}.`}
+        description={`${tt("Available balance")}: ${formatCurrency(summary.availableToWithdraw)}. ${tt("Active strategy funds")}: ${formatCurrency(summary.activeInvestment)}.`}
       />
       <form className="neon-soft-panel mt-5 grid gap-4 p-5" onSubmit={submitTransfer}>
         <label className="grid gap-2">
-          <span className="text-sm font-semibold text-slate-300">Transfer direction</span>
+          <span className="text-sm font-semibold text-slate-300">{tt("Transfer direction")}</span>
           <select className="fndk-app-input" value={direction} onChange={(event) => setDirection(event.target.value as typeof direction)}>
-            <option value="available-to-strategy">Available balance to strategy funds</option>
-            <option value="strategy-to-available">Strategy funds to available balance</option>
+            <option value="available-to-strategy">{tt("Available balance to strategy funds")}</option>
+            <option value="strategy-to-available">{tt("Strategy funds to available balance")}</option>
           </select>
         </label>
         <label className="grid gap-2">
-          <span className="text-sm font-semibold text-slate-300">Asset</span>
+          <span className="text-sm font-semibold text-slate-300">{tt("Asset")}</span>
           <select className="fndk-app-input" value={asset} onChange={(event) => setAsset(event.target.value as AssetType)}>
             {SUPPORTED_ASSETS.map((supportedAsset) => (
               <option key={supportedAsset} value={supportedAsset}>
@@ -518,15 +517,15 @@ export function AssetTransferPage() {
           </select>
         </label>
         <label className="grid gap-2">
-          <span className="text-sm font-semibold text-slate-300">Amount</span>
+          <span className="text-sm font-semibold text-slate-300">{tt("Amount")}</span>
           <input className="fndk-app-input" inputMode="decimal" type="number" value={amount} onChange={(event) => setAmount(event.target.value)} />
         </label>
         <button className="fndk-primary-action" type="submit">
-          Submit transfer request
+          {tt("Submit transfer request")}
         </button>
       </form>
       <section className="neon-soft-panel mt-5 p-5">
-        <div className="mb-4 text-[1rem] font-extrabold text-white">Recent transfer requests</div>
+        <div className="mb-4 text-[1rem] font-extrabold text-white">{tt("Recent transfer requests")}</div>
         <div className="grid gap-3">
           {requests.length ? (
             requests.map((request) => (
@@ -536,7 +535,7 @@ export function AssetTransferPage() {
                   <div className="rounded-full bg-cyan-300/10 px-3 py-1 text-xs font-bold uppercase text-cyan-200">{request.status}</div>
                 </div>
                 <div className="mt-2 text-sm text-slate-300">
-                  {request.from} to {request.to}
+                  {tt(request.from)} {tt("to")} {tt(request.to)}
                 </div>
                 <div className="mt-2 text-sm font-semibold text-cyan-100">{formatCurrency(request.amount)}</div>
               </div>
@@ -551,6 +550,7 @@ export function AssetTransferPage() {
 }
 
 export function ActivityInformationPage() {
+  const tt = useT();
   const [transactions, setTransactions] = useState<DashboardTransaction[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -582,7 +582,7 @@ export function ActivityInformationPage() {
       <section className="neon-soft-panel p-5">
         <div className="mb-4 flex items-center gap-2 text-[1rem] font-extrabold text-white">
           <Activity className="h-5 w-5 text-cyan-200" />
-          Recent wallet activity
+          {tt("Recent wallet activity")}
         </div>
         <div className="grid gap-3">
           {loading ? (
@@ -609,7 +609,7 @@ export function ActivityInformationPage() {
       <section className="neon-soft-panel mt-5 p-5">
         <div className="mb-4 flex items-center gap-2 text-[1rem] font-extrabold text-white">
           <Bell className="h-5 w-5 text-cyan-200" />
-          Recent notifications
+          {tt("Recent notifications")}
         </div>
         <div className="grid gap-3">
           {notifications.length ? (
@@ -630,56 +630,58 @@ export function ActivityInformationPage() {
 
 export function LanguagePage() {
   const [language, setLanguage] = useState<LanguageCode>(() => readLanguage());
+  const tt = useT();
 
   const chooseLanguage = (nextLanguage: LanguageCode) => {
     setLanguage(nextLanguage);
     applyLanguagePreference(nextLanguage);
-    toast.success(
-      nextLanguage === "ar"
-        ? "تم ضبط اللغة على العربية."
-        : nextLanguage === "fr"
-          ? "Language set to Francais."
-          : "Language set to English."
-    );
+    toast.success(translateText(nextLanguage, nextLanguage === "fr" ? "Language set to Francais." : nextLanguage === "ar" ? "Language set to Arabic." : "Language set to English."));
   };
 
   return (
     <SettingsShell title="Language" subtitle="display">
-      <section className="neon-soft-panel grid gap-3 p-5">
-        {[
-          { id: "en" as const, label: "English" },
-          { id: "fr" as const, label: "Francais" },
-          { id: "ar" as const, label: "العربية" }
-        ].map((option) => (
+      <section className="neon-soft-panel p-5">
+        <div className="mb-4">
+          <div className="text-[1.08rem] font-extrabold text-white">{tt("Display language")}</div>
+          <div className="mt-1 text-sm leading-5 text-slate-300">{tt("Choose how the application language is displayed.")}</div>
+        </div>
+        <div className="grid gap-3">
+        {languageOptions.map((option) => (
           <button
             key={option.id}
             className={`flex min-h-[58px] items-center justify-between rounded-[16px] border px-4 text-left transition ${
               language === option.id ? "border-cyan-300/40 bg-cyan-300/10 text-cyan-100" : "border-white/10 bg-white/[0.04] text-white"
             }`}
             onClick={() => chooseLanguage(option.id)}
+            aria-pressed={language === option.id}
             type="button"
           >
-            <span className="flex items-center gap-3 font-semibold">
+            <span className="flex min-w-0 items-center gap-3 font-semibold">
               <Languages className="h-5 w-5" />
-              {option.label}
+              <span className="grid text-start leading-tight">
+                <span>{option.nativeLabel}</span>
+                <span className="text-xs font-medium text-slate-400">{tt(option.englishLabel)}</span>
+              </span>
             </span>
             {language === option.id ? <Check className="h-5 w-5" /> : <ChevronRight className="h-5 w-5 text-slate-500" />}
           </button>
         ))}
+        </div>
       </section>
     </SettingsShell>
   );
 }
 
 export function SupportPage() {
+  const tt = useT();
   const supportEmail = "support@fndk.capital";
 
   const copyEmail = async () => {
     try {
       await navigator.clipboard.writeText(supportEmail);
-      toast.success("Support email copied.");
+      toast.success(tt("Support email copied."));
     } catch {
-      toast.error("Could not copy support email.");
+      toast.error(tt("Could not copy support email."));
     }
   };
 
@@ -692,11 +694,11 @@ export function SupportPage() {
         action={
           <div className="grid grid-cols-2 gap-3">
             <a className="fndk-primary-action block" href={`mailto:${supportEmail}?subject=FNDK%20Support`}>
-              Email support
+              {tt("Email support")}
             </a>
             <button className="fndk-secondary-action flex items-center justify-center gap-2" onClick={() => void copyEmail()} type="button">
               <Copy className="h-4 w-4" />
-              Copy email
+              {tt("Copy email")}
             </button>
           </div>
         }
@@ -708,8 +710,8 @@ export function SupportPage() {
           ["Real-name verification", "Upload a clear document photo and holding document photo in Security Center."]
         ].map(([title, description]) => (
           <div key={title} className="rounded-[18px] border border-white/10 bg-white/[0.04] px-4 py-3">
-            <div className="font-semibold text-white">{title}</div>
-            <div className="mt-1 text-sm leading-5 text-slate-300">{description}</div>
+            <div className="font-semibold text-white">{tt(title)}</div>
+            <div className="mt-1 text-sm leading-5 text-slate-300">{tt(description)}</div>
           </div>
         ))}
       </section>
@@ -719,6 +721,7 @@ export function SupportPage() {
 
 export function NotificationsPage() {
   const navigate = useNavigate();
+  const tt = useT();
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -726,7 +729,7 @@ export function NotificationsPage() {
   const loadNotifications = async () => {
     const token = getToken();
     if (!token) {
-      toast.error("Sign in first.");
+      toast.error(tt("Sign in first."));
       navigate("/login", { replace: true });
       return;
     }
@@ -736,7 +739,7 @@ export function NotificationsPage() {
       const response = await notificationApi.get<unknown>("/notifications", { headers: authHeaders() });
       setNotifications(normalizeNotifications(response.data));
     } catch (error) {
-      toast.error(resolveApiErrorMessage("Could not load notifications.", error));
+      toast.error(resolveApiErrorMessage(tt("Could not load notifications."), error));
     } finally {
       setLoading(false);
     }
@@ -753,9 +756,9 @@ export function NotificationsPage() {
       setNotifications((current) =>
         current.map((notification) => (id && notification.id !== id ? notification : { ...notification, isRead: true }))
       );
-      toast.success(id ? "Notification marked as read." : "All notifications marked as read.");
+      toast.success(id ? tt("Notification marked as read.") : tt("All notifications marked as read."));
     } catch (error) {
-      toast.error(resolveApiErrorMessage("Could not update notifications.", error));
+      toast.error(resolveApiErrorMessage(tt("Could not update notifications."), error));
     } finally {
       setSaving(false);
     }
@@ -771,7 +774,7 @@ export function NotificationsPage() {
         description="Deposit approvals, withdrawal updates, profit credits, VIP changes, and admin messages appear here."
         action={
           <button className="fndk-primary-action w-full disabled:opacity-60" disabled={saving || unreadCount === 0} onClick={() => void markRead()} type="button">
-            Mark all as read
+            {tt("Mark all as read")}
           </button>
         }
       />
@@ -797,7 +800,7 @@ export function NotificationsPage() {
                 <div className="text-[11px] uppercase tracking-[0.16em] text-slate-400">{new Date(notification.createdAt).toLocaleString("en-GB")}</div>
                 {!notification.isRead ? (
                   <button className="text-xs font-bold uppercase tracking-[0.14em] text-cyan-200" disabled={saving} onClick={() => void markRead(notification.id)} type="button">
-                    Mark read
+                    {tt("Mark read")}
                   </button>
                 ) : null}
               </div>
@@ -812,6 +815,8 @@ export function NotificationsPage() {
 }
 
 export function SecurityOverviewPage() {
+  const tt = useT();
+
   return (
     <SettingsShell title="Security" subtitle="account protection">
       <section className="neon-soft-panel grid gap-3 p-5">
@@ -825,7 +830,7 @@ export function SecurityOverviewPage() {
           <Link key={to} className="flex min-h-[58px] items-center justify-between rounded-[16px] border border-white/10 bg-white/[0.04] px-4 text-white" to={to}>
             <span className="flex items-center gap-3 font-semibold">
               <Icon className="h-5 w-5 text-cyan-200" />
-              {label}
+              {tt(label)}
             </span>
             <ChevronRight className="h-5 w-5 text-slate-500" />
           </Link>

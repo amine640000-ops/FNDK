@@ -386,13 +386,7 @@ export function OverviewPage() {
     const nextLanguage = getNextLanguage(language);
     setLanguage(nextLanguage);
     applyLanguagePreference(nextLanguage);
-    toast.success(
-      nextLanguage === "ar"
-        ? "تم ضبط اللغة على العربية."
-        : nextLanguage === "en"
-          ? "Language set to English."
-          : "Langue definie sur le francais."
-    );
+    toast.success(translateText(nextLanguage, nextLanguage === "fr" ? "Language set to Francais." : nextLanguage === "ar" ? "Language set to Arabic." : "Language set to English."));
   };
 
   const openSupport = () => {

@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Noto+Sans+Arabic:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap");
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -47,6 +47,24 @@ body {
     linear-gradient(180deg, #040434 0%, #06095d 38%, #070745 100%);
   color: #ecf3ff;
   -webkit-font-smoothing: antialiased;
+}
+
+[dir="rtl"] body {
+  font-family: "Noto Sans Arabic", "Plus Jakarta Sans", Inter, sans-serif;
+}
+
+[dir="rtl"] .fndk-auth-input,
+[dir="rtl"] .fndk-app-input {
+  text-align: right;
+}
+
+[dir="rtl"] input[type="number"],
+[dir="rtl"] input[inputmode="numeric"],
+[dir="rtl"] input[inputmode="decimal"],
+[dir="rtl"] .font-mono,
+[dir="rtl"] .tabular-nums {
+  direction: ltr;
+  text-align: left;
 }
 
 * {

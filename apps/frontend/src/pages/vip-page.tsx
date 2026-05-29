@@ -540,13 +540,7 @@ export function VipPage() {
   const handleLanguage = () => {
     const nextLanguage = getNextLanguage(language);
     applyLanguagePreference(nextLanguage);
-    toast.success(
-      nextLanguage === "ar"
-        ? "تم ضبط اللغة على العربية."
-        : nextLanguage === "fr"
-          ? "Langue definie sur le francais."
-          : "Language set to English."
-    );
+    toast.success(translateText(nextLanguage, nextLanguage === "fr" ? "Language set to Francais." : nextLanguage === "ar" ? "Language set to Arabic." : "Language set to English."));
   };
 
   const handleSupport = () => {
