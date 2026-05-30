@@ -1,12 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
-import { Check, ChevronDown, Clock3, HandCoins, KeyRound, MailCheck, X } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  Clock3,
+  CreditCard,
+  MailCheck,
+  ShieldCheck,
+  X
+} from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import type { AssetType, WalletSummary } from "@nevo/shared-types";
 import { SUPPORTED_ASSETS, formatCurrency } from "@nevo/shared-utils";
 import { getApiErrorMessage, walletApi } from "@/api/client";
-import { MobilePageHeader } from "@/components/mobile-page-header";
 import { getAccessToken } from "@/lib/auth";
-import { translateText, useAppLanguage } from "@/lib/i18n";
+import { useAppLanguage } from "@/lib/i18n";
 
 const emptySummary: WalletSummary = {
   totalBalance: 0,
@@ -16,11 +25,24 @@ const emptySummary: WalletSummary = {
   assets: []
 };
 
-const assetLabels: Record<AssetType, string> = {
+const defaultWithdrawalAddressPlaceholder = "TF9Lg53WUMGVSjdueqNZ3u1zHTo48XfChp";
+
+const currencyLabels: Record<AssetType, string> = {
   BTC: "BTC",
   ETH: "ETH",
-  USDT_TRC20: "USDT (TRC20)",
-  USDT_ERC20: "USDT (ERC20)",
+  USDT_TRC20: "USDT",
+  USDT_ERC20: "USDT",
+  USD: "USD",
+  EUR: "EUR",
+  GBP: "GBP",
+  STOCKS: "STOCKS"
+};
+
+const networkLabels: Record<AssetType, string> = {
+  BTC: "Bitcoin",
+  ETH: "Ethereum",
+  USDT_TRC20: "TRON(TRC20)",
+  USDT_ERC20: "Ethereum(ERC20)",
   USD: "USD",
   EUR: "EUR",
   GBP: "GBP",
@@ -42,21 +64,91 @@ type WithdrawalResponse = {
   message: string;
 };
 
+type WithdrawalSettings = {
+  asset: AssetType;
+  label: string;
+  address: string;
+};
+
+type PickerMode = "asset" | "network" | null;
+
+const readWithdrawalSettings = (): WithdrawalSettings | null => {
+  try {
+    const saved = localStorage.getItem("nevo.withdrawalAddress");
+    if (!saved) {
+      return null;
+    }
+
+    if (saved.trim().startsWith("{")) {
+      return JSON.parse(saved) as WithdrawalSettings;
+    }
+
+    return { asset: "USDT_TRC20", label: "Default payout wallet", address: saved };
+  } catch {
+    return null;
+  }
+};
+
+const uniqueAssetsByCurrency = (assets: readonly AssetType[]) => {
+  const seen = new Set<string>();
+
+  return assets.filter((asset) => {
+    const label = currencyLabels[asset];
+    if (seen.has(label)) {
+      return false;
+    }
+
+    seen.add(label);
+    return true;
+  });
+};
+
+function TokenMark({ asset, size = "md" }: { asset: AssetType; size?: "sm" | "md" }) {
+  const isUsdt = asset === "USDT_TRC20" || asset === "USDT_ERC20";
+  const className = `withdraw-token-mark ${size === "sm" ? "withdraw-token-mark-sm" : ""} ${
+    isUsdt ? "withdraw-token-usdt" : ""
+  }`;
+
+  if (isUsdt) {
+    return (
+      <span className={className} aria-hidden="true">
+        T
+      </span>
+    );
+  }
+
+  return (
+    <span className="withdraw-token-mark withdraw-token-generic" aria-hidden="true">
+      {currencyLabels[asset].slice(0, 1)}
+    </span>
+  );
+}
+
+function NetworkMark({ asset }: { asset: AssetType }) {
+  if (asset === "USDT_TRC20") {
+    return <span className="withdraw-token-mark withdraw-token-tron" aria-hidden="true" />;
+  }
+
+  return <TokenMark asset={asset} />;
+}
+
 export function WithdrawPage() {
+  const navigate = useNavigate();
   const language = useAppLanguage();
-  const tt = (text: string) => translateText(language, text);
+  const savedWithdrawalSettings = useMemo(() => readWithdrawalSettings(), []);
   const [summary, setSummary] = useState<WalletSummary>(emptySummary);
   const [loadingSummary, setLoadingSummary] = useState(true);
-  const [asset, setAsset] = useState<AssetType>("USD");
+  const [asset, setAsset] = useState<AssetType>(savedWithdrawalSettings?.asset ?? "USDT_TRC20");
   const [amount, setAmount] = useState("");
-  const [destinationAddress, setDestinationAddress] = useState("");
+  const [destinationAddress, setDestinationAddress] = useState(savedWithdrawalSettings?.address ?? "");
   const [verificationCode, setVerificationCode] = useState("");
   const [securityPasscode, setSecurityPasscode] = useState("");
   const [verificationCodeSent, setVerificationCodeSent] = useState(false);
   const [sendingVerificationCode, setSendingVerificationCode] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [withdrawalResponse, setWithdrawalResponse] = useState<WithdrawalResponse | null>(null);
-  const [assetPickerOpen, setAssetPickerOpen] = useState(false);
+  const [pickerMode, setPickerMode] = useState<PickerMode>(null);
+  const [verificationOpen, setVerificationOpen] = useState(false);
 
   useEffect(() => {
     const token = getAccessToken();
@@ -67,43 +159,54 @@ export function WithdrawPage() {
 
     walletApi
       .get<WalletSummary>("/wallet/summary")
-      .then((response) => {
-        setSummary(response.data);
-        const firstAssetWithBalance = response.data.assets.find((walletAsset) => walletAsset.balance > 0)?.asset;
-        if (firstAssetWithBalance) {
-          setAsset(firstAssetWithBalance);
-        }
-      })
-      .catch(() => toast.error(tt("Could not load wallet balances.")))
+      .then((response) => setSummary(response.data))
+      .catch(() => setSummary(emptySummary))
       .finally(() => setLoadingSummary(false));
   }, []);
 
   const parsedAmount = useMemo(() => Number(amount || 0), [amount]);
   const feeAmount = useMemo(() => Number((parsedAmount * 0.05).toFixed(2)), [parsedAmount]);
   const netAmount = useMemo(() => Number((parsedAmount - feeAmount).toFixed(2)), [parsedAmount, feeAmount]);
+  const selectableAssets = useMemo(
+    () => (summary.assets.length ? summary.assets.map((walletAsset) => walletAsset.asset) : [...SUPPORTED_ASSETS]),
+    [summary.assets]
+  );
+  const currencyOptions = useMemo(() => uniqueAssetsByCurrency(selectableAssets), [selectableAssets]);
+  const networkOptions = useMemo(() => {
+    if (currencyLabels[asset] === "USDT") {
+      const usdtAssets = selectableAssets.filter((selectableAsset) => currencyLabels[selectableAsset] === "USDT");
+      return usdtAssets.length ? usdtAssets : (["USDT_TRC20", "USDT_ERC20"] as AssetType[]);
+    }
+
+    return [asset];
+  }, [asset, selectableAssets]);
   const selectedAssetBalance = useMemo(
     () => summary.assets.find((walletAsset) => walletAsset.asset === asset)?.balance ?? 0,
     [asset, summary.assets]
   );
-  const selectableAssets = useMemo(
-    () => (summary.assets.length ? summary.assets.map((walletAsset) => walletAsset.asset) : SUPPORTED_ASSETS),
-    [summary.assets]
-  );
+  const selectedCurrencyLabel = currencyLabels[asset];
+  const confirmDisabled = loadingSummary || sendingVerificationCode || submitting || parsedAmount < 1;
+
+  const resetVerification = () => {
+    setVerificationCode("");
+    setSecurityPasscode("");
+    setVerificationCodeSent(false);
+  };
 
   const validateWithdrawalForm = () => {
     const token = getAccessToken();
     if (!token) {
-      toast.error(tt("Sign in first."));
+      toast.error("Connectez-vous d'abord.");
       return null;
     }
 
     if (!parsedAmount || parsedAmount < 1) {
-      toast.error(tt("Enter a withdrawal amount of at least 1."));
+      toast.error("Entrez un montant de retrait d'au moins 1.");
       return null;
     }
 
     if (!destinationAddress.trim()) {
-      toast.error(tt("Enter a destination address."));
+      toast.error("Entrez une adresse de retrait.");
       return null;
     }
 
@@ -128,9 +231,10 @@ export function WithdrawPage() {
       );
 
       setVerificationCodeSent(response.data.emailVerificationSent);
-      toast.success(response.data.emailVerificationSent ? tt("Verification code sent to your email.") : response.data.message);
+      setVerificationOpen(true);
+      toast.success(response.data.emailVerificationSent ? "Code de vérification envoyé par e-mail." : response.data.message);
     } catch (error) {
-      toast.error(getApiErrorMessage(error, tt("Could not send withdrawal code.")));
+      toast.error(getApiErrorMessage(error, "Impossible d'envoyer le code de retrait."));
     } finally {
       setSendingVerificationCode(false);
     }
@@ -143,12 +247,12 @@ export function WithdrawPage() {
     }
 
     if (verificationCode.trim().length < 4) {
-      toast.error(tt("Enter the email verification code."));
+      toast.error("Entrez le code de vérification e-mail.");
       return;
     }
 
     if (!/^\d{6}$/.test(securityPasscode)) {
-      toast.error(tt("Enter your 6-digit security passcode."));
+      toast.error("Entrez votre code de sécurité à 6 chiffres.");
       return;
     }
 
@@ -166,216 +270,275 @@ export function WithdrawPage() {
       );
 
       setWithdrawalResponse(response.data);
-      setVerificationCode("");
-      setSecurityPasscode("");
-      setVerificationCodeSent(false);
+      setAmount("");
+      resetVerification();
+      setVerificationOpen(false);
       toast.success(response.data.message);
     } catch (error) {
-      toast.error(getApiErrorMessage(error, tt("Could not submit withdrawal.")));
+      toast.error(getApiErrorMessage(error, "Impossible de soumettre le retrait."));
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <div className="pb-6">
-      <MobilePageHeader title="Withdraw" subtitle="request payout" />
+    <div className="withdraw-reference-page">
+      <div className="withdraw-ios-status" aria-hidden="true">
+        <span>11:53</span>
+        <span className="withdraw-ios-icons">
+          <span className="withdraw-signal">
+            <i />
+            <i />
+            <i />
+            <i />
+          </span>
+          <span className="withdraw-wifi" />
+          <span className="withdraw-battery" />
+        </span>
+      </div>
 
-      {assetPickerOpen ? (
-        <div className="fixed inset-0 z-40 bg-[#020223]/75 backdrop-blur-sm">
-          <button
-            aria-label="Close asset picker"
-            className="absolute inset-0"
-            onClick={() => setAssetPickerOpen(false)}
-            type="button"
-          />
-          <div className="absolute inset-x-4 bottom-6 rounded-[30px] border border-cyan-300/15 bg-[linear-gradient(180deg,rgba(14,19,142,0.98)_0%,rgba(9,11,110,0.99)_45%,rgba(6,8,82,1)_100%)] p-5 shadow-[0_28px_60px_rgba(0,0,0,0.4)]">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-[1.35rem] font-extrabold text-white">{tt("Choose asset")}</div>
-                <div className="mt-1 text-sm text-slate-300">{tt("Select the balance you want to withdraw from.")}</div>
-              </div>
-              <button
-                className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white"
-                onClick={() => setAssetPickerOpen(false)}
-                type="button"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
+      <header className="withdraw-reference-header">
+        <button className="withdraw-header-icon" aria-label="Retour" onClick={() => navigate(-1)} type="button">
+          <ChevronLeft />
+        </button>
+        <div className="withdraw-header-title">Retirer</div>
+        <button
+          className="withdraw-header-icon withdraw-header-card"
+          aria-label="Adresse de retrait"
+          onClick={() => navigate("/app/settings/withdrawal-address")}
+          type="button"
+        >
+          <CreditCard />
+          <span />
+        </button>
+      </header>
 
-            <div className="mt-5 space-y-3">
-              {selectableAssets.map((selectableAsset) => (
-                <button
-                  key={selectableAsset}
-                  className={`flex w-full items-center justify-between rounded-[22px] border px-4 py-4 text-left transition ${
-                    asset === selectableAsset
-                      ? "border-cyan-300/30 bg-cyan-300/10 text-cyan-100"
-                      : "border-white/10 bg-white/5 text-white"
-                  }`}
-                  onClick={() => {
-                    setAsset(selectableAsset);
-                    setVerificationCode("");
-                    setVerificationCodeSent(false);
-                    setAssetPickerOpen(false);
-                  }}
-                  type="button"
-                >
-                  <span className="text-[15px] font-semibold">{assetLabels[selectableAsset]}</span>
-                  {asset === selectableAsset ? <Check className="h-5 w-5" /> : null}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      <div className="px-4 pt-5">
-        <section className="neon-panel p-5">
-          <div className="flex items-start gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-cyan-300/10 text-cyan-200">
-              <HandCoins className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="text-[1.15rem] font-bold text-white">{tt("Create a withdrawal request")}</div>
-              <div className="mt-1 text-[13px] leading-5 text-slate-300">
-                {tt("Withdrawals carry a fixed 5% fee and enter a 72-hour hold before admin approval is allowed.")}
-              </div>
-            </div>
-          </div>
+      <main className="withdraw-reference-content">
+        <section className="withdraw-field-block">
+          <div className="withdraw-label">Devise D'arrivée</div>
+          <button className="withdraw-select" onClick={() => setPickerMode("asset")} type="button">
+            <span className="withdraw-select-left">
+              <TokenMark asset={asset} />
+              <span>{selectedCurrencyLabel}</span>
+            </span>
+            <ChevronDown className="withdraw-chevron" />
+          </button>
         </section>
 
-        <section className="neon-soft-panel mt-5 grid gap-4 p-5">
-          <label className="grid gap-2">
-            <span className="text-sm text-slate-300">{tt("Asset")}</span>
-            <button
-              className="fndk-app-input flex items-center justify-between text-left disabled:opacity-60"
-              disabled={loadingSummary}
-              onClick={() => setAssetPickerOpen(true)}
-              type="button"
-            >
-              <span>{assetLabels[asset]}</span>
-              <ChevronDown className="h-5 w-5 text-white/70" />
-            </button>
-          </label>
+        <section className="withdraw-field-block withdraw-network-block">
+          <div className="withdraw-label">Réseau</div>
+          <button className="withdraw-select" onClick={() => setPickerMode("network")} type="button">
+            <span className="withdraw-select-left">
+              <NetworkMark asset={asset} />
+              <span>{networkLabels[asset]}</span>
+            </span>
+            <ChevronDown className="withdraw-chevron" />
+          </button>
+        </section>
 
-          <div className="rounded-[20px] border border-white/10 bg-white/5 px-4 py-3 text-[13px] text-slate-300">
-            {tt("Available balance")} {asset}: <span className="font-semibold text-white">{formatCurrency(selectedAssetBalance)}</span>
-          </div>
+        <p className="withdraw-warning">
+          Veuillez Confirmer Que L'adresse De Portefeuille Que Vous Avez Remplie Prend En Charge Les Transferts De Réseau TRC20 Ou BEP20.
+          Utiliser D'autres Réseaux Peut Entraîner Des Fonds Non Arrivés.
+        </p>
 
-          <label className="grid gap-2">
-            <span className="text-sm text-slate-300">{tt("Amount")}</span>
+        <section className="withdraw-address-section">
+          <div className="withdraw-label withdraw-label-sm">Adresse De Retrait</div>
+          <div className="withdraw-address-shell">
             <input
-              className="fndk-app-input"
-              inputMode="decimal"
-              min="1"
-              step="0.01"
-              type="number"
-              value={amount}
-              onChange={(event) => {
-                setAmount(event.target.value);
-                setVerificationCode("");
-                setVerificationCodeSent(false);
-              }}
-            />
-          </label>
-
-          <label className="grid gap-2">
-            <span className="text-sm text-slate-300">{tt("Destination address")}</span>
-            <textarea
-              className="fndk-app-input min-h-28 resize-none"
-              placeholder={tt("Wallet address, IBAN, or payout destination")}
+              className="withdraw-address-input"
+              placeholder={defaultWithdrawalAddressPlaceholder}
               value={destinationAddress}
               onChange={(event) => {
                 setDestinationAddress(event.target.value);
-                setVerificationCode("");
-                setVerificationCodeSent(false);
+                resetVerification();
               }}
             />
-          </label>
+          </div>
+        </section>
 
-          <div className="grid gap-3">
-            <div className="flex items-center gap-3 rounded-[20px] border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-[13px] leading-5 text-cyan-100">
-              <MailCheck className="h-4 w-4 shrink-0" />
-              <span>{tt("Send a verification code to your account email before submitting this withdrawal.")}</span>
+        <section className="withdraw-amount-row">
+          <label className="withdraw-label withdraw-amount-label" htmlFor="withdraw-amount">
+            Montant D'arrivée
+          </label>
+          <div className="withdraw-amount-entry">
+            <input
+              id="withdraw-amount"
+              inputMode="decimal"
+              min="1"
+              step="0.01"
+              type="text"
+              value={amount}
+              placeholder="0"
+              onChange={(event) => {
+                setAmount(event.target.value.replace(/[^\d.]/g, ""));
+                resetVerification();
+              }}
+            />
+            <span>{selectedCurrencyLabel}</span>
+          </div>
+        </section>
+
+        <button
+          className="withdraw-confirm-button"
+          disabled={confirmDisabled}
+          onClick={() => void requestWithdrawalCode()}
+          type="button"
+        >
+          {sendingVerificationCode ? "Envoi..." : "Confirmer"}
+        </button>
+
+        {withdrawalResponse ? (
+          <section className="withdraw-result-card">
+            <div className="withdraw-result-title">
+              <Clock3 />
+              <span>Retrait en attente</span>
             </div>
-            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+            <div>ID: {withdrawalResponse.id}</div>
+            <div>Montant net: {formatCurrency(withdrawalResponse.netAmount)}</div>
+            <div>
+              Libération: {new Date(withdrawalResponse.releaseAt).toLocaleString(language === "ar" ? "ar-TN" : "fr-FR")}
+            </div>
+          </section>
+        ) : null}
+
+        <section className="withdraw-instructions">
+          <h2>Indication De Retrait</h2>
+          <ol>
+            <li>
+              Veuillez Ne Pas Envoyer De USDT D'autres Réseaux Que TRC20 À L'adresse Ci-Dessus, Sinon Les Actifs Ne Pourront Pas
+              Être Récupérés.
+            </li>
+            <li>
+              Après Avoir Effectué Un Dépôt À L'adresse Ci-Dessus, Une Confirmation De L'ensemble Des Nœuds Du Réseau Est Nécessaire,
+              Et Les Fonds Seront Crédités Après La Confirmation Du Réseau.
+            </li>
+          </ol>
+        </section>
+      </main>
+
+      <div className="withdraw-home-indicator" aria-hidden="true" />
+
+      {pickerMode ? (
+        <div className="withdraw-sheet-backdrop">
+          <button className="withdraw-sheet-dismiss" aria-label="Fermer" onClick={() => setPickerMode(null)} type="button" />
+          <section className="withdraw-picker-sheet">
+            <div className="withdraw-sheet-header">
+              <div>
+                <h2>{pickerMode === "asset" ? "Choisir devise" : "Choisir réseau"}</h2>
+                <p>{pickerMode === "asset" ? "Sélectionnez la devise de retrait." : "Sélectionnez le réseau compatible."}</p>
+              </div>
+              <button aria-label="Fermer" onClick={() => setPickerMode(null)} type="button">
+                <X />
+              </button>
+            </div>
+            <div className="withdraw-picker-list">
+              {(pickerMode === "asset" ? currencyOptions : networkOptions).map((optionAsset) => {
+                const isSelected =
+                  pickerMode === "asset" ? currencyLabels[optionAsset] === selectedCurrencyLabel : optionAsset === asset;
+
+                return (
+                  <button
+                    className={isSelected ? "is-selected" : ""}
+                    key={`${pickerMode}-${optionAsset}`}
+                    onClick={() => {
+                      if (pickerMode === "asset") {
+                        const nextCurrencyLabel = currencyLabels[optionAsset];
+                        const preferredAsset =
+                          nextCurrencyLabel === "USDT"
+                            ? selectableAssets.find((selectableAsset) => selectableAsset === "USDT_TRC20") ?? optionAsset
+                            : optionAsset;
+                        setAsset(preferredAsset);
+                      } else {
+                        setAsset(optionAsset);
+                      }
+
+                      resetVerification();
+                      setPickerMode(null);
+                    }}
+                    type="button"
+                  >
+                    <span className="withdraw-select-left">
+                      {pickerMode === "asset" ? <TokenMark asset={optionAsset} /> : <NetworkMark asset={optionAsset} />}
+                      <span>{pickerMode === "asset" ? currencyLabels[optionAsset] : networkLabels[optionAsset]}</span>
+                    </span>
+                    {isSelected ? <Check /> : null}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {verificationOpen ? (
+        <div className="withdraw-sheet-backdrop">
+          <button className="withdraw-sheet-dismiss" aria-label="Fermer" onClick={() => setVerificationOpen(false)} type="button" />
+          <section className="withdraw-verification-sheet">
+            <div className="withdraw-sheet-header">
+              <div>
+                <h2>Vérification</h2>
+                <p>Confirmez le code e-mail et votre code de sécurité.</p>
+              </div>
+              <button aria-label="Fermer" onClick={() => setVerificationOpen(false)} type="button">
+                <X />
+              </button>
+            </div>
+
+            <div className="withdraw-verification-summary">
+              <div>
+                <span>Solde</span>
+                <strong>{formatCurrency(selectedAssetBalance)}</strong>
+              </div>
+              <div>
+                <span>Frais 5%</span>
+                <strong>{formatCurrency(feeAmount)}</strong>
+              </div>
+              <div>
+                <span>Net</span>
+                <strong>{formatCurrency(netAmount > 0 ? netAmount : 0)}</strong>
+              </div>
+            </div>
+
+            <label className="withdraw-verification-label">
+              <span>
+                <MailCheck />
+                Code e-mail
+              </span>
               <input
-                className="fndk-app-input text-center text-[18px] tracking-[0.28em]"
                 inputMode="numeric"
                 maxLength={8}
                 placeholder="000000"
                 value={verificationCode}
                 onChange={(event) => setVerificationCode(event.target.value.replace(/\D/g, "").slice(0, 8))}
               />
-              <button
-                className="rounded-[20px] border border-cyan-300/30 bg-white/5 px-4 py-4 text-[14px] font-semibold text-cyan-100 disabled:opacity-60"
-                disabled={sendingVerificationCode || submitting}
-                onClick={() => void requestWithdrawalCode()}
-                type="button"
-              >
-                {sendingVerificationCode ? tt("Sending...") : verificationCodeSent ? tt("Resend code") : tt("Send Code")}
+            </label>
+
+            <label className="withdraw-verification-label">
+              <span>
+                <ShieldCheck />
+                Code de sécurité
+              </span>
+              <input
+                inputMode="numeric"
+                maxLength={6}
+                placeholder="000000"
+                type="password"
+                value={securityPasscode}
+                onChange={(event) => setSecurityPasscode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+              />
+            </label>
+
+            <div className="withdraw-verification-actions">
+              <button disabled={sendingVerificationCode || submitting} onClick={() => void requestWithdrawalCode()} type="button">
+                {verificationCodeSent ? "Renvoyer" : "Envoyer"}
+              </button>
+              <button disabled={submitting} onClick={() => void submitWithdrawal()} type="button">
+                {submitting ? "Validation..." : "Valider"}
               </button>
             </div>
-          </div>
-
-          <label className="grid gap-2">
-            <span className="flex items-center gap-2 text-sm text-slate-300">
-              <KeyRound className="h-4 w-4 text-cyan-200" />
-              {tt("Security passcode")}
-            </span>
-            <input
-              className="fndk-app-input text-center text-[18px] tracking-[0.28em]"
-              inputMode="numeric"
-              maxLength={6}
-              placeholder="000000"
-              type="password"
-              value={securityPasscode}
-              onChange={(event) => setSecurityPasscode(event.target.value.replace(/\D/g, "").slice(0, 6))}
-            />
-          </label>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-[20px] border border-white/10 bg-white/5 px-4 py-4">
-              <div className="text-sm text-slate-400">{tt("Fee (5%)")}</div>
-              <div className="mt-2 text-[1.2rem] font-bold text-white">{formatCurrency(feeAmount)}</div>
-            </div>
-            <div className="rounded-[20px] border border-white/10 bg-white/5 px-4 py-4">
-              <div className="text-sm text-slate-400">{tt("Net payout")}</div>
-              <div className="mt-2 text-[1.2rem] font-bold text-cyan-300">{formatCurrency(netAmount > 0 ? netAmount : 0)}</div>
-            </div>
-          </div>
-
-          <button
-            className="fndk-primary-action disabled:opacity-60"
-            disabled={submitting || loadingSummary}
-            onClick={submitWithdrawal}
-            type="button"
-          >
-            {submitting ? tt("Submitting...") : tt("Submit withdrawal")}
-          </button>
-        </section>
-
-        {withdrawalResponse ? (
-          <section className="neon-panel mt-5 p-5">
-            <div className="flex items-center gap-2 text-cyan-200">
-              <Clock3 className="h-4 w-4" />
-              <span className="text-sm uppercase tracking-[0.22em]">{tt("Withdrawal queued")}</span>
-            </div>
-
-            <div className="mt-4 grid gap-3">
-              <div className="rounded-[20px] border border-white/10 bg-white/5 px-4 py-4 text-[13px] leading-6 text-slate-300">
-                <div>{tt("Request ID")}: <span className="font-medium text-white">{withdrawalResponse.id}</span></div>
-                <div className="mt-1">{tt("Gross amount")}: <span className="font-medium text-white">{formatCurrency(withdrawalResponse.amount)}</span></div>
-                <div className="mt-1">{tt("Fee")}: <span className="font-medium text-white">{formatCurrency(withdrawalResponse.feeAmount)}</span></div>
-                <div className="mt-1">{tt("Net payout")}: <span className="font-medium text-cyan-100">{formatCurrency(withdrawalResponse.netAmount)}</span></div>
-                <div className="mt-1">{tt("Admin release after")}: <span className="font-medium text-white">{new Date(withdrawalResponse.releaseAt).toLocaleString(language === "ar" ? "ar-TN" : "en-GB")}</span></div>
-                <div className="mt-1">{tt("Monthly usage")}: <span className="font-medium text-white">{withdrawalResponse.monthlyUsed}/{withdrawalResponse.monthlyLimit}</span></div>
-              </div>
-            </div>
           </section>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 }
