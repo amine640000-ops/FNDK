@@ -49,6 +49,20 @@ const networkLabels: Record<AssetType, string> = {
   STOCKS: "STOCKS"
 };
 
+const cryptoIconUrls: Partial<Record<AssetType, string>> = {
+  BTC: "/crypto/btc.svg",
+  ETH: "/crypto/eth.svg",
+  USDT_TRC20: "/crypto/usdt.svg",
+  USDT_ERC20: "/crypto/usdt.svg"
+};
+
+const networkIconUrls: Partial<Record<AssetType, string>> = {
+  BTC: "/crypto/btc.svg",
+  ETH: "/crypto/eth.svg",
+  USDT_TRC20: "/crypto/trx.svg",
+  USDT_ERC20: "/crypto/eth.svg"
+};
+
 type WithdrawalResponse = {
   id: string;
   type: "withdrawal";
@@ -105,9 +119,18 @@ const uniqueAssetsByCurrency = (assets: readonly AssetType[]) => {
 
 function TokenMark({ asset, size = "md" }: { asset: AssetType; size?: "sm" | "md" }) {
   const isUsdt = asset === "USDT_TRC20" || asset === "USDT_ERC20";
+  const iconUrl = cryptoIconUrls[asset];
   const className = `withdraw-token-mark ${size === "sm" ? "withdraw-token-mark-sm" : ""} ${
-    isUsdt ? "withdraw-token-usdt" : ""
+    iconUrl ? "withdraw-token-image-shell" : isUsdt ? "withdraw-token-usdt" : ""
   }`;
+
+  if (iconUrl) {
+    return (
+      <span className={className} aria-hidden="true">
+        <img className="withdraw-token-image" src={iconUrl} alt="" />
+      </span>
+    );
+  }
 
   if (isUsdt) {
     return (
@@ -125,8 +148,14 @@ function TokenMark({ asset, size = "md" }: { asset: AssetType; size?: "sm" | "md
 }
 
 function NetworkMark({ asset }: { asset: AssetType }) {
-  if (asset === "USDT_TRC20") {
-    return <span className="withdraw-token-mark withdraw-token-tron" aria-hidden="true" />;
+  const iconUrl = networkIconUrls[asset];
+
+  if (iconUrl) {
+    return (
+      <span className="withdraw-token-mark withdraw-token-image-shell" aria-hidden="true">
+        <img className="withdraw-token-image" src={iconUrl} alt="" />
+      </span>
+    );
   }
 
   return <TokenMark asset={asset} />;
@@ -336,6 +365,28 @@ export function WithdrawPage() {
           </button>
         </section>
 
+        <section className="withdraw-amount-section">
+          <label className="withdraw-label withdraw-amount-label" htmlFor="withdraw-amount">
+            Montant D'arrivée
+          </label>
+          <div className="withdraw-amount-shell">
+            <input
+              id="withdraw-amount"
+              inputMode="decimal"
+              min="1"
+              step="0.01"
+              type="text"
+              value={amount}
+              placeholder="0"
+              onChange={(event) => {
+                setAmount(event.target.value.replace(/[^\d.]/g, ""));
+                resetVerification();
+              }}
+            />
+            <span>{selectedCurrencyLabel}</span>
+          </div>
+        </section>
+
         <p className="withdraw-warning">
           Veuillez Confirmer Que L'adresse De Portefeuille Que Vous Avez Remplie Prend En Charge Les Transferts De Réseau TRC20 Ou BEP20.
           Utiliser D'autres Réseaux Peut Entraîner Des Fonds Non Arrivés.
@@ -353,28 +404,6 @@ export function WithdrawPage() {
                 resetVerification();
               }}
             />
-          </div>
-        </section>
-
-        <section className="withdraw-amount-row">
-          <label className="withdraw-label withdraw-amount-label" htmlFor="withdraw-amount">
-            Montant D'arrivée
-          </label>
-          <div className="withdraw-amount-entry">
-            <input
-              id="withdraw-amount"
-              inputMode="decimal"
-              min="1"
-              step="0.01"
-              type="text"
-              value={amount}
-              placeholder="0"
-              onChange={(event) => {
-                setAmount(event.target.value.replace(/[^\d.]/g, ""));
-                resetVerification();
-              }}
-            />
-            <span>{selectedCurrencyLabel}</span>
           </div>
         </section>
 

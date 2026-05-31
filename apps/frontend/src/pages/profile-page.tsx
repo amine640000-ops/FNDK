@@ -24,6 +24,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { getApiErrorMessage, identityApi } from "@/api/client";
 import { clearAuthSession, getAccessToken } from "@/lib/auth";
+import { NATIONALITY_COUNTRIES } from "@/lib/countries";
 import { translateText, useAppLanguage } from "@/lib/i18n";
 
 type KycSubmission = {
@@ -259,7 +260,7 @@ export function ProfilePage() {
   const [screen, setScreen] = useState<ProfileScreen>("settings");
   const [storedUser, setStoredUser] = useState<StoredUser>(() => readStoredUser());
   const [documentType, setDocumentType] = useState("Passport");
-  const [nationality, setNationality] = useState("America");
+  const [nationality, setNationality] = useState("United States");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [documentNumber, setDocumentNumber] = useState("");
@@ -593,12 +594,11 @@ export function ProfilePage() {
           <label className="block">
             <span className="mb-2 block text-[0.9rem] font-extrabold text-white">{tt("Nationality")}</span>
             <select className={fieldClass} value={nationality} onChange={(event) => setNationality(event.target.value)}>
-              <option>America</option>
-              <option>Tunisia</option>
-              <option>Germany</option>
-              <option>France</option>
-              <option>United Kingdom</option>
-              <option>United Arab Emirates</option>
+              {NATIONALITY_COUNTRIES.map((country) => (
+                <option key={country} value={country}>
+                  {country}
+                </option>
+              ))}
             </select>
           </label>
 
