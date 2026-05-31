@@ -329,7 +329,7 @@ const arabicLabels: Record<string, string> = {
   "Enter a deposit amount of at least 1.": "أدخل مبلغ إيداع لا يقل عن 1.",
   "Enter a destination address.": "أدخل عنوان الوجهة.",
   "Enter a transfer amount.": "أدخل مبلغ التحويل.",
-  "Enter a valid phone number with country code, for example +21656109879.": "أدخل رقم هاتف صالحا مع رمز الدولة، مثال +21656109879.",
+  "Enter a valid phone number with country code, for example +216 XXXXXXX.": "أدخل رقم هاتف صالحا مع رمز الدولة، مثال +216 XXXXXXX.",
   "Enter a withdrawal address.": "أدخل عنوان السحب.",
   "Enter a withdrawal amount of at least 1.": "أدخل مبلغ سحب لا يقل عن 1.",
   "Enter the 6-digit code sent to ": "أدخل الرمز المكون من 6 أرقام المرسل إلى ",

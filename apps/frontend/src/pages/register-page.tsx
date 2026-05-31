@@ -83,7 +83,7 @@ export function RegisterPage() {
     const trimmedFullName = fullName.trim();
 
     if (!internationalPhonePattern.test(normalizedPhone)) {
-      const message = tt("Enter a valid phone number with country code, for example +21656109879.");
+      const message = tt("Enter a valid phone number with country code, for example +216 XXXXXXX.");
       setFormError(message);
       toast.error(message);
       return;
@@ -299,7 +299,7 @@ export function RegisterPage() {
                   className="fndk-auth-input"
                   autoComplete="tel"
                   inputMode="tel"
-                  placeholder={tt("Phone number")}
+                  placeholder="+216 XXXXXXX"
                   type="tel"
                   value={phone}
                   onChange={(event) => setPhone(event.target.value)}
