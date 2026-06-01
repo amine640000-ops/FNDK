@@ -287,14 +287,26 @@ export class TaskService {
           INNER JOIN team ON u.referred_by = team.id
           WHERE team.generation < 3
             AND u.role = 'USER'
+        ),
+        active_depositors AS (
+          SELECT
+            user_id,
+            MIN(created_at) AS activated_at
+          FROM transactions
+          WHERE type = 'deposit'
+            AND status = 'approved'
+            AND amount > 0
+          GROUP BY user_id
         )
         SELECT
           team.generation::int AS generation,
-          COUNT(team.id)::int AS members,
-          COUNT(team.id) FILTER (WHERE team.created_at::date = CURRENT_DATE)::int AS today_members,
+          COUNT(team.id) FILTER (WHERE active_depositors.user_id IS NOT NULL)::int AS members,
+          COUNT(team.id) FILTER (WHERE active_depositors.activated_at::date = CURRENT_DATE)::int AS today_members,
           COALESCE(SUM(referrals.bonus_amount), 0)::float8 AS income,
           COALESCE(SUM(referrals.bonus_amount) FILTER (WHERE referrals.paid_at::date = CURRENT_DATE), 0)::float8 AS today_income
         FROM team
+        LEFT JOIN active_depositors
+          ON active_depositors.user_id = team.id
         LEFT JOIN referrals
           ON referrals.referrer_id = $1
           AND referrals.referred_id = team.id
