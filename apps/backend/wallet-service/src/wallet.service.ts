@@ -37,6 +37,11 @@ type WalletRow = {
   total_earned: number;
 };
 
+type WithdrawalBalanceRow = {
+  balance: number;
+  pending_withdrawals: number;
+};
+
 type TransactionRow = {
   id: string;
   type: DashboardTransaction["type"];
@@ -111,26 +116,50 @@ export class WalletService implements OnModuleInit {
       total_earned: number;
     }>(
       `
+        WITH pending_withdrawals AS (
+          SELECT
+            asset,
+            COALESCE(SUM(amount), 0) AS pending_amount
+          FROM transactions
+          WHERE user_id = $1
+            AND type = 'withdrawal'
+            AND status = 'pending'
+          GROUP BY asset
+        )
         SELECT
-          COALESCE(SUM(balance), 0)::float8 AS total_balance,
-          COALESCE(SUM(active_investment), 0)::float8 AS active_investment,
-          COALESCE(SUM(total_earned), 0)::float8 AS total_earned
+          COALESCE(SUM(GREATEST(wallets.balance - COALESCE(pending_withdrawals.pending_amount, 0), 0)), 0)::float8 AS total_balance,
+          COALESCE(SUM(wallets.active_investment), 0)::float8 AS active_investment,
+          COALESCE(SUM(wallets.total_earned), 0)::float8 AS total_earned
         FROM wallets
-        WHERE user_id = $1
+        LEFT JOIN pending_withdrawals
+          ON pending_withdrawals.asset = wallets.asset_type
+        WHERE wallets.user_id = $1
       `,
       [userId]
     );
 
     const assets = await dbQuery<WalletRow>(
       `
+        WITH pending_withdrawals AS (
+          SELECT
+            asset,
+            COALESCE(SUM(amount), 0) AS pending_amount
+          FROM transactions
+          WHERE user_id = $1
+            AND type = 'withdrawal'
+            AND status = 'pending'
+          GROUP BY asset
+        )
         SELECT
-          asset_type,
-          balance::float8 AS balance,
-          active_investment::float8 AS active_investment,
-          total_earned::float8 AS total_earned
+          wallets.asset_type,
+          GREATEST(wallets.balance - COALESCE(pending_withdrawals.pending_amount, 0), 0)::float8 AS balance,
+          wallets.active_investment::float8 AS active_investment,
+          wallets.total_earned::float8 AS total_earned
         FROM wallets
-        WHERE user_id = $1
-        ORDER BY asset_type ASC
+        LEFT JOIN pending_withdrawals
+          ON pending_withdrawals.asset = wallets.asset_type
+        WHERE wallets.user_id = $1
+        ORDER BY wallets.asset_type ASC
       `,
       [userId]
     );
@@ -256,6 +285,7 @@ export class WalletService implements OnModuleInit {
 
     const result = await withTransaction(async (client: PoolClient) => {
       await this.consumeWithdrawalVerificationCode(client, userId, dto.verificationCode, contextHash);
+      await this.assertWithdrawalAmountAvailable(client, userId, dto.asset, dto.amount);
 
       const inserted = await client.query<{ id: string; release_at: string }>(
         `
@@ -351,16 +381,26 @@ export class WalletService implements OnModuleInit {
     const feeAmount = Number((dto.amount * WITHDRAWAL_FEE_RATE).toFixed(2));
     const netAmount = Number((dto.amount - feeAmount).toFixed(2));
 
-    const wallet = await getOne<{ balance: number }>(
+    const wallet = await getOne<WithdrawalBalanceRow>(
       `
-        SELECT balance::float8 AS balance
+        SELECT
+          wallets.balance::float8 AS balance,
+          COALESCE((
+            SELECT SUM(transactions.amount)
+            FROM transactions
+            WHERE transactions.user_id = $1
+              AND transactions.asset = $2
+              AND transactions.type = 'withdrawal'
+              AND transactions.status = 'pending'
+          ), 0)::float8 AS pending_withdrawals
         FROM wallets
-        WHERE user_id = $1 AND asset_type = $2
+        WHERE wallets.user_id = $1 AND wallets.asset_type = $2
       `,
       [userId, dto.asset]
     );
+    const spendableBalance = Number(Math.max((wallet?.balance ?? 0) - (wallet?.pending_withdrawals ?? 0), 0).toFixed(2));
 
-    if (!wallet || wallet.balance < dto.amount) {
+    if (!wallet || spendableBalance < dto.amount) {
       throw new BadRequestException("Insufficient balance for withdrawal request");
     }
 
@@ -390,6 +430,38 @@ export class WalletService implements OnModuleInit {
     }
 
     return { feeAmount, netAmount, rules };
+  }
+
+  private async assertWithdrawalAmountAvailable(
+    client: PoolClient,
+    userId: string,
+    asset: AssetType,
+    amount: number
+  ) {
+    const wallet = await client.query<WithdrawalBalanceRow>(
+      `
+        SELECT
+          wallets.balance::float8 AS balance,
+          COALESCE((
+            SELECT SUM(transactions.amount)
+            FROM transactions
+            WHERE transactions.user_id = $1
+              AND transactions.asset = $2
+              AND transactions.type = 'withdrawal'
+              AND transactions.status = 'pending'
+          ), 0)::float8 AS pending_withdrawals
+        FROM wallets
+        WHERE wallets.user_id = $1 AND wallets.asset_type = $2
+        FOR UPDATE OF wallets
+      `,
+      [userId, asset]
+    );
+    const row = wallet.rows[0];
+    const spendableBalance = Number(Math.max((row?.balance ?? 0) - (row?.pending_withdrawals ?? 0), 0).toFixed(2));
+
+    if (!row || spendableBalance < amount) {
+      throw new BadRequestException("Insufficient balance for withdrawal request");
+    }
   }
 
   private async consumeWithdrawalVerificationCode(

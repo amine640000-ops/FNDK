@@ -30,7 +30,8 @@ const typeLabel: Record<DashboardTransaction["type"], string> = {
   deposit: "Deposit",
   withdrawal: "Withdrawal",
   profit: "Trading income",
-  referral: "Team income"
+  referral: "Team income",
+  adjustment: "Balance adjustment"
 };
 
 const maskAmount = (value: string, visible: boolean) => (visible ? value : "••••••");
@@ -114,7 +115,10 @@ export function WalletPage() {
   }, [summary.totalEarned, transactions]);
 
   const visibleTransactions = useMemo(
-    () => transactions.filter((transaction) => transaction.type === "deposit" || transaction.type === "withdrawal").slice(0, 8),
+    () =>
+      transactions
+        .filter((transaction) => transaction.type === "deposit" || transaction.type === "withdrawal" || transaction.type === "adjustment")
+        .slice(0, 8),
     [transactions]
   );
 

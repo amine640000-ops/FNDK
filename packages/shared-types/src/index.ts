@@ -9,7 +9,7 @@ export type AssetType =
   | "EUR"
   | "GBP"
   | "STOCKS";
-export type TransactionType = "deposit" | "withdrawal" | "profit" | "referral";
+export type TransactionType = "deposit" | "withdrawal" | "profit" | "referral" | "adjustment";
 export type TransactionStatus = "pending" | "approved" | "rejected";
 
 export interface VipTier {

@@ -13,7 +13,7 @@ import {
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { AdminGuard, JwtAuthGuard, createDiskStorageOptions, toPublicUploadUrl } from "@nevo/shared-infra";
-import { UpdateAdminSettingsDto, UpdateProfitSettingsDto, UpdateVipTierDto } from "./admin.dto";
+import { AdjustUserBalanceDto, UpdateAdminSettingsDto, UpdateProfitSettingsDto, UpdateVipTierDto } from "./admin.dto";
 import { AdminService } from "./admin.service";
 
 @Controller("admin")
@@ -77,6 +77,11 @@ export class AdminController {
     @Body() body: { status: "verified" | "rejected"; adminNote?: string }
   ) {
     return this.adminService.reviewKycSubmission(submissionId, body.status, body.adminNote);
+  }
+
+  @Patch("users/:userId/balance")
+  adjustUserBalance(@Param("userId") userId: string, @Body() body: AdjustUserBalanceDto) {
+    return this.adminService.adjustUserBalance(userId, body);
   }
 
   @Post("notifications/broadcast")

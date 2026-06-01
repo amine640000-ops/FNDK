@@ -118,6 +118,8 @@ const defaultMissionTasks: MissionTaskSetting[] = [
   }
 ];
 
+const MINIMUM_ACCOUNT_ACTIVATION_DEPOSIT = 50;
+
 @Injectable()
 export class TaskService {
   private readonly reservationTimeZone = process.env.RESERVATION_TIME_ZONE ?? "Africa/Tunis";
@@ -221,15 +223,41 @@ export class TaskService {
 
   async getMissionCenter(userId: string) {
     const tasks = await this.getMissionTaskSettings();
-    const referralCount = await getOne<{ count: number }>(
+    const activationDeposit = await getOne<{ is_active: boolean }>(
       `
-        SELECT COUNT(*)::int AS count
-        FROM users
-        WHERE referred_by = $1
-          AND role = 'USER'
+        SELECT EXISTS(
+          SELECT 1
+          FROM transactions
+          WHERE user_id = $1
+            AND type = 'deposit'
+            AND status = 'approved'
+            AND amount >= $2
+        ) AS is_active
       `,
-      [userId]
+      [userId, MINIMUM_ACCOUNT_ACTIVATION_DEPOSIT]
     );
+    const missionsActive = activationDeposit?.is_active ?? false;
+    const referralCount = missionsActive
+      ? await getOne<{ count: number }>(
+          `
+            WITH active_depositors AS (
+              SELECT user_id
+              FROM transactions
+              WHERE type = 'deposit'
+                AND status = 'approved'
+                AND amount >= $2
+              GROUP BY user_id
+            )
+            SELECT COUNT(*)::int AS count
+            FROM users
+            INNER JOIN active_depositors
+              ON active_depositors.user_id = users.id
+            WHERE users.referred_by = $1
+              AND users.role = 'USER'
+          `,
+          [userId, MINIMUM_ACCOUNT_ACTIVATION_DEPOSIT]
+        )
+      : null;
 
     const progress = referralCount?.count ?? 0;
     const missionTasks: MissionTaskProgress[] = tasks
@@ -237,11 +265,13 @@ export class TaskService {
       .map((task) => ({
         ...task,
         progress: Math.min(progress, task.target),
-        completed: progress >= task.target,
+        completed: missionsActive && progress >= task.target,
         rewardClaimed: false
       }));
 
-    await this.creditCompletedMissionRewards(userId, missionTasks.filter((task) => task.completed));
+    if (missionsActive) {
+      await this.creditCompletedMissionRewards(userId, missionTasks.filter((task) => task.completed));
+    }
 
     const claimedResult = await dbQuery<{ task_id: string }>(
       `
@@ -258,6 +288,8 @@ export class TaskService {
     }));
 
     return {
+      missionsActive,
+      minimumActivationDeposit: MINIMUM_ACCOUNT_ACTIVATION_DEPOSIT,
       totalRewardAmount: tasksWithClaims
         .filter((task) => task.rewardClaimed)
         .reduce((sum, task) => sum + task.rewardAmount, 0),
@@ -295,7 +327,7 @@ export class TaskService {
           FROM transactions
           WHERE type = 'deposit'
             AND status = 'approved'
-            AND amount > 0
+            AND amount >= $2
           GROUP BY user_id
         )
         SELECT
@@ -313,7 +345,7 @@ export class TaskService {
         GROUP BY team.generation
         ORDER BY team.generation ASC
       `,
-      [userId]
+      [userId, MINIMUM_ACCOUNT_ACTIVATION_DEPOSIT]
     );
 
     const rowsByGeneration = new Map(result.rows.map((row) => [row.generation, row]));

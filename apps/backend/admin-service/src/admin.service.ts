@@ -12,7 +12,7 @@ import type {
 } from "@nevo/shared-types";
 import { DEFAULT_ASSET_LABELS, DEFAULT_ASSET_ROUTE_SETTINGS, SUPPORTED_ASSETS } from "@nevo/shared-utils";
 import type { PoolClient } from "pg";
-import type { UpdateAdminSettingsDto, UpdateVipTierDto } from "./admin.dto";
+import type { AdjustUserBalanceDto, UpdateAdminSettingsDto, UpdateVipTierDto } from "./admin.dto";
 
 type AdminSettingValue = string | number | boolean | null | AdCarouselSlide[] | AssetRouteSetting[] | MissionTaskSetting[];
 
@@ -103,6 +103,11 @@ type UserRow = {
   created_at: string;
   vip_tier: string | null;
   balance: number;
+  wallets: Array<{
+    asset: AssetType;
+    balance: number;
+    activeInvestment: number;
+  }>;
 };
 
 type AdminTransactionRow = {
@@ -141,6 +146,10 @@ type KycSubmissionRow = {
 type AdminSettingRow = {
   key: string;
   value: unknown;
+};
+
+type WalletBalanceRow = {
+  balance: number;
 };
 
 type VipTierRow = {
@@ -231,7 +240,18 @@ export class AdminService {
           u.kyc_status,
           u.created_at,
           lv.vip_tier,
-          COALESCE(SUM(w.balance), 0)::float8 AS balance
+          COALESCE(SUM(w.balance), 0)::float8 AS balance,
+          COALESCE(
+            jsonb_agg(
+              jsonb_build_object(
+                'asset', w.asset_type,
+                'balance', w.balance::float8,
+                'activeInvestment', w.active_investment::float8
+              )
+              ORDER BY w.asset_type
+            ) FILTER (WHERE w.id IS NOT NULL),
+            '[]'::jsonb
+          ) AS wallets
         FROM users u
         LEFT JOIN wallets w ON w.user_id = u.id
         LEFT JOIN latest_vip lv ON lv.user_id = u.id
@@ -248,9 +268,127 @@ export class AdminService {
       email: user.email,
       vipTier: user.vip_tier ?? "Starter",
       balance: user.balance,
+      wallets: user.wallets,
       kycStatus: user.kyc_status,
       joinDate: user.created_at
     }));
+  }
+
+  async adjustUserBalance(userId: string, input: AdjustUserBalanceDto) {
+    const adjustmentAmount = Number(input.amount.toFixed(2));
+    if ((input.operation === "add" || input.operation === "subtract") && adjustmentAmount <= 0) {
+      throw new BadRequestException("Adjustment amount must be greater than 0");
+    }
+
+    const note = input.note?.trim();
+    const result = await withTransaction(async (client: PoolClient) => {
+      const user = await client.query<{ id: string; full_name: string }>(
+        `
+          SELECT id, full_name
+          FROM users
+          WHERE id = $1
+            AND role = 'USER'
+          FOR UPDATE
+        `,
+        [userId]
+      );
+
+      if (!user.rowCount) {
+        throw new NotFoundException("User account not found");
+      }
+
+      await client.query(
+        `
+          INSERT INTO wallets (id, user_id, asset_type, balance, active_investment, total_earned)
+          VALUES (gen_random_uuid(), $1, $2, 0, 0, 0)
+          ON CONFLICT (user_id, asset_type) DO NOTHING
+        `,
+        [userId, input.asset]
+      );
+
+      const wallet = await client.query<WalletBalanceRow>(
+        `
+          SELECT balance::float8 AS balance
+          FROM wallets
+          WHERE user_id = $1
+            AND asset_type = $2
+          FOR UPDATE
+        `,
+        [userId, input.asset]
+      );
+      const previousBalance = wallet.rows[0]?.balance ?? 0;
+      const delta =
+        input.operation === "add"
+          ? adjustmentAmount
+          : input.operation === "subtract"
+            ? -adjustmentAmount
+            : Number((adjustmentAmount - previousBalance).toFixed(2));
+      const nextBalance = Number((previousBalance + delta).toFixed(2));
+
+      if (delta === 0) {
+        throw new BadRequestException("Balance is already set to that amount");
+      }
+
+      if (nextBalance < 0) {
+        throw new BadRequestException("Balance adjustment cannot make the account negative");
+      }
+
+      await client.query(
+        `
+          UPDATE wallets
+          SET
+            balance = $3,
+            active_investment = LEAST(GREATEST(active_investment + $4, 0), $3)
+          WHERE user_id = $1
+            AND asset_type = $2
+        `,
+        [userId, input.asset, nextBalance, delta]
+      );
+
+      await client.query(
+        `
+          INSERT INTO transactions (id, user_id, type, asset, amount, fee_amount, status, admin_note)
+          VALUES (gen_random_uuid(), $1, 'adjustment', $2, $3, 0, 'approved', $4)
+        `,
+        [
+          userId,
+          input.asset,
+          delta,
+          [
+            `Admin balance ${input.operation}`,
+            `Previous: ${previousBalance}`,
+            `Current: ${nextBalance}`,
+            note ? `Note: ${note}` : null
+          ]
+            .filter(Boolean)
+            .join(" | ")
+        ]
+      );
+
+      await client.query(
+        `
+          INSERT INTO notifications (id, user_id, title, message, is_read, created_at)
+          VALUES (gen_random_uuid(), $1, $2, $3, FALSE, NOW())
+        `,
+        [
+          userId,
+          "Balance adjusted",
+          `Your ${input.asset} balance was updated from ${previousBalance} to ${nextBalance}.${note ? ` Note: ${note}` : ""}`
+        ]
+      );
+
+      return {
+        userId,
+        fullName: user.rows[0].full_name,
+        asset: input.asset,
+        operation: input.operation,
+        previousBalance,
+        balance: nextBalance,
+        delta
+      };
+    });
+
+    return result;
   }
 
   async getSettings(): Promise<AdminPlatformSettings> {

@@ -1,5 +1,7 @@
-import { IsArray, IsBoolean, IsInt, IsNumber, IsOptional, IsString, Min } from "class-validator";
-import type { AdCarouselSlide, AssetRouteSetting, MissionTaskSetting } from "@nevo/shared-types";
+import { Type } from "class-transformer";
+import { IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Min } from "class-validator";
+import type { AdCarouselSlide, AssetRouteSetting, AssetType, MissionTaskSetting } from "@nevo/shared-types";
+import { SUPPORTED_ASSETS } from "@nevo/shared-utils";
 
 export class UpdateAdminSettingsDto {
   @IsOptional()
@@ -137,6 +139,23 @@ export class UpdateVipTierDto {
   @IsInt()
   @Min(1)
   activationDurationMinutes?: number;
+}
+
+export class AdjustUserBalanceDto {
+  @IsIn(SUPPORTED_ASSETS)
+  asset!: AssetType;
+
+  @IsIn(["add", "subtract", "set"])
+  operation!: "add" | "subtract" | "set";
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  amount!: number;
+
+  @IsOptional()
+  @IsString()
+  note?: string;
 }
 
 export class UpdateProfitSettingsDto {

@@ -220,6 +220,22 @@ export function WithdrawPage() {
     setVerificationCodeSent(false);
   };
 
+  const reservePendingWithdrawal = (withdrawal: WithdrawalResponse) => {
+    setSummary((current) => ({
+      ...current,
+      totalBalance: Number(Math.max(current.totalBalance - withdrawal.amount, 0).toFixed(2)),
+      availableToWithdraw: Number(Math.max(current.availableToWithdraw - withdrawal.amount, 0).toFixed(2)),
+      assets: current.assets.map((walletAsset) =>
+        walletAsset.asset === withdrawal.asset
+          ? {
+              ...walletAsset,
+              balance: Number(Math.max(walletAsset.balance - withdrawal.amount, 0).toFixed(2))
+            }
+          : walletAsset
+      )
+    }));
+  };
+
   const validateWithdrawalForm = () => {
     const token = getAccessToken();
     if (!token) {
@@ -229,6 +245,11 @@ export function WithdrawPage() {
 
     if (!parsedAmount || parsedAmount < 1) {
       toast.error("Entrez un montant de retrait d'au moins 1.");
+      return null;
+    }
+
+    if (parsedAmount > selectedAssetBalance) {
+      toast.error("Solde insuffisant pour cette demande de retrait.");
       return null;
     }
 
@@ -297,6 +318,7 @@ export function WithdrawPage() {
       );
 
       setWithdrawalResponse(response.data);
+      reservePendingWithdrawal(response.data);
       setAmount("");
       resetVerification();
       setVerificationOpen(false);

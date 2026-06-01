@@ -47,8 +47,17 @@ type StartActivationResponse = {
 };
 
 type MissionCenterState = {
+  missionsActive: boolean;
+  minimumActivationDeposit: number;
   totalRewardAmount: number;
   tasks: MissionTaskProgress[];
+};
+
+const emptyMissionCenter: MissionCenterState = {
+  missionsActive: false,
+  minimumActivationDeposit: 50,
+  totalRewardAmount: 0,
+  tasks: []
 };
 
 const compactNumber = new Intl.NumberFormat("en-US", {
@@ -191,7 +200,7 @@ export function VipPage() {
     location.pathname.endsWith("/mission") ? "tasks" : "strategy"
   );
   const [missionCategory, setMissionCategory] = useState<MissionTaskCategory>("limited");
-  const [missionCenter, setMissionCenter] = useState<MissionCenterState>({ totalRewardAmount: 0, tasks: [] });
+  const [missionCenter, setMissionCenter] = useState<MissionCenterState>(emptyMissionCenter);
   const [loadingMissionCenter, setLoadingMissionCenter] = useState(false);
   const [reservationModalOpen, setReservationModalOpen] = useState(false);
   const [reservationAmount, setReservationAmount] = useState("");
@@ -304,7 +313,7 @@ export function VipPage() {
       })
       .catch(() => {
         if (active) {
-          setMissionCenter({ totalRewardAmount: 0, tasks: [] });
+          setMissionCenter(emptyMissionCenter);
         }
       })
       .finally(() => {
@@ -979,6 +988,11 @@ export function VipPage() {
                 <div className="mt-2 text-[1.6rem] font-extrabold text-amber-300">
                   {formatMoneyValue(missionCenter.totalRewardAmount)} USDT
                 </div>
+                {!missionCenter.missionsActive ? (
+                  <div className="mt-5 rounded-[18px] border border-amber-300/25 bg-amber-300/10 px-4 py-3 text-sm font-semibold text-amber-100">
+                    {tt("Deposit required")}: {formatCurrency(missionCenter.minimumActivationDeposit)}
+                  </div>
+                ) : null}
               </div>
             </section>
 
@@ -1003,6 +1017,13 @@ export function VipPage() {
                 visibleMissionTasks.map((task) => {
                   const progressPercent = Math.min((task.progress / Math.max(task.target, 1)) * 100, 100);
                   const rewardAssetLabel = task.rewardAsset.startsWith("USDT") ? "USDT" : task.rewardAsset;
+                  const statusLabel = !missionCenter.missionsActive
+                    ? tt("Deposit required")
+                    : task.completed
+                      ? task.rewardClaimed
+                        ? "Reward Paid"
+                        : "Completed"
+                      : "Not Completed";
 
                   return (
                     <article
@@ -1034,12 +1055,14 @@ export function VipPage() {
 
                         <div
                           className={`mt-5 rounded-[20px] border px-4 py-3.5 text-center text-[1rem] font-semibold ${
-                            task.completed
+                            !missionCenter.missionsActive
+                              ? "border-amber-300/20 bg-amber-300/10 text-amber-100"
+                              : task.completed
                               ? "border-emerald-300/25 bg-emerald-300/12 text-emerald-100"
                               : "border-white/10 bg-white/[0.08] text-slate-300"
                           }`}
                         >
-                          {task.completed ? (task.rewardClaimed ? "Reward Paid" : "Completed") : "Not Completed"}
+                          {statusLabel}
                         </div>
                       </div>
                     </article>
