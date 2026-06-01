@@ -72,12 +72,24 @@ type ReservationEligibilityRow = {
   has_activation_deposit: boolean;
 };
 
-type TeamGenerationRow = {
+type TeamMemberRow = {
+  id: string;
+  public_id: string;
+  full_name: string;
   generation: 1 | 2 | 3;
-  members: number;
-  today_members: number;
-  income: number;
-  today_income: number;
+  kyc_status: "pending" | "verified" | "rejected";
+  joined_at: string;
+  total_deposited: number;
+  referral_gain: number;
+  today_referral_gain: number;
+  active: boolean;
+  active_today: boolean;
+  activated_at: string | null;
+};
+
+type MissionClaimRow = {
+  task_id: string;
+  reward_amount: number;
 };
 
 const defaultMissionTasks: MissionTaskSetting[] = [
@@ -233,35 +245,32 @@ export class TaskService {
 
   async getMissionCenter(userId: string) {
     const tasks = await this.getMissionTaskSettings();
-    const activationDeposit = await getOne<{ is_active: boolean }>(
-      `
-        SELECT EXISTS(
-          SELECT 1
-          FROM transactions
-          WHERE user_id = $1
-            AND type = 'deposit'
-            AND status = 'approved'
-            AND amount >= $2
-        ) AS is_active
-      `,
-      [userId, MINIMUM_ACCOUNT_ACTIVATION_DEPOSIT]
-    );
-    const missionsActive = activationDeposit?.is_active ?? false;
+    const missionEligibility = await this.getReservationEligibility(userId);
+    const missionsActive = missionEligibility.kyc_status === "verified" && missionEligibility.has_activation_deposit;
     const referralCount = missionsActive
       ? await getOne<{ count: number }>(
           `
-            WITH active_depositors AS (
-              SELECT user_id
+            WITH deposit_totals AS (
+              SELECT
+                user_id,
+                COALESCE(SUM(amount), 0)::float8 AS total_deposited
               FROM transactions
               WHERE type = 'deposit'
                 AND status = 'approved'
-                AND amount >= $2
               GROUP BY user_id
+            ),
+            active_accounts AS (
+              SELECT users.id AS user_id
+              FROM users
+              JOIN deposit_totals
+                ON deposit_totals.user_id = users.id
+              WHERE users.kyc_status = 'verified'
+                AND deposit_totals.total_deposited >= $2
             )
             SELECT COUNT(*)::int AS count
             FROM users
-            INNER JOIN active_depositors
-              ON active_depositors.user_id = users.id
+            INNER JOIN active_accounts
+              ON active_accounts.user_id = users.id
             WHERE users.referred_by = $1
               AND users.role = 'USER'
           `,
@@ -283,9 +292,11 @@ export class TaskService {
       await this.creditCompletedMissionRewards(userId, missionTasks.filter((task) => task.completed));
     }
 
-    const claimedResult = await dbQuery<{ task_id: string }>(
+    const claimedResult = await dbQuery<MissionClaimRow>(
       `
-        SELECT task_id
+        SELECT
+          task_id,
+          reward_amount::float8 AS reward_amount
         FROM mission_task_claims
         WHERE user_id = $1
       `,
@@ -300,19 +311,20 @@ export class TaskService {
     return {
       missionsActive,
       minimumActivationDeposit: MINIMUM_ACCOUNT_ACTIVATION_DEPOSIT,
-      totalRewardAmount: tasksWithClaims
-        .filter((task) => task.rewardClaimed)
-        .reduce((sum, task) => sum + task.rewardAmount, 0),
+      totalRewardAmount: claimedResult.rows.reduce((sum, claim) => sum + claim.reward_amount, 0),
       tasks: tasksWithClaims
     };
   }
 
   async getTeamSummary(userId: string) {
-    const result = await dbQuery<TeamGenerationRow>(
+    const result = await dbQuery<TeamMemberRow>(
       `
         WITH RECURSIVE team AS (
           SELECT
             id,
+            public_id,
+            full_name,
+            kyc_status,
             created_at,
             1 AS generation
           FROM users
@@ -323,6 +335,9 @@ export class TaskService {
 
           SELECT
             u.id,
+            u.public_id,
+            u.full_name,
+            u.kyc_status,
             u.created_at,
             team.generation + 1 AS generation
           FROM users u
@@ -330,53 +345,121 @@ export class TaskService {
           WHERE team.generation < 3
             AND u.role = 'USER'
         ),
-        active_depositors AS (
+        deposit_totals AS (
           SELECT
             user_id,
-            MIN(created_at) AS activated_at
+            COALESCE(SUM(amount), 0)::float8 AS total_deposited
           FROM transactions
           WHERE type = 'deposit'
             AND status = 'approved'
-            AND amount >= $2
           GROUP BY user_id
+        ),
+        deposit_progress AS (
+          SELECT
+            user_id,
+            created_at,
+            SUM(amount) OVER (PARTITION BY user_id ORDER BY created_at ASC, id ASC) AS cumulative_deposit
+          FROM transactions
+          WHERE type = 'deposit'
+            AND status = 'approved'
+        ),
+        funding_thresholds AS (
+          SELECT
+            user_id,
+            MIN(created_at) FILTER (WHERE cumulative_deposit >= $2) AS funded_at
+          FROM deposit_progress
+          GROUP BY user_id
+        ),
+        kyc_verified AS (
+          SELECT
+            user_id,
+            MAX(reviewed_at) AS verified_at
+          FROM kyc_submissions
+          WHERE status = 'verified'
+          GROUP BY user_id
+        ),
+        active_accounts AS (
+          SELECT
+            users.id AS user_id,
+            GREATEST(
+              funding_thresholds.funded_at,
+              COALESCE(kyc_verified.verified_at, funding_thresholds.funded_at)
+            ) AS activated_at
+          FROM users
+          INNER JOIN funding_thresholds
+            ON funding_thresholds.user_id = users.id
+          LEFT JOIN kyc_verified
+            ON kyc_verified.user_id = users.id
+          WHERE users.kyc_status = 'verified'
+            AND funding_thresholds.funded_at IS NOT NULL
+        ),
+        referral_gains AS (
+          SELECT
+            referred_id,
+            COALESCE(SUM(bonus_amount), 0)::float8 AS referral_gain,
+            COALESCE(SUM(bonus_amount) FILTER (WHERE paid_at::date = CURRENT_DATE), 0)::float8 AS today_referral_gain
+          FROM referrals
+          WHERE referrer_id = $1
+          GROUP BY referred_id
         )
         SELECT
+          team.id,
+          team.public_id,
+          team.full_name,
           team.generation::int AS generation,
-          COUNT(team.id) FILTER (WHERE active_depositors.user_id IS NOT NULL)::int AS members,
-          COUNT(team.id) FILTER (WHERE active_depositors.activated_at::date = CURRENT_DATE)::int AS today_members,
-          COALESCE(SUM(referrals.bonus_amount), 0)::float8 AS income,
-          COALESCE(SUM(referrals.bonus_amount) FILTER (WHERE referrals.paid_at::date = CURRENT_DATE), 0)::float8 AS today_income
+          team.kyc_status,
+          team.created_at AS joined_at,
+          COALESCE(deposit_totals.total_deposited, 0)::float8 AS total_deposited,
+          COALESCE(referral_gains.referral_gain, 0)::float8 AS referral_gain,
+          COALESCE(referral_gains.today_referral_gain, 0)::float8 AS today_referral_gain,
+          (active_accounts.user_id IS NOT NULL) AS active,
+          COALESCE(active_accounts.activated_at::date = CURRENT_DATE, FALSE) AS active_today,
+          active_accounts.activated_at
         FROM team
-        LEFT JOIN active_depositors
-          ON active_depositors.user_id = team.id
-        LEFT JOIN referrals
-          ON referrals.referrer_id = $1
-          AND referrals.referred_id = team.id
-        GROUP BY team.generation
-        ORDER BY team.generation ASC
+        LEFT JOIN deposit_totals
+          ON deposit_totals.user_id = team.id
+        LEFT JOIN active_accounts
+          ON active_accounts.user_id = team.id
+        LEFT JOIN referral_gains
+          ON referral_gains.referred_id = team.id
+        ORDER BY team.generation ASC, active DESC, team.created_at DESC
       `,
       [userId, MINIMUM_ACCOUNT_ACTIVATION_DEPOSIT]
     );
 
-    const rowsByGeneration = new Map(result.rows.map((row) => [row.generation, row]));
+    const teamMembers = result.rows;
     const generations = ([1, 2, 3] as const).map((generation) => {
-      const row = rowsByGeneration.get(generation);
+      const generationMembers = teamMembers.filter((member) => member.generation === generation);
 
       return {
         generation,
-        members: row?.members ?? 0,
-        todayMembers: row?.today_members ?? 0,
-        income: row?.income ?? 0,
-        todayIncome: row?.today_income ?? 0
+        members: generationMembers.filter((member) => member.active).length,
+        registeredMembers: generationMembers.length,
+        todayMembers: generationMembers.filter((member) => member.active_today).length,
+        income: generationMembers.reduce((sum, member) => sum + member.referral_gain, 0),
+        todayIncome: generationMembers.reduce((sum, member) => sum + member.today_referral_gain, 0)
       };
     });
 
     return {
       totalMembers: generations.reduce((sum, generation) => sum + generation.members, 0),
+      totalRegisteredMembers: generations.reduce((sum, generation) => sum + generation.registeredMembers, 0),
       todayMembers: generations.reduce((sum, generation) => sum + generation.todayMembers, 0),
       totalTeamRevenue: generations.reduce((sum, generation) => sum + generation.income, 0),
       todayTeamRevenue: generations.reduce((sum, generation) => sum + generation.todayIncome, 0),
-      generations
+      generations,
+      members: teamMembers.map((member) => ({
+        id: member.id,
+        publicId: member.public_id,
+        fullName: member.full_name,
+        generation: member.generation,
+        kycStatus: member.kyc_status,
+        joinedAt: member.joined_at,
+        totalDeposited: member.total_deposited,
+        referralGain: member.referral_gain,
+        active: member.active,
+        activatedAt: member.activated_at
+      }))
     };
   }
 
@@ -972,7 +1055,7 @@ export class TaskService {
       `
         SELECT security_passcode_hash
         FROM users
-        WHERE id = $1
+        WHERE users.id = $1
       `,
       [userId]
     );
@@ -990,17 +1073,20 @@ export class TaskService {
     const eligibility = await getOne<ReservationEligibilityRow>(
       `
         SELECT
-          kyc_status,
-          EXISTS(
-            SELECT 1
-            FROM transactions
-            WHERE user_id = $1
-              AND type = 'deposit'
-              AND status = 'approved'
-              AND amount >= $2
-          ) AS has_activation_deposit
+          users.kyc_status,
+          COALESCE(deposit_totals.total_deposited, 0) >= $2 AS has_activation_deposit
         FROM users
-        WHERE id = $1
+        LEFT JOIN (
+          SELECT
+            user_id,
+            COALESCE(SUM(amount), 0)::float8 AS total_deposited
+          FROM transactions
+          WHERE type = 'deposit'
+            AND status = 'approved'
+          GROUP BY user_id
+        ) deposit_totals
+          ON deposit_totals.user_id = users.id
+        WHERE users.id = $1
       `,
       [userId, MINIMUM_ACCOUNT_ACTIVATION_DEPOSIT]
     );

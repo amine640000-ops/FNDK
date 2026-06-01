@@ -10,17 +10,33 @@ import { applyLanguagePreference, getNextLanguage, translateText, useAppLanguage
 type TeamGenerationSummary = {
   generation: 1 | 2 | 3;
   members: number;
+  registeredMembers: number;
   income: number;
   todayMembers: number;
   todayIncome: number;
 };
 
+type TeamMemberSummary = {
+  id: string;
+  publicId: string;
+  fullName: string;
+  generation: 1 | 2 | 3;
+  kycStatus: "pending" | "verified" | "rejected";
+  joinedAt: string;
+  totalDeposited: number;
+  referralGain: number;
+  active: boolean;
+  activatedAt: string | null;
+};
+
 type TeamSummaryResponse = {
   totalMembers: number;
+  totalRegisteredMembers: number;
   todayMembers: number;
   totalTeamRevenue: number;
   todayTeamRevenue: number;
   generations: TeamGenerationSummary[];
+  members: TeamMemberSummary[];
 };
 
 const pieColors = ["#126dff", "#05d24a", "#ffc21a"];
@@ -30,6 +46,7 @@ const zeroTeamGenerations = ([1, 2, 3] as const).map((generation) => ({
   generation,
   label: `${generation} générations`,
   members: 0,
+  registeredMembers: 0,
   income: 0,
   todayMembers: 0,
   todayIncome: 0,
@@ -83,10 +100,11 @@ export function ReferralsPage() {
         generation,
         label: `${generation} générations`,
         members: item?.members ?? 0,
+        registeredMembers: item?.registeredMembers ?? 0,
         income: item?.income ?? 0,
         todayMembers: item?.todayMembers ?? 0,
         todayIncome: item?.todayIncome ?? 0,
-        target: item?.members ?? 0
+        target: item?.registeredMembers ?? 0
       };
     });
   }, [teamSummaryResponse]);
@@ -105,7 +123,9 @@ export function ReferralsPage() {
     };
   }, [teamSummaryResponse]);
   const totalMembers = teamSummaryResponse?.totalMembers ?? 0;
+  const totalRegisteredMembers = teamSummaryResponse?.totalRegisteredMembers ?? 0;
   const todayMembers = teamSummaryResponse?.todayMembers ?? 0;
+  const teamMembers = teamSummaryResponse?.members ?? [];
   const selectedGeneration = teamGenerations.find((item) => item.generation === activeGeneration) ?? teamGenerations[2];
 
   const chartData = teamGenerations.map((item) => ({
@@ -173,6 +193,9 @@ export function ReferralsPage() {
                 </div>
                 <div className="mt-4 text-[1.45rem] font-semibold leading-none text-white">
                   {totalMembers}
+                </div>
+                <div className="mt-2 text-[0.78rem] font-semibold text-white/42">
+                  {tt("Inscrits")} <span className="text-white/70">{totalRegisteredMembers}</span>
                 </div>
                 <div className="mt-3 text-[0.88rem] font-semibold text-white/48">
                   {tt("Aujourd'hui Ajouté")} <span className="text-[#16dce5]">+{todayMembers}</span>
@@ -300,6 +323,51 @@ export function ReferralsPage() {
             <div>
               <div className="text-[1rem] leading-snug text-white/48">{tt("Récompenses De Référence")}</div>
             </div>
+          </div>
+
+          <div className="mt-6 overflow-x-auto rounded-[12px] border border-[#2e3bb0]/70">
+            <table className="min-w-[44rem] w-full border-collapse text-left text-[0.86rem]">
+              <thead className="bg-[#060955]/85 text-white/48">
+                <tr>
+                  <th className="px-3 py-3 font-semibold">{tt("Membre")}</th>
+                  <th className="px-3 py-3 font-semibold">{tt("Génération")}</th>
+                  <th className="px-3 py-3 font-semibold">{tt("Statut")}</th>
+                  <th className="px-3 py-3 text-right font-semibold">{tt("Dépôt")}</th>
+                  <th className="px-3 py-3 text-right font-semibold">{tt("Gain")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {teamMembers.length ? (
+                  teamMembers.map((member) => (
+                    <tr key={member.id} className="border-t border-[#2e3bb0]/55 text-white">
+                      <td className="px-3 py-3">
+                        <div className="max-w-[12rem] truncate font-semibold">{member.fullName}</div>
+                        <div className="mt-1 text-[0.76rem] text-white/42">ID {member.publicId}</div>
+                      </td>
+                      <td className="px-3 py-3 text-white/72">{member.generation}</td>
+                      <td className="px-3 py-3">
+                        <div
+                          className={`inline-flex rounded-full px-2.5 py-1 text-[0.74rem] font-bold ${
+                            member.active ? "bg-emerald-400/14 text-emerald-200" : "bg-white/8 text-white/58"
+                          }`}
+                        >
+                          {tt(member.active ? "Actif" : "Inactif")}
+                        </div>
+                        <div className="mt-1 text-[0.72rem] text-white/38">{tt(member.kycStatus)}</div>
+                      </td>
+                      <td className="px-3 py-3 text-right font-semibold">{formatUsdt(member.totalDeposited)}</td>
+                      <td className="px-3 py-3 text-right font-semibold text-[#16dce5]">{formatUsdt(member.referralGain)}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td className="px-3 py-6 text-center text-white/48" colSpan={5}>
+                      {tt("Aucun membre d'équipe")}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </section>
       </div>
