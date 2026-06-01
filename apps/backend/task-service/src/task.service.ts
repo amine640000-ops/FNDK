@@ -67,6 +67,14 @@ type ReservationDayUsageRow = {
   window_ends_at: string;
 };
 
+type TeamGenerationRow = {
+  generation: 1 | 2 | 3;
+  members: number;
+  today_members: number;
+  income: number;
+  today_income: number;
+};
+
 const defaultMissionTasks: MissionTaskSetting[] = [
   {
     id: "direct-invites-2",
@@ -254,6 +262,67 @@ export class TaskService {
         .filter((task) => task.rewardClaimed)
         .reduce((sum, task) => sum + task.rewardAmount, 0),
       tasks: tasksWithClaims
+    };
+  }
+
+  async getTeamSummary(userId: string) {
+    const result = await dbQuery<TeamGenerationRow>(
+      `
+        WITH RECURSIVE team AS (
+          SELECT
+            id,
+            created_at,
+            1 AS generation
+          FROM users
+          WHERE referred_by = $1
+            AND role = 'USER'
+
+          UNION ALL
+
+          SELECT
+            u.id,
+            u.created_at,
+            team.generation + 1 AS generation
+          FROM users u
+          INNER JOIN team ON u.referred_by = team.id
+          WHERE team.generation < 3
+            AND u.role = 'USER'
+        )
+        SELECT
+          team.generation::int AS generation,
+          COUNT(team.id)::int AS members,
+          COUNT(team.id) FILTER (WHERE team.created_at::date = CURRENT_DATE)::int AS today_members,
+          COALESCE(SUM(referrals.bonus_amount), 0)::float8 AS income,
+          COALESCE(SUM(referrals.bonus_amount) FILTER (WHERE referrals.paid_at::date = CURRENT_DATE), 0)::float8 AS today_income
+        FROM team
+        LEFT JOIN referrals
+          ON referrals.referrer_id = $1
+          AND referrals.referred_id = team.id
+        GROUP BY team.generation
+        ORDER BY team.generation ASC
+      `,
+      [userId]
+    );
+
+    const rowsByGeneration = new Map(result.rows.map((row) => [row.generation, row]));
+    const generations = ([1, 2, 3] as const).map((generation) => {
+      const row = rowsByGeneration.get(generation);
+
+      return {
+        generation,
+        members: row?.members ?? 0,
+        todayMembers: row?.today_members ?? 0,
+        income: row?.income ?? 0,
+        todayIncome: row?.today_income ?? 0
+      };
+    });
+
+    return {
+      totalMembers: generations.reduce((sum, generation) => sum + generation.members, 0),
+      todayMembers: generations.reduce((sum, generation) => sum + generation.todayMembers, 0),
+      totalTeamRevenue: generations.reduce((sum, generation) => sum + generation.income, 0),
+      todayTeamRevenue: generations.reduce((sum, generation) => sum + generation.todayIncome, 0),
+      generations
     };
   }
 

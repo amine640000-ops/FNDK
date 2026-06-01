@@ -1,142 +1,116 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts";
 import toast from "react-hot-toast";
 import { Bell, ChevronRight, Globe, HandCoins, Headset, Users } from "lucide-react";
+import { taskApi } from "@/api/client";
 import { BrandMark } from "@/components/brand-mark";
+import { getAccessToken } from "@/lib/auth";
 import { applyLanguagePreference, getNextLanguage, translateText, useAppLanguage } from "@/lib/i18n";
-import { useDashboardStore } from "@/store/use-dashboard-store";
 
-type TeamGenerationEntry = {
-  id: string;
-  name: string;
+type TeamGenerationSummary = {
+  generation: 1 | 2 | 3;
   members: number;
   income: number;
   todayMembers: number;
   todayIncome: number;
 };
 
+type TeamSummaryResponse = {
+  totalMembers: number;
+  todayMembers: number;
+  totalTeamRevenue: number;
+  todayTeamRevenue: number;
+  generations: TeamGenerationSummary[];
+};
+
 const pieColors = ["#126dff", "#05d24a", "#ffc21a"];
-const generationTargets: Record<1 | 2 | 3, number> = {
-  1: 24,
-  2: 35,
-  3: 56
-};
-const screenshotFallbackMembers: Record<1 | 2 | 3, number> = {
-  1: 7,
-  2: 15,
-  3: 24
-};
-const screenshotFallbackIncome: Record<1 | 2 | 3, number> = {
-  1: 74.4476,
-  2: 126.2918,
-  3: 198.8435
-};
-const screenshotFallbackTodayIncome: Record<1 | 2 | 3, number> = {
-  1: 1.8412,
-  2: 3.4694,
-  3: 6.36179547
-};
-const screenshotFallbackRevenue = {
-  totalMembers: 115,
-  todayMembers: 0,
-  totalTeamRevenue: 12700.5031,
-  todayTeamRevenue: 33.2401
-};
 
 const formatUsdt = (value: number) => (value > 0 ? value.toFixed(5) : "0");
+const zeroTeamGenerations = ([1, 2, 3] as const).map((generation) => ({
+  generation,
+  label: `${generation} générations`,
+  members: 0,
+  income: 0,
+  todayMembers: 0,
+  todayIncome: 0,
+  target: 0
+}));
 
 export function ReferralsPage() {
-  const referrals = useDashboardStore((state) => state.referrals);
-  const wallet = useDashboardStore((state) => state.wallet);
-  const transactions = useDashboardStore((state) => state.transactions);
   const language = useAppLanguage();
   const [teamMetric, setTeamMetric] = useState<"members" | "income">("members");
   const [activeGeneration, setActiveGeneration] = useState<1 | 2 | 3>(3);
+  const [teamSummaryResponse, setTeamSummaryResponse] = useState<TeamSummaryResponse | null>(null);
   const tt = (text: string) => translateText(language, text);
 
-  const generationGroups = useMemo(() => {
-    const groups: Record<1 | 2 | 3, TeamGenerationEntry[]> = { 1: [], 2: [], 3: [] };
-
-    referrals.forEach((entry, index) => {
-      const generation = ((index % 3) + 1) as 1 | 2 | 3;
-      groups[generation].push({
-        id: `${entry.userName}-${generation}`,
-        name: entry.userName,
-        members: entry.referrals,
-        income: entry.bonusEarned,
-        todayMembers: entry.referrals > 0 ? 1 : 0,
-        todayIncome: Number((entry.bonusEarned * 0.08).toFixed(2))
-      });
-    });
-
-    return groups;
-  }, [referrals]);
-
-  const generationSummary = useMemo(
-    () =>
-      ([1, 2, 3] as const).map((generation) => {
-        const entries = generationGroups[generation];
-        const members = entries.reduce((sum, entry) => sum + entry.members, 0);
-        const income = entries.reduce((sum, entry) => sum + entry.income, 0);
-
-        return {
-          generation,
-          label: `${generation} générations`,
-          members,
-          income,
-          target: Math.max(generationTargets[generation], members)
-        };
-      }),
-    [generationGroups]
-  );
-
-  const totalMembers = generationSummary.reduce((sum, item) => sum + item.members, 0);
-  const totalIncome = generationSummary.reduce((sum, item) => sum + item.income, 0);
-  const todayMembers = Object.values(generationGroups)
-    .flat()
-    .reduce((sum, entry) => sum + entry.todayMembers, 0);
-  const todayIncome = Object.values(generationGroups)
-    .flat()
-    .reduce((sum, entry) => sum + entry.todayIncome, 0);
-  const hasTeamData = totalMembers > 0 || totalIncome > 0;
-
-  const displayGenerationSummary = generationSummary.map((item) => ({
-    ...item,
-    members: item.members || screenshotFallbackMembers[item.generation],
-    income: item.income || screenshotFallbackIncome[item.generation],
-    todayMembers: 0,
-    todayIncome: screenshotFallbackTodayIncome[item.generation],
-    target: Math.max(item.target, screenshotFallbackMembers[item.generation])
-  }));
-
-  const revenueStats = useMemo(() => {
-    if (!hasTeamData && wallet.totalEarned <= 0 && transactions.length === 0) {
-      return screenshotFallbackRevenue;
+  useEffect(() => {
+    const token = getAccessToken();
+    if (!token) {
+      return;
     }
 
-    const todayKey = new Date().toDateString();
-    const todayTransactionIncome = transactions
-      .filter((transaction) => transaction.type === "profit" || transaction.type === "referral")
-      .filter((transaction) => new Date(transaction.createdAt).toDateString() === todayKey)
-      .reduce((sum, transaction) => sum + transaction.amount, 0);
-    const totalTransactionIncome = transactions
-      .filter((transaction) => transaction.type === "profit" || transaction.type === "referral")
-      .reduce((sum, transaction) => sum + transaction.amount, 0);
+    let active = true;
+
+    taskApi
+      .get<TeamSummaryResponse>("/tasks/team/me")
+      .then((response) => {
+        if (active) {
+          setTeamSummaryResponse(response.data);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setTeamSummaryResponse(null);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const teamGenerations = useMemo(() => {
+    if (!teamSummaryResponse) {
+      return zeroTeamGenerations;
+    }
+
+    const remoteByGeneration = new Map(teamSummaryResponse.generations.map((item) => [item.generation, item]));
+
+    return ([1, 2, 3] as const).map((generation) => {
+      const item = remoteByGeneration.get(generation);
+
+      return {
+        generation,
+        label: `${generation} générations`,
+        members: item?.members ?? 0,
+        income: item?.income ?? 0,
+        todayMembers: item?.todayMembers ?? 0,
+        todayIncome: item?.todayIncome ?? 0,
+        target: item?.members ?? 0
+      };
+    });
+  }, [teamSummaryResponse]);
+
+  const revenueStats = useMemo(() => {
+    if (teamSummaryResponse) {
+      return {
+        totalTeamRevenue: teamSummaryResponse.totalTeamRevenue,
+        todayTeamRevenue: teamSummaryResponse.todayTeamRevenue
+      };
+    }
 
     return {
-      totalRevenue: totalTransactionIncome || wallet.totalEarned + totalIncome,
-      todayRevenue: todayTransactionIncome || todayIncome,
-      totalTeamRevenue: totalIncome,
-      todayTeamRevenue: todayIncome
+      totalTeamRevenue: 0,
+      todayTeamRevenue: 0
     };
-  }, [hasTeamData, todayIncome, totalIncome, transactions, wallet.totalEarned]);
-  const displayedTotalMembers = hasTeamData ? totalMembers : screenshotFallbackRevenue.totalMembers;
-  const displayedTodayMembers = hasTeamData ? todayMembers : screenshotFallbackRevenue.todayMembers;
-  const selectedGeneration = displayGenerationSummary.find((item) => item.generation === activeGeneration) ?? displayGenerationSummary[2];
+  }, [teamSummaryResponse]);
+  const totalMembers = teamSummaryResponse?.totalMembers ?? 0;
+  const todayMembers = teamSummaryResponse?.todayMembers ?? 0;
+  const selectedGeneration = teamGenerations.find((item) => item.generation === activeGeneration) ?? teamGenerations[2];
 
-  const chartData = displayGenerationSummary.map((item) => ({
+  const chartData = teamGenerations.map((item) => ({
     name: item.label,
-    value: teamMetric === "members" ? item.members : item.income || item.members || 0.0001
+    value: teamMetric === "members" ? item.members : item.income
   }));
 
   const toggleLanguage = () => {
@@ -198,10 +172,10 @@ export function ReferralsPage() {
                   <span>{tt("Comptage D'équipe")}</span>
                 </div>
                 <div className="mt-4 text-[1.45rem] font-semibold leading-none text-white">
-                  {displayedTotalMembers}
+                  {totalMembers}
                 </div>
                 <div className="mt-3 text-[0.88rem] font-semibold text-white/48">
-                  {tt("Aujourd'hui Ajouté")} <span className="text-[#16dce5]">+{displayedTodayMembers}</span>
+                  {tt("Aujourd'hui Ajouté")} <span className="text-[#16dce5]">+{todayMembers}</span>
                 </div>
               </div>
 
@@ -265,7 +239,7 @@ export function ReferralsPage() {
               </div>
 
               <div className="space-y-3 text-[0.9rem] font-semibold text-white">
-                {displayGenerationSummary.map((item, index) => (
+                {teamGenerations.map((item, index) => (
                   <div key={item.generation} className="flex items-center gap-3">
                     <span className="h-4 w-4 shrink-0 rounded-[4px]" style={{ backgroundColor: pieColors[index] }} />
                     <span className="whitespace-nowrap">
@@ -285,7 +259,7 @@ export function ReferralsPage() {
           </button>
 
           <div className="mt-5 grid grid-cols-3 border-b border-[#2e3bb0]/70 text-center">
-            {displayGenerationSummary.map((item) => (
+            {teamGenerations.map((item) => (
               <button
                 key={item.generation}
                 className={`relative pb-3 text-[1.05rem] font-medium transition ${
@@ -315,7 +289,9 @@ export function ReferralsPage() {
             </div>
             <div>
               <div className="text-[1rem] leading-snug text-white/48">{tt("Dynamiques D'équipe D'aujourd'hui")}</div>
-              <div className="mt-3 text-[1.25rem] font-extrabold text-white">0/0</div>
+              <div className="mt-3 text-[1.25rem] font-extrabold text-white">
+                {selectedGeneration.todayMembers}/{selectedGeneration.target}
+              </div>
             </div>
             <div>
               <div className="text-[1rem] leading-snug text-white/48">{tt("Revenus D'équipe D'aujourd'hui")}</div>

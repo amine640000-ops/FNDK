@@ -34,6 +34,13 @@ export class TaskController {
     return this.taskService.getMissionCenter(user.sub);
   }
 
+  @Get("team/me")
+  @UseGuards(RolesGuard)
+  @Roles("USER", "ADMIN")
+  myTeam(@CurrentUser() user: AccessTokenPayload) {
+    return this.taskService.getTeamSummary(user.sub);
+  }
+
   @Post("activations/start")
   @UseGuards(RolesGuard)
   @Roles("USER", "ADMIN")
