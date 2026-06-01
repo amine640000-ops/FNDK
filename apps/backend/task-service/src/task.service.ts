@@ -67,6 +67,11 @@ type ReservationDayUsageRow = {
   window_ends_at: string;
 };
 
+type ReservationEligibilityRow = {
+  kyc_status: "pending" | "verified" | "rejected";
+  has_activation_deposit: boolean;
+};
+
 type TeamGenerationRow = {
   generation: 1 | 2 | 3;
   members: number;
@@ -146,6 +151,7 @@ export class TaskService {
 
     const tier = await this.getTierForUser(userId);
     const reservationDayUsage = await this.getReservationDayUsage(userId);
+    const reservationEligibility = await this.getReservationEligibility(userId);
 
     const runningActivation = await getOne<ActivationRow>(
       `
@@ -212,6 +218,10 @@ export class TaskService {
     return {
       currentTier: this.mapTierRow(tier),
       activeInvestment: tier.active_investment,
+      accountVerified: reservationEligibility.kyc_status === "verified",
+      accountFunded: reservationEligibility.has_activation_deposit,
+      accountActive: reservationEligibility.kyc_status === "verified" && reservationEligibility.has_activation_deposit,
+      minimumActivationDeposit: MINIMUM_ACCOUNT_ACTIVATION_DEPOSIT,
       runningActivation: runningActivation ? this.mapActivation(runningActivation) : null,
       remainingActivationsToday: Math.max(tier.activation_limit_per_day - reservationDayUsage.activation_count, 0),
       usedActivationsToday: reservationDayUsage.activation_count,
@@ -372,6 +382,8 @@ export class TaskService {
 
   async startManualActivation(userId: string, reservationAmount?: number, securityPasscode?: string) {
     await this.finalizeDueActivations(userId);
+    const reservationEligibility = await this.getReservationEligibility(userId);
+    this.assertReservationEligibility(reservationEligibility);
     await this.verifySecurityPasscode(userId, securityPasscode);
     const tier = await this.getTierForUser(userId);
 
@@ -971,6 +983,44 @@ export class TaskService {
 
     if (user.security_passcode_hash !== hashSecurityPasscode(passcode)) {
       throw new BadRequestException("Invalid security passcode");
+    }
+  }
+
+  private async getReservationEligibility(userId: string) {
+    const eligibility = await getOne<ReservationEligibilityRow>(
+      `
+        SELECT
+          kyc_status,
+          EXISTS(
+            SELECT 1
+            FROM transactions
+            WHERE user_id = $1
+              AND type = 'deposit'
+              AND status = 'approved'
+              AND amount >= $2
+          ) AS has_activation_deposit
+        FROM users
+        WHERE id = $1
+      `,
+      [userId, MINIMUM_ACCOUNT_ACTIVATION_DEPOSIT]
+    );
+
+    if (!eligibility) {
+      throw new BadRequestException("User account was not found");
+    }
+
+    return eligibility;
+  }
+
+  private assertReservationEligibility(eligibility: ReservationEligibilityRow) {
+    if (eligibility.kyc_status !== "verified") {
+      throw new BadRequestException("Complete personal identification before making a reservation.");
+    }
+
+    if (!eligibility.has_activation_deposit) {
+      throw new BadRequestException(
+        `Make a first approved deposit of at least ${MINIMUM_ACCOUNT_ACTIVATION_DEPOSIT} USDT to activate reservations.`
+      );
     }
   }
 

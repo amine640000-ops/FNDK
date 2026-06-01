@@ -29,6 +29,10 @@ import { useDashboardStore } from "@/store/use-dashboard-store";
 type ActivationState = {
   currentTier: VipTier;
   activeInvestment: number;
+  accountVerified: boolean;
+  accountFunded: boolean;
+  accountActive: boolean;
+  minimumActivationDeposit: number;
   runningActivation: AiTradingActivation | null;
   remainingActivationsToday: number;
   usedActivationsToday: number;
@@ -99,6 +103,7 @@ const missionCategoryTabs: Array<{ id: MissionTaskCategory; label: string }> = [
 
 const formatMoneyValue = (value: number) => formatCurrency(value).replace("$", "");
 const reservationContactMessage = "Impossible De Participer, Veuillez Contacter Votre Gestionnaire De Compte";
+const minimumAccountActivationDeposit = 50;
 
 const formatUsdtRange = (min: number, max: number) => `${min.toFixed(4)} ~ ${max.toFixed(4)} USDT`;
 
@@ -196,6 +201,7 @@ export function VipPage() {
   const [loadingActivation, setLoadingActivation] = useState(false);
   const [now, setNow] = useState(Date.now());
   const language = useAppLanguage();
+  const tt = (text: string) => translateText(language, text);
   const [activeTab, setActiveTab] = useState<(typeof missionTabs)[number]["id"]>(() =>
     location.pathname.endsWith("/mission") ? "tasks" : "strategy"
   );
@@ -217,6 +223,10 @@ export function VipPage() {
     () => ({
       currentTier: staticCurrentTier,
       activeInvestment: wallet.activeInvestment,
+      accountVerified: false,
+      accountFunded: wallet.activeInvestment >= minimumAccountActivationDeposit,
+      accountActive: false,
+      minimumActivationDeposit: minimumAccountActivationDeposit,
       runningActivation: null,
       remainingActivationsToday: staticCurrentTier.activationLimitPerDay,
       usedActivationsToday: 0,
@@ -230,6 +240,10 @@ export function VipPage() {
     return {
       currentTier: tier,
       activeInvestment,
+      accountVerified: false,
+      accountFunded: activeInvestment >= minimumAccountActivationDeposit,
+      accountActive: false,
+      minimumActivationDeposit: minimumAccountActivationDeposit,
       runningActivation: null,
       remainingActivationsToday: tier.activationLimitPerDay,
       usedActivationsToday: 0,
@@ -347,16 +361,36 @@ export function VipPage() {
     Math.ceil(((Number.isFinite(reservationResetAt) ? reservationResetAt : getNextLocalFiveAm(now)) - now) / 1000),
     0
   );
-  const hasMinimumDeposit = liveState.activeInvestment >= currentTier.minDeposit;
+  const accountVerified = liveState.accountVerified;
+  const accountFunded = liveState.accountFunded;
+  const accountActive = liveState.accountActive;
+  const accountActivationDeposit = liveState.minimumActivationDeposit || minimumAccountActivationDeposit;
+  const reservationLockReason = !accountVerified
+    ? tt("Complete personal identification")
+    : !accountFunded
+      ? `${tt("Deposit required")}: ${formatCurrency(accountActivationDeposit)}`
+      : "";
+  const hasMinimumDeposit = accountActive && liveState.activeInvestment >= currentTier.minDeposit;
   const reservationLimitReached =
     hasMinimumDeposit && !liveRunningActivation && liveState.remainingActivationsToday <= 0;
   const canStartActivation =
     !loadingActivation && !liveRunningActivation && liveState.remainingActivationsToday > 0 && hasMinimumDeposit;
   const reservationStripCountdown = liveRunningActivation
     ? formatCountdown(countdownSeconds)
-    : reservationLimitReached || !hasMinimumDeposit
+    : !accountActive
+      ? "00:00:00"
+      : reservationLimitReached || !hasMinimumDeposit
       ? formatCountdown(reservationResetCountdownSeconds)
       : "00:00:00";
+  const reservationStatusLabel = liveRunningActivation
+    ? tt("Running")
+    : !accountActive
+      ? tt("Locked")
+      : reservationLimitReached
+        ? tt("Reset at 5 AM")
+        : hasMinimumDeposit
+          ? tt("Ready")
+          : tt("Locked");
 
   useEffect(() => {
     if (!runningActivation || countdownSeconds > 0 || completionRefreshInFlight.current === runningActivation.id) {
@@ -482,7 +516,6 @@ export function VipPage() {
     () => missionCenter.tasks.filter((task) => task.enabled && task.category === missionCategory),
     [missionCategory, missionCenter.tasks]
   );
-  const tt = (text: string) => translateText(language, text);
 
   useEffect(() => {
     if (!reservationModalOpen) {
@@ -562,6 +595,11 @@ export function VipPage() {
   };
 
   const openReservationModal = () => {
+    if (!accountActive) {
+      toast.error(reservationLockReason || tt("Activate your account before making a reservation."));
+      return;
+    }
+
     if (!hasMinimumDeposit) {
       toast.error("Activate a VIP tier with an approved deposit before starting AI trading.");
       return;
@@ -599,8 +637,13 @@ export function VipPage() {
       return;
     }
 
+    if (!accountActive) {
+      showReservationError(reservationLockReason || tt("Activate your account before making a reservation."));
+      return;
+    }
+
     if (!hasMinimumDeposit) {
-      showReservationError(tt(reservationContactMessage));
+      showReservationError("Activate a VIP tier with an approved deposit before starting AI trading.");
       return;
     }
 
@@ -1123,7 +1166,7 @@ export function VipPage() {
                   <div className="mt-2 text-sm text-cyan-200/80">{liveRunningActivation?.strategy ?? `VIP${currentTier.id} ${tt("execution track")}`}</div>
                 </div>
                 <div className="rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-1.5 text-[12px] font-semibold uppercase tracking-[0.18em] text-cyan-100">
-                  {liveRunningActivation ? tt("Running") : reservationLimitReached ? tt("Reset at 5 AM") : hasMinimumDeposit ? tt("Ready") : tt("Locked")}
+                  {reservationStatusLabel}
                 </div>
               </div>
 
@@ -1149,6 +1192,11 @@ export function VipPage() {
                   <span className="text-white/45">{tt("Depot Minimum")}</span>
                   <span className="font-semibold text-white">{formatCurrency(currentTier.minDeposit)}</span>
                 </div>
+                {!accountActive ? (
+                  <div className="rounded-[18px] border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-sm font-semibold text-amber-100">
+                    {reservationLockReason}
+                  </div>
+                ) : null}
               </div>
             </section>
           </div>
