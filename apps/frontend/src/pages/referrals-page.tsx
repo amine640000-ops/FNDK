@@ -121,7 +121,7 @@ export function ReferralsPage() {
 
   return (
     <div className="pb-6">
-      <header className="relative z-10 border-b border-cyan-300/10 bg-[#050849]/94 px-4 py-4 backdrop-blur-md">
+      <header className="app-top-header relative z-10 border-b border-cyan-300/10 bg-[#050849]/94 px-4 py-4 backdrop-blur-md">
         <div className="flex items-center justify-between gap-4">
           <BrandMark
             iconClassName="h-11 w-11 rounded-[18px] p-2"

@@ -91,6 +91,7 @@ body {
 }
 
 .app-mobile-bg {
+  height: 100vh;
   min-height: 100vh;
   background:
     linear-gradient(rgba(91, 136, 255, 0.06) 1px, transparent 1px),
@@ -99,6 +100,24 @@ body {
     radial-gradient(circle at top center, rgba(72, 127, 255, 0.16), transparent 24%),
     linear-gradient(180deg, var(--fndk-bg-deep) 0%, #05054b 18%, var(--fndk-bg) 100%);
   background-size: 44px 44px, 44px 44px, auto, auto;
+}
+
+@supports (height: 100svh) {
+  .app-mobile-bg {
+    height: 100svh;
+    min-height: 100svh;
+  }
+}
+
+@supports (height: min(100svh, 100dvh)) {
+  .app-mobile-bg {
+    height: min(100svh, 100dvh);
+    min-height: min(100svh, 100dvh);
+  }
+}
+
+.app-viewport {
+  overflow: hidden;
 }
 
 .phone-shell {
@@ -124,6 +143,22 @@ body {
   background:
     radial-gradient(circle at top right, rgba(68, 202, 255, 0.16), transparent 18%),
     radial-gradient(circle at top left, rgba(63, 90, 255, 0.18), transparent 24%);
+}
+
+.app-scroll-area {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.app-scroll-area::-webkit-scrollbar {
+  display: none;
+}
+
+.app-top-header {
+  position: sticky;
+  top: 0;
+  z-index: 45;
+  transform: translateZ(0);
 }
 
 .fndk-auth-bg {
@@ -415,6 +450,20 @@ body {
 
 .neon-divider {
   border-color: rgba(103, 121, 255, 0.2);
+}
+
+.app-bottom-nav {
+  position: sticky;
+  bottom: 0;
+  z-index: 50;
+  min-height: calc(5.65rem + env(safe-area-inset-bottom, 0px));
+  transform: translateZ(0);
+}
+
+@supports (padding-bottom: max(0px)) {
+  .app-bottom-nav {
+    padding-bottom: max(0.85rem, calc(env(safe-area-inset-bottom, 0px) + 0.55rem));
+  }
 }
 
 .bottom-nav-glow {

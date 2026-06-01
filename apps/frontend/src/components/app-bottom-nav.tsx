@@ -14,7 +14,7 @@ export function AppBottomNav() {
   const language = useAppLanguage();
 
   return (
-    <div className="bottom-nav-glow relative z-20 shrink-0 border-t border-cyan-300/15 px-3 pb-[calc(0.85rem+env(safe-area-inset-bottom))] pt-2.5">
+    <div className="app-bottom-nav bottom-nav-glow relative z-20 shrink-0 border-t border-cyan-300/15 px-3 pb-[calc(0.85rem+env(safe-area-inset-bottom))] pt-2.5">
       <nav className="grid grid-cols-5 gap-1">
         {items.map(({ to, label, icon: Icon }) => (
           <NavLink

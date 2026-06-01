@@ -118,7 +118,7 @@ function ScreenHeader({ title, onBack }: { title: string; onBack: () => void }) 
   const language = useAppLanguage();
 
   return (
-    <header className="relative z-20 border-b border-cyan-200/10 bg-[#06074c]/95 px-4 py-4 backdrop-blur-md">
+    <header className="app-top-header relative z-20 border-b border-cyan-200/10 bg-[#06074c]/95 px-4 py-4 backdrop-blur-md">
       <div className="grid grid-cols-[42px_minmax(0,1fr)_42px] items-center">
         <button
           aria-label="Back"
