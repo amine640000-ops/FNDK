@@ -25,8 +25,6 @@ const emptySummary: WalletSummary = {
   assets: []
 };
 
-const defaultWithdrawalAddressPlaceholder = "TF9Lg53WUMGVSjdueqNZ3u1zHTo48XfChp";
-
 const currencyLabels: Record<AssetType, string> = {
   BTC: "BTC",
   ETH: "ETH",
@@ -312,20 +310,6 @@ export function WithdrawPage() {
 
   return (
     <div className="withdraw-reference-page">
-      <div className="withdraw-ios-status" aria-hidden="true">
-        <span>11:53</span>
-        <span className="withdraw-ios-icons">
-          <span className="withdraw-signal">
-            <i />
-            <i />
-            <i />
-            <i />
-          </span>
-          <span className="withdraw-wifi" />
-          <span className="withdraw-battery" />
-        </span>
-      </div>
-
       <header className="withdraw-reference-header">
         <button className="withdraw-header-icon" aria-label="Retour" onClick={() => navigate(-1)} type="button">
           <ChevronLeft />
@@ -397,7 +381,6 @@ export function WithdrawPage() {
           <div className="withdraw-address-shell">
             <input
               className="withdraw-address-input"
-              placeholder={defaultWithdrawalAddressPlaceholder}
               value={destinationAddress}
               onChange={(event) => {
                 setDestinationAddress(event.target.value);
@@ -444,8 +427,6 @@ export function WithdrawPage() {
           </ol>
         </section>
       </main>
-
-      <div className="withdraw-home-indicator" aria-hidden="true" />
 
       {pickerMode ? (
         <div className="withdraw-sheet-backdrop">
