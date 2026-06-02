@@ -496,7 +496,7 @@ export function AssetTransferPage() {
       <StatusCard
         icon={ArrowLeftRight}
         title="Available transfer"
-        description={`${tt("Available balance")}: ${formatCurrency(summary.availableToWithdraw)}. ${tt("Active strategy funds")}: ${formatCurrency(summary.activeInvestment)}.`}
+        description={`${tt("Available balance")}: ${formatCurrency(summary.availableToWithdraw)}.`}
       />
       <form className="neon-soft-panel mt-5 grid gap-4 p-5" onSubmit={submitTransfer}>
         <label className="grid gap-2">

@@ -417,7 +417,7 @@ export function OverviewPage() {
   }, [marketFeed, marketTab]);
 
   const overviewWalletTotal = liveWallet?.totalBalance ?? overview.totalBalance;
-  const overviewWalletActiveInvestment = liveWallet?.activeInvestment ?? overview.activeInvestment;
+  const overviewWalletAvailable = liveWallet?.availableToWithdraw ?? overviewWalletTotal;
   const activeAdSlide = adSlides[activeAdIndex] ?? defaultAdCarouselSlides[0];
   const activeAdImageUrl = resolveAdminAssetUrl(activeAdSlide.imageUrl);
   const tt = (text: string) => translateText(language, text);
@@ -750,9 +750,7 @@ export function OverviewPage() {
             <div className="mt-2 text-[1.75rem] font-extrabold leading-none text-white">
               {formatCurrency(overviewWalletTotal)}
             </div>
-            <div className="mt-2 text-[13px] text-slate-300">
-              {tt("Active investment")} {formatCurrency(overviewWalletActiveInvestment)}
-            </div>
+            <div className="mt-2 text-[13px] text-slate-300">{tt("Available balance")} {formatCurrency(overviewWalletAvailable)}</div>
           </div>
           <Link
             className="rounded-full border border-cyan-300/25 bg-cyan-300/10 px-4 py-2 text-[13px] font-semibold leading-4 text-cyan-100"

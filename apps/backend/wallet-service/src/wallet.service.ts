@@ -128,7 +128,7 @@ export class WalletService implements OnModuleInit {
         )
         SELECT
           COALESCE(SUM(GREATEST(wallets.balance - COALESCE(pending_withdrawals.pending_amount, 0), 0)), 0)::float8 AS total_balance,
-          COALESCE(SUM(wallets.active_investment), 0)::float8 AS active_investment,
+          0::float8 AS active_investment,
           COALESCE(SUM(wallets.total_earned), 0)::float8 AS total_earned
         FROM wallets
         LEFT JOIN pending_withdrawals
@@ -153,7 +153,7 @@ export class WalletService implements OnModuleInit {
         SELECT
           wallets.asset_type,
           GREATEST(wallets.balance - COALESCE(pending_withdrawals.pending_amount, 0), 0)::float8 AS balance,
-          wallets.active_investment::float8 AS active_investment,
+          0::float8 AS active_investment,
           wallets.total_earned::float8 AS total_earned
         FROM wallets
         LEFT JOIN pending_withdrawals
@@ -170,7 +170,7 @@ export class WalletService implements OnModuleInit {
     return {
       totalBalance,
       activeInvestment,
-      availableToWithdraw: Number(Math.max(totalBalance - activeInvestment, 0).toFixed(2)),
+      availableToWithdraw: totalBalance,
       totalEarned: totals?.total_earned ?? 0,
       assets: assets.rows.map((wallet: WalletRow) => ({
         asset: wallet.asset_type,
@@ -603,8 +603,7 @@ export class WalletService implements OnModuleInit {
         `
           UPDATE wallets
           SET
-            balance = balance + $3,
-            active_investment = active_investment + $3
+            balance = balance + $3
           WHERE user_id = $1 AND asset_type = $2
         `,
         [userId, asset, amount]

@@ -259,11 +259,14 @@ export class TaskService {
                 AND status = 'approved'
               GROUP BY user_id
             ),
-            active_positions AS (
+            admin_activation_totals AS (
               SELECT
                 user_id,
-                COALESCE(SUM(active_investment), 0)::float8 AS active_investment
-              FROM wallets
+                COALESCE(SUM(amount), 0)::float8 AS total_admin_activated
+              FROM transactions
+              WHERE type = 'adjustment'
+                AND status = 'approved'
+                AND amount > 0
               GROUP BY user_id
             ),
             active_accounts AS (
@@ -271,13 +274,11 @@ export class TaskService {
               FROM users
               LEFT JOIN deposit_totals
                 ON deposit_totals.user_id = users.id
-              LEFT JOIN active_positions
-                ON active_positions.user_id = users.id
+              LEFT JOIN admin_activation_totals
+                ON admin_activation_totals.user_id = users.id
               WHERE users.kyc_status = 'verified'
-                AND (
-                  COALESCE(deposit_totals.total_deposited, 0) >= $2
-                  OR COALESCE(active_positions.active_investment, 0) >= $2
-                )
+                AND COALESCE(deposit_totals.total_deposited, 0)
+                  + COALESCE(admin_activation_totals.total_admin_activated, 0) >= $2
             )
             SELECT COUNT(*)::int AS count
             FROM users
@@ -366,27 +367,31 @@ export class TaskService {
             AND status = 'approved'
           GROUP BY user_id
         ),
-        active_positions AS (
+        admin_activation_totals AS (
           SELECT
             user_id,
-            COALESCE(SUM(active_investment), 0)::float8 AS active_investment
-          FROM wallets
+            COALESCE(SUM(amount), 0)::float8 AS total_admin_activated
+          FROM transactions
+          WHERE type = 'adjustment'
+            AND status = 'approved'
+            AND amount > 0
           GROUP BY user_id
         ),
-        deposit_progress AS (
+        funding_progress AS (
           SELECT
             user_id,
             created_at,
-            SUM(amount) OVER (PARTITION BY user_id ORDER BY created_at ASC, id ASC) AS cumulative_deposit
+            SUM(amount) OVER (PARTITION BY user_id ORDER BY created_at ASC, id ASC) AS cumulative_funding
           FROM transactions
           WHERE type IN ('deposit', 'adjustment')
             AND status = 'approved'
+            AND amount > 0
         ),
         funding_thresholds AS (
           SELECT
             user_id,
-            MIN(created_at) FILTER (WHERE cumulative_deposit >= $2) AS funded_at
-          FROM deposit_progress
+            MIN(created_at) FILTER (WHERE cumulative_funding >= $2) AS funded_at
+          FROM funding_progress
           GROUP BY user_id
         ),
         kyc_verified AS (
@@ -409,16 +414,14 @@ export class TaskService {
             ON funding_thresholds.user_id = users.id
           LEFT JOIN deposit_totals
             ON deposit_totals.user_id = users.id
-          LEFT JOIN active_positions
-            ON active_positions.user_id = users.id
+          LEFT JOIN admin_activation_totals
+            ON admin_activation_totals.user_id = users.id
           LEFT JOIN kyc_verified
             ON kyc_verified.user_id = users.id
           WHERE users.kyc_status = 'verified'
             AND funding_thresholds.funded_at IS NOT NULL
-            AND (
-              COALESCE(deposit_totals.total_deposited, 0) >= $2
-              OR COALESCE(active_positions.active_investment, 0) >= $2
-            )
+            AND COALESCE(deposit_totals.total_deposited, 0)
+              + COALESCE(admin_activation_totals.total_admin_activated, 0) >= $2
         ),
         referral_gains AS (
           SELECT
@@ -1101,10 +1104,8 @@ export class TaskService {
       `
         SELECT
           users.kyc_status,
-          (
-            COALESCE(deposit_totals.total_deposited, 0) >= $2
-            OR COALESCE(active_positions.active_investment, 0) >= $2
-          ) AS has_activation_deposit
+          COALESCE(deposit_totals.total_deposited, 0)
+            + COALESCE(admin_activation_totals.total_admin_activated, 0) >= $2 AS has_activation_deposit
         FROM users
         LEFT JOIN (
           SELECT
@@ -1119,11 +1120,14 @@ export class TaskService {
         LEFT JOIN (
           SELECT
             user_id,
-            COALESCE(SUM(active_investment), 0)::float8 AS active_investment
-          FROM wallets
+            COALESCE(SUM(amount), 0)::float8 AS total_admin_activated
+          FROM transactions
+          WHERE type = 'adjustment'
+            AND status = 'approved'
+            AND amount > 0
           GROUP BY user_id
-        ) active_positions
-          ON active_positions.user_id = users.id
+        ) admin_activation_totals
+          ON admin_activation_totals.user_id = users.id
         WHERE users.id = $1
       `,
       [userId, MINIMUM_ACCOUNT_ACTIVATION_DEPOSIT]

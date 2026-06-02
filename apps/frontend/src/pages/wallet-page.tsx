@@ -223,8 +223,6 @@ export function WalletPage() {
             <div className="text-right font-semibold text-white">{maskAmount(summary.availableToWithdraw.toFixed(4), amountsVisible)}</div>
             <div className="text-white/45">{tt("En Attente De Sortie")}</div>
             <div className="text-right font-semibold text-white">{maskAmount(pendingWithdrawals.toFixed(4), amountsVisible)}</div>
-            <div className="text-white/45">{tt("Total Verrouille")}</div>
-            <div className="text-right font-semibold text-white">{maskAmount(summary.activeInvestment.toFixed(4), amountsVisible)}</div>
           </div>
 
           <div className="mt-6 grid grid-cols-3 gap-3">
@@ -292,9 +290,6 @@ export function WalletPage() {
                   <div className="flex items-center justify-between gap-4">
                     <div>
                       <div className="text-[15px] font-semibold text-white">{asset.asset}</div>
-                      <div className="mt-1 text-[13px] text-slate-400">
-                        {tt("Active investment")} {maskAmount(asset.activeInvestment.toFixed(2), amountsVisible)}
-                      </div>
                     </div>
                     <div className="text-right">
                       <div className="text-[1rem] font-semibold text-cyan-100">

@@ -338,11 +338,11 @@ export class AdminService {
           UPDATE wallets
           SET
             balance = $3,
-            active_investment = LEAST(GREATEST(active_investment + $4, 0), $3)
+            active_investment = LEAST(active_investment, $3)
           WHERE user_id = $1
             AND asset_type = $2
         `,
-        [userId, input.asset, nextBalance, delta]
+        [userId, input.asset, nextBalance]
       );
 
       await client.query(
