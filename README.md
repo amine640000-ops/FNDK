@@ -85,7 +85,7 @@ This repo is scaffolded with representative controllers, services, routes, and d
 
 - `identity-service` persists users in Postgres and publishes `user.registered`
 - JWT bearer authentication and role guards are shared through `@nevo/shared-infra`
-- KYC submissions and deposit proofs are stored on disk under `uploads/` and exposed at `/uploads/*`
+- KYC submissions and deposit proofs are stored on disk under `UPLOADS_DIR` (defaults to `uploads/`) and exposed at `/uploads/*`
 - `wallet-service` persists deposits/withdrawals, provisions wallets, and consumes deposit, withdrawal, and profit events
 - `vip-service` reads tiers from Postgres and recalculates `user_vip` assignments from event activity
 - `task-service` handles manual AI activations with tier-based daily click limits and timed completion, and it can still publish `profit.distributed`
@@ -93,4 +93,6 @@ This repo is scaffolded with representative controllers, services, routes, and d
 - `admin-service` reads platform metrics from SQL and publishes approval events for deposits and withdrawals
 
 Local email is delivered to MailHog in Docker Compose at http://localhost:8025. For real email, set `SMTP_HOST`, `SMTP_PORT`, optional `SMTP_USER`/`SMTP_PASS`, and `SMTP_FROM` to an SMTP provider.
+
+For Render deployments, attach a persistent disk to services that store uploads and set `UPLOADS_DIR` to the disk path, for example `/var/data/uploads`. Without a persistent disk, uploaded KYC files can disappear after a deploy/restart while their database URLs still point to `/uploads/...`.
 # fndk

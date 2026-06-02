@@ -7,17 +7,18 @@ type StorageFile = Express.Multer.File;
 type DestinationCallback = (error: Error | null, destination: string) => void;
 type FilenameCallback = (error: Error | null, filename: string) => void;
 
-const UPLOADS_ROOT = join(process.cwd(), "uploads");
+export const getUploadsRoot = () => process.env.UPLOADS_DIR || join(process.cwd(), "uploads");
 
 const ensureDir = (namespace: string) => {
-  const dir = join(UPLOADS_ROOT, namespace);
+  const dir = join(getUploadsRoot(), namespace);
   mkdirSync(dir, { recursive: true });
   return dir;
 };
 
 export const ensureUploadsRoot = () => {
-  mkdirSync(UPLOADS_ROOT, { recursive: true });
-  return UPLOADS_ROOT;
+  const uploadsRoot = getUploadsRoot();
+  mkdirSync(uploadsRoot, { recursive: true });
+  return uploadsRoot;
 };
 
 export const createDiskStorageOptions = (namespace: string) => ({

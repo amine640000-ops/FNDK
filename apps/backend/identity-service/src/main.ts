@@ -1,5 +1,4 @@
 import "reflect-metadata";
-import { join } from "node:path";
 import helmet from "helmet";
 import { ValidationPipe } from "@nestjs/common";
 import { NestFactory } from "@nestjs/core";
@@ -14,8 +13,8 @@ async function bootstrap() {
     origin: getCorsOrigins(),
     credentials: true
   });
-  ensureUploadsRoot();
-  app.useStaticAssets(join(process.cwd(), "uploads"), {
+  const uploadsRoot = ensureUploadsRoot();
+  app.useStaticAssets(uploadsRoot, {
     prefix: "/uploads"
   });
   app.setGlobalPrefix("api");
