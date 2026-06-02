@@ -17,7 +17,6 @@ import type { AdjustUserBalanceDto, UpdateAdminSettingsDto, UpdateVipTierDto } f
 type AdminSettingValue = string | number | boolean | null | AdCarouselSlide[] | AssetRouteSetting[] | MissionTaskSetting[];
 
 const maxAdCarouselSlides = 8;
-const minimumValidMemberActivationDeposit = 50;
 
 const defaultAdCarouselSlides: AdCarouselSlide[] = [
   {
@@ -1103,9 +1102,9 @@ export class AdminService {
         SELECT COUNT(*)::int AS valid_direct_members
         FROM direct_member_funding
         WHERE approved_deposit > 0
-          AND activation_funding >= $2
+          AND activation_funding >= 50
       `,
-      [userId, minimumValidMemberActivationDeposit]
+      [userId]
     );
 
     return result?.valid_direct_members ?? 0;

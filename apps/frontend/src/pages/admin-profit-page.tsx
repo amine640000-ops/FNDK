@@ -354,7 +354,7 @@ export function AdminProfitPage() {
             </button>
           }
           title="VIP & Profit Settings"
-          subtitle="Tier thresholds, direct-member requirements, and automated distribution controls."
+          subtitle="Tier thresholds and automated distribution controls."
         >
           {adminApiOffline ? (
             <div className="mb-4 rounded-3xl border border-amber-300/20 bg-amber-300/10 p-4 text-sm text-amber-100">

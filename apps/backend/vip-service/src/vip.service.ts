@@ -15,11 +15,6 @@ type VipTierRow = {
   features: string[];
 };
 
-type PendingDepositContext = {
-  userId: string;
-  amount: number;
-};
-
 const MINIMUM_VALID_MEMBER_ACTIVATION_DEPOSIT = 50;
 
 @Injectable()
@@ -29,10 +24,9 @@ export class VipService implements OnModuleInit {
       "user.registered": async ({ userId }: RabbitEventMap["user.registered"]) => {
         await this.ensureStartingTier(userId);
       },
-      "deposit.confirmed": async (payload: RabbitEventMap["deposit.confirmed"]) => {
-        const pendingDeposit = await this.getPendingDepositContext(payload);
-        await this.recalculateTier(payload.userId, pendingDeposit);
-        await this.recalculateReferrerTier(payload.userId, pendingDeposit);
+      "deposit.confirmed": async ({ userId }: RabbitEventMap["deposit.confirmed"]) => {
+        await this.recalculateTier(userId);
+        await this.recalculateReferrerTier(userId);
       },
       "withdrawal.approved": async ({ userId }: RabbitEventMap["withdrawal.approved"]) => {
         await this.recalculateTier(userId);
@@ -116,7 +110,7 @@ export class VipService implements OnModuleInit {
     );
   }
 
-  private async recalculateTier(userId: string, pendingDeposit?: PendingDepositContext) {
+  private async recalculateTier(userId: string) {
     const latestAssignment = await getOne<{ tier_id: number }>(
       `
         SELECT tier_id
@@ -128,8 +122,8 @@ export class VipService implements OnModuleInit {
       [userId]
     );
     const previous = await this.getLatestTierAssignment(userId);
-    const activeInvestment = await this.getEffectiveInvestment(userId) + (pendingDeposit?.userId === userId ? pendingDeposit.amount : 0);
-    const validDirectMembers = await this.getValidDirectMemberCount(userId, pendingDeposit);
+    const activeInvestment = await this.getEffectiveInvestment(userId);
+    const validDirectMembers = await this.getValidDirectMemberCount(userId);
     const nextTier = await this.getTierDefinitionForEligibility(activeInvestment, validDirectMembers);
 
     if (latestAssignment && previous.id === nextTier.id) {
@@ -152,7 +146,7 @@ export class VipService implements OnModuleInit {
     });
   }
 
-  private async recalculateReferrerTier(userId: string, pendingDeposit?: PendingDepositContext) {
+  private async recalculateReferrerTier(userId: string) {
     const referrer = await getOne<{ referred_by: string | null }>(
       `
         SELECT referred_by
@@ -163,29 +157,8 @@ export class VipService implements OnModuleInit {
     );
 
     if (referrer?.referred_by) {
-      await this.recalculateTier(referrer.referred_by, pendingDeposit);
+      await this.recalculateTier(referrer.referred_by);
     }
-  }
-
-  private async getPendingDepositContext(payload: RabbitEventMap["deposit.confirmed"]): Promise<PendingDepositContext | undefined> {
-    const transaction = await getOne<{ status: string }>(
-      `
-        SELECT status
-        FROM transactions
-        WHERE id = $1
-          AND type = 'deposit'
-      `,
-      [payload.transactionId]
-    );
-
-    if (transaction?.status !== "pending") {
-      return undefined;
-    }
-
-    return {
-      userId: payload.userId,
-      amount: payload.amount
-    };
   }
 
   private async getLatestTierAssignment(userId: string) {
@@ -234,7 +207,7 @@ export class VipService implements OnModuleInit {
     return walletTotals?.total_balance ?? 0;
   }
 
-  private async getValidDirectMemberCount(userId: string, pendingDeposit?: PendingDepositContext) {
+  private async getValidDirectMemberCount(userId: string) {
     const result = await getOne<{ valid_direct_members: number }>(
       `
         WITH direct_member_funding AS (
@@ -266,17 +239,10 @@ export class VipService implements OnModuleInit {
         )
         SELECT COUNT(*)::int AS valid_direct_members
         FROM direct_member_funding
-        WHERE approved_deposit
-            + CASE WHEN id = $2::uuid THEN $3::float8 ELSE 0 END > 0
-          AND activation_funding
-            + CASE WHEN id = $2::uuid THEN $3::float8 ELSE 0 END >= $4
+        WHERE approved_deposit > 0
+          AND activation_funding >= $2
       `,
-      [
-        userId,
-        pendingDeposit?.userId ?? null,
-        pendingDeposit?.amount ?? 0,
-        MINIMUM_VALID_MEMBER_ACTIVATION_DEPOSIT
-      ]
+      [userId, MINIMUM_VALID_MEMBER_ACTIVATION_DEPOSIT]
     );
 
     return result?.valid_direct_members ?? 0;
