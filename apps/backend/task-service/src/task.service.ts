@@ -259,13 +259,25 @@ export class TaskService {
                 AND status = 'approved'
               GROUP BY user_id
             ),
+            active_positions AS (
+              SELECT
+                user_id,
+                COALESCE(SUM(active_investment), 0)::float8 AS active_investment
+              FROM wallets
+              GROUP BY user_id
+            ),
             active_accounts AS (
               SELECT users.id AS user_id
               FROM users
-              JOIN deposit_totals
+              LEFT JOIN deposit_totals
                 ON deposit_totals.user_id = users.id
+              LEFT JOIN active_positions
+                ON active_positions.user_id = users.id
               WHERE users.kyc_status = 'verified'
-                AND deposit_totals.total_deposited >= $2
+                AND (
+                  COALESCE(deposit_totals.total_deposited, 0) >= $2
+                  OR COALESCE(active_positions.active_investment, 0) >= $2
+                )
             )
             SELECT COUNT(*)::int AS count
             FROM users
@@ -354,13 +366,20 @@ export class TaskService {
             AND status = 'approved'
           GROUP BY user_id
         ),
+        active_positions AS (
+          SELECT
+            user_id,
+            COALESCE(SUM(active_investment), 0)::float8 AS active_investment
+          FROM wallets
+          GROUP BY user_id
+        ),
         deposit_progress AS (
           SELECT
             user_id,
             created_at,
             SUM(amount) OVER (PARTITION BY user_id ORDER BY created_at ASC, id ASC) AS cumulative_deposit
           FROM transactions
-          WHERE type = 'deposit'
+          WHERE type IN ('deposit', 'adjustment')
             AND status = 'approved'
         ),
         funding_thresholds AS (
@@ -388,10 +407,18 @@ export class TaskService {
           FROM users
           INNER JOIN funding_thresholds
             ON funding_thresholds.user_id = users.id
+          LEFT JOIN deposit_totals
+            ON deposit_totals.user_id = users.id
+          LEFT JOIN active_positions
+            ON active_positions.user_id = users.id
           LEFT JOIN kyc_verified
             ON kyc_verified.user_id = users.id
           WHERE users.kyc_status = 'verified'
             AND funding_thresholds.funded_at IS NOT NULL
+            AND (
+              COALESCE(deposit_totals.total_deposited, 0) >= $2
+              OR COALESCE(active_positions.active_investment, 0) >= $2
+            )
         ),
         referral_gains AS (
           SELECT
@@ -1074,7 +1101,10 @@ export class TaskService {
       `
         SELECT
           users.kyc_status,
-          COALESCE(deposit_totals.total_deposited, 0) >= $2 AS has_activation_deposit
+          (
+            COALESCE(deposit_totals.total_deposited, 0) >= $2
+            OR COALESCE(active_positions.active_investment, 0) >= $2
+          ) AS has_activation_deposit
         FROM users
         LEFT JOIN (
           SELECT
@@ -1086,6 +1116,14 @@ export class TaskService {
           GROUP BY user_id
         ) deposit_totals
           ON deposit_totals.user_id = users.id
+        LEFT JOIN (
+          SELECT
+            user_id,
+            COALESCE(SUM(active_investment), 0)::float8 AS active_investment
+          FROM wallets
+          GROUP BY user_id
+        ) active_positions
+          ON active_positions.user_id = users.id
         WHERE users.id = $1
       `,
       [userId, MINIMUM_ACCOUNT_ACTIVATION_DEPOSIT]
@@ -1105,7 +1143,7 @@ export class TaskService {
 
     if (!eligibility.has_activation_deposit) {
       throw new BadRequestException(
-        `Make a first approved deposit of at least ${MINIMUM_ACCOUNT_ACTIVATION_DEPOSIT} USDT to activate reservations.`
+        `Make a first approved deposit or receive an admin activation of at least ${MINIMUM_ACCOUNT_ACTIVATION_DEPOSIT} USDT to activate reservations.`
       );
     }
   }
