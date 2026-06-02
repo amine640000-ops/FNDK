@@ -95,4 +95,6 @@ This repo is scaffolded with representative controllers, services, routes, and d
 Local email is delivered to MailHog in Docker Compose at http://localhost:8025. For real email, set `SMTP_HOST`, `SMTP_PORT`, optional `SMTP_USER`/`SMTP_PASS`, and `SMTP_FROM` to an SMTP provider.
 
 For Render deployments, attach a persistent disk to services that store uploads and set `UPLOADS_DIR` to the disk path, for example `/var/data/uploads`. Without a persistent disk, uploaded KYC files can disappear after a deploy/restart while their database URLs still point to `/uploads/...`.
+
+For durable KYC images without relying on Render disk storage, set `CLOUDINARY_URL` on `identity-service` using the format `cloudinary://API_KEY:API_SECRET@CLOUD_NAME`. When this is set, new KYC submissions are uploaded to Cloudinary and saved with permanent `https://res.cloudinary.com/...` URLs.
 # fndk

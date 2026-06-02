@@ -1,7 +1,16 @@
 import { BadRequestException, Injectable } from "@nestjs/common";
-import { dbQuery } from "@nevo/shared-infra";
-import { toPublicUploadUrl } from "@nevo/shared-infra";
+import {
+  dbQuery,
+  isCloudinaryUploadsEnabled,
+  toPublicUploadUrl,
+  uploadFileToCloudinary
+} from "@nevo/shared-infra";
 import type { SubmitKycDto } from "./kyc.dto";
+
+type UploadedKycFile = {
+  filename: string;
+  path?: string;
+};
 
 type KycSubmissionRow = {
   id: string;
@@ -25,13 +34,13 @@ export class KycService {
     userId: string,
     dto: SubmitKycDto,
     files: {
-      idDocument?: Array<{ filename: string }>;
-      document?: Array<{ filename: string }>;
-      id_document?: Array<{ filename: string }>;
-      documentFile?: Array<{ filename: string }>;
-      selfie?: Array<{ filename: string }>;
-      selfieFile?: Array<{ filename: string }>;
-      selfie_file?: Array<{ filename: string }>;
+      idDocument?: UploadedKycFile[];
+      document?: UploadedKycFile[];
+      id_document?: UploadedKycFile[];
+      documentFile?: UploadedKycFile[];
+      selfie?: UploadedKycFile[];
+      selfieFile?: UploadedKycFile[];
+      selfie_file?: UploadedKycFile[];
     } = {}
   ) {
     const documentFile = files.idDocument?.[0] ?? files.document?.[0] ?? files.id_document?.[0] ?? files.documentFile?.[0];
@@ -40,6 +49,9 @@ export class KycService {
     if (!documentFile || !selfieFile) {
       throw new BadRequestException("Both ID document and selfie files are required");
     }
+
+    const documentUrl = await this.resolveKycFileUrl(documentFile);
+    const selfieUrl = await this.resolveKycFileUrl(selfieFile);
 
     const result = await dbQuery<KycSubmissionRow>(
       `
@@ -91,8 +103,8 @@ export class KycService {
         dto.firstName?.trim() || null,
         dto.lastName?.trim() || null,
         dto.documentNumber?.trim() || null,
-        toPublicUploadUrl("kyc", documentFile.filename),
-        toPublicUploadUrl("kyc", selfieFile.filename)
+        documentUrl,
+        selfieUrl
       ]
     );
 
@@ -144,5 +156,21 @@ export class KycService {
       submittedAt: submission.submitted_at,
       reviewedAt: submission.reviewed_at
     };
+  }
+
+  private async resolveKycFileUrl(file: UploadedKycFile) {
+    if (!isCloudinaryUploadsEnabled()) {
+      return toPublicUploadUrl("kyc", file.filename);
+    }
+
+    if (!file.path) {
+      throw new BadRequestException("KYC upload file path was not available");
+    }
+
+    try {
+      return await uploadFileToCloudinary(file.path, "kyc");
+    } catch (error) {
+      throw new BadRequestException(error instanceof Error ? error.message : "Could not upload KYC file");
+    }
   }
 }
