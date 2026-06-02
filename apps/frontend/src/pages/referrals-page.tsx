@@ -192,10 +192,7 @@ export function ReferralsPage() {
                   <span>{tt("Comptage D'équipe")}</span>
                 </div>
                 <div className="mt-4 text-[1.45rem] font-semibold leading-none text-white">
-                  {totalMembers}
-                </div>
-                <div className="mt-2 text-[0.78rem] font-semibold text-white/42">
-                  {tt("Inscrits")} <span className="text-white/70">{totalRegisteredMembers}</span>
+                  {totalMembers}/{totalRegisteredMembers}
                 </div>
                 <div className="mt-3 text-[0.88rem] font-semibold text-white/48">
                   {tt("Aujourd'hui Ajouté")} <span className="text-[#16dce5]">+{todayMembers}</span>
