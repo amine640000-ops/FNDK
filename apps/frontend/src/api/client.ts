@@ -1,6 +1,8 @@
 import axios from "axios";
 import { expireAuthSession, getAccessToken } from "@/lib/auth";
 
+const htmlResponsePattern = /<html|<!doctype/i;
+
 const readApiBaseUrl = (envName: string, developmentFallback: string) => {
   const value = import.meta.env[envName] as string | undefined;
 
@@ -18,8 +20,32 @@ const readApiBaseUrl = (envName: string, developmentFallback: string) => {
 
 const toUploadsBaseUrl = (apiBaseUrl: string) => apiBaseUrl.replace(/\/api\/?$/, "");
 
+const parseApiResponse = (data: unknown) => {
+  if (typeof data !== "string") {
+    return data;
+  }
+
+  const trimmed = data.trim();
+  if (!trimmed || htmlResponsePattern.test(trimmed)) {
+    return data;
+  }
+
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+    return data;
+  }
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return data;
+  }
+};
+
 const createApiClient = (baseURL: string) => {
-  const client = axios.create({ baseURL });
+  const client = axios.create({
+    baseURL,
+    transformResponse: [parseApiResponse]
+  });
 
   client.interceptors.request.use((config) => {
     const token = getAccessToken();
@@ -70,7 +96,24 @@ export const isApiAuthError = (error: unknown) =>
 
 export const getApiErrorMessage = (error: unknown, fallback: string) => {
   if (!axios.isAxiosError(error)) {
+    if (error instanceof Error && /Unexpected token.*DOCTYPE/i.test(error.message)) {
+      return "API service returned HTML instead of JSON. Check the API URL and upload size.";
+    }
+
     return fallback;
+  }
+
+  if (!error.response) {
+    return "API service is unreachable. Check the API URL and service status.";
+  }
+
+  const responseData = error.response.data;
+  if (typeof responseData === "string") {
+    if (htmlResponsePattern.test(responseData)) {
+      return "API service returned HTML instead of JSON. Check the API URL and upload size.";
+    }
+
+    return responseData.trim() || fallback;
   }
 
   const message = error.response?.data?.message;

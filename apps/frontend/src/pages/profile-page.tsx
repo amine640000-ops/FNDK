@@ -75,8 +75,57 @@ type SecurityRowProps = SettingsRowProps & {
 
 const fieldClass =
   "fndk-app-input";
+const kycMaxFileSizeBytes = 3 * 1024 * 1024;
+const kycAllowedMimeTypes = new Set(["image/jpeg", "image/png"]);
+const kycAllowedExtensionPattern = /\.(jpe?g|png)$/i;
+const htmlResponsePattern = /<html|<!doctype/i;
 
 const resolveApiErrorMessage = (fallback: string, error: unknown) => getApiErrorMessage(error, fallback);
+
+const getKycFileValidationMessage = (file: File) => {
+  const hasAllowedType = kycAllowedMimeTypes.has(file.type) || kycAllowedExtensionPattern.test(file.name);
+
+  if (!hasAllowedType) {
+    return "Please upload only JPG, JPEG, or PNG files.";
+  }
+
+  if (file.size > kycMaxFileSizeBytes) {
+    return "Please upload a file smaller than 3 MB.";
+  }
+
+  return "";
+};
+
+const isKycSubmission = (value: unknown): value is KycSubmission => {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const submission = value as Partial<KycSubmission>;
+  return (
+    typeof submission.id === "string" &&
+    typeof submission.documentUrl === "string" &&
+    typeof submission.selfieUrl === "string" &&
+    (submission.status === "pending" || submission.status === "verified" || submission.status === "rejected") &&
+    typeof submission.submittedAt === "string"
+  );
+};
+
+const normalizeKycSubmissions = (value: unknown): KycSubmission[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter(isKycSubmission);
+};
+
+const getInvalidKycResponseMessage = (value: unknown) => {
+  if (typeof value === "string" && htmlResponsePattern.test(value)) {
+    return "Identity service returned the web app instead of the API. Check VITE_IDENTITY_API_URL.";
+  }
+
+  return "Identity service returned an invalid KYC response.";
+};
 
 const readStoredUser = (): StoredUser => {
   try {
@@ -243,7 +292,7 @@ function VerificationUploadField({ title, helper, fileName, onChange }: UploadFi
         </div>
       </label>
       <input
-        accept="image/png,image/jpeg,image/webp,application/pdf"
+        accept="image/png,image/jpeg"
         className="sr-only"
         id={inputId}
         onChange={onChange}
@@ -298,10 +347,10 @@ export function ProfilePage() {
 
     const loadKycSubmissions = async () => {
       try {
-        const response = await identityApi.get<KycSubmission[]>("/kyc/submissions/me");
+        const response = await identityApi.get<unknown>("/kyc/submissions/me");
 
         if (active) {
-          setSubmissions(response.data);
+          setSubmissions(normalizeKycSubmissions(response.data));
         }
       } catch {
         if (active) {
@@ -364,6 +413,24 @@ export function ProfilePage() {
     return true;
   };
 
+  const handleKycFileChange = (setter: (file?: File) => void) => (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      setter(undefined);
+      return;
+    }
+
+    const validationMessage = getKycFileValidationMessage(file);
+    if (validationMessage) {
+      setter(undefined);
+      event.target.value = "";
+      toast.error(tt(validationMessage));
+      return;
+    }
+
+    setter(file);
+  };
+
   const submitKyc = async () => {
     const token = getAccessToken();
     if (!token) {
@@ -381,6 +448,18 @@ export function ProfilePage() {
       return;
     }
 
+    const documentFileError = getKycFileValidationMessage(documentFile);
+    if (documentFileError) {
+      toast.error(tt(documentFileError));
+      return;
+    }
+
+    const selfieFileError = getKycFileValidationMessage(selfieFile);
+    if (selfieFileError) {
+      toast.error(tt(selfieFileError));
+      return;
+    }
+
     const formData = new FormData();
     formData.append("documentType", documentType.trim() || "Passport");
     formData.append("nationality", nationality.trim());
@@ -392,9 +471,15 @@ export function ProfilePage() {
 
     setSubmittingKyc(true);
     try {
-      const response = await identityApi.post<KycSubmission>("/kyc/submissions", formData);
+      const response = await identityApi.post<unknown>("/kyc/submissions", formData);
+      const submission = response.data;
 
-      setSubmissions((current) => [response.data, ...current]);
+      if (!isKycSubmission(submission)) {
+        toast.error(tt(getInvalidKycResponseMessage(submission)));
+        return;
+      }
+
+      setSubmissions((current) => [submission, ...current]);
       setScreen("security");
       toast.success(tt("Real-name verification submitted for review."));
     } catch (error) {
@@ -663,14 +748,14 @@ export function ProfilePage() {
           <VerificationUploadField
             fileName={documentFile?.name}
             helper="Please upload JPG, JPEG, PNG format file less than 3M."
-            onChange={(event) => setDocumentFile(event.target.files?.[0])}
+            onChange={handleKycFileChange(setDocumentFile)}
             title="Front Of Document"
           />
 
           <VerificationUploadField
             fileName={selfieFile?.name}
             helper="Please upload JPG, JPEG, PNG format file less than 3M."
-            onChange={(event) => setSelfieFile(event.target.files?.[0])}
+            onChange={handleKycFileChange(setSelfieFile)}
             title="Holding Document"
           />
 

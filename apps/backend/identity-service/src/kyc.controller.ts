@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -8,6 +9,7 @@ import {
   UseGuards,
   UseInterceptors
 } from "@nestjs/common";
+import type { Request } from "express";
 import { FileFieldsInterceptor } from "@nestjs/platform-express";
 import {
   CurrentUser,
@@ -19,6 +21,11 @@ import {
 import type { AccessTokenPayload } from "@nevo/shared-types";
 import { SubmitKycDto } from "./kyc.dto";
 import { KycService } from "./kyc.service";
+
+const kycMaxFileSizeBytes = 3 * 1024 * 1024;
+const allowedKycMimeTypes = new Set(["image/jpeg", "image/png"]);
+const allowedKycExtensionPattern = /\.(jpe?g|png)$/i;
+type FileFilterCallback = (error: Error | null, acceptFile: boolean) => void;
 
 @Controller("kyc")
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -43,7 +50,20 @@ export class KycController {
         { name: "selfieFile", maxCount: 1 },
         { name: "selfie_file", maxCount: 1 }
       ],
-      createDiskStorageOptions("kyc")
+      {
+        ...createDiskStorageOptions("kyc"),
+        fileFilter: (_request: Request, file: Express.Multer.File, callback: FileFilterCallback) => {
+          if (!allowedKycMimeTypes.has(file.mimetype) && !allowedKycExtensionPattern.test(file.originalname)) {
+            callback(new BadRequestException("Please upload only JPG, JPEG, or PNG files"), false);
+            return;
+          }
+
+          callback(null, true);
+        },
+        limits: {
+          fileSize: kycMaxFileSizeBytes
+        }
+      }
     )
   )
   submit(
