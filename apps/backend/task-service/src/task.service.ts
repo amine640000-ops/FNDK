@@ -25,10 +25,12 @@ type ActivationTierRow = {
   min_deposit: number;
   daily_roi_min: number;
   daily_roi_max: number;
+  required_direct_members: number;
   activation_limit_per_day: number;
   activation_duration_minutes: number;
   activation_assets: AssetType[];
   active_investment: number;
+  valid_direct_members: number;
 };
 
 type ActivationRow = {
@@ -136,6 +138,7 @@ const defaultMissionTasks: MissionTaskSetting[] = [
 ];
 
 const MINIMUM_ACCOUNT_ACTIVATION_DEPOSIT = 50;
+const MINIMUM_VALID_MEMBER_ACTIVATION_DEPOSIT = 50;
 
 @Injectable()
 export class TaskService {
@@ -230,6 +233,7 @@ export class TaskService {
     return {
       currentTier: this.mapTierRow(tier),
       activeInvestment: tier.active_investment,
+      validDirectMembers: tier.valid_direct_members,
       accountVerified: reservationEligibility.kyc_status === "verified",
       accountFunded: reservationEligibility.has_activation_deposit,
       accountActive: reservationEligibility.kyc_status === "verified" && reservationEligibility.has_activation_deposit,
@@ -980,8 +984,72 @@ export class TaskService {
           SELECT id
           FROM vip_tiers
           WHERE min_deposit <= (SELECT active_investment FROM active_positions)
+            AND required_direct_members <= (
+              SELECT COUNT(*)::int
+              FROM (
+                SELECT
+                  direct_users.id,
+                  COALESCE(
+                    SUM(transactions.amount) FILTER (
+                      WHERE transactions.type = 'deposit'
+                        AND transactions.status = 'approved'
+                        AND transactions.amount > 0
+                    ),
+                    0
+                  )::float8 AS approved_deposit,
+                  COALESCE(
+                    SUM(transactions.amount) FILTER (
+                      WHERE transactions.type IN ('deposit', 'adjustment')
+                        AND transactions.status = 'approved'
+                        AND transactions.amount > 0
+                    ),
+                    0
+                  )::float8 AS activation_funding
+                FROM users direct_users
+                LEFT JOIN transactions
+                  ON transactions.user_id = direct_users.id
+                WHERE direct_users.referred_by = $1
+                  AND direct_users.role = 'USER'
+                  AND direct_users.is_active = TRUE
+                GROUP BY direct_users.id
+              ) direct_member_funding
+              WHERE approved_deposit > 0
+                AND activation_funding >= $2
+            )
           ORDER BY min_deposit DESC
           LIMIT 1
+        ),
+        valid_direct_members AS (
+          SELECT COUNT(*)::int AS count
+          FROM (
+            SELECT
+              direct_users.id,
+              COALESCE(
+                SUM(transactions.amount) FILTER (
+                  WHERE transactions.type = 'deposit'
+                    AND transactions.status = 'approved'
+                    AND transactions.amount > 0
+                ),
+                0
+              )::float8 AS approved_deposit,
+              COALESCE(
+                SUM(transactions.amount) FILTER (
+                  WHERE transactions.type IN ('deposit', 'adjustment')
+                    AND transactions.status = 'approved'
+                    AND transactions.amount > 0
+                ),
+                0
+              )::float8 AS activation_funding
+            FROM users direct_users
+            LEFT JOIN transactions
+              ON transactions.user_id = direct_users.id
+            WHERE direct_users.referred_by = $1
+              AND direct_users.role = 'USER'
+              AND direct_users.is_active = TRUE
+            GROUP BY direct_users.id
+          ) direct_member_funding
+          WHERE approved_deposit > 0
+            AND activation_funding >= $2
         )
         SELECT
           vt.id,
@@ -989,16 +1057,19 @@ export class TaskService {
           vt.min_deposit::float8 AS min_deposit,
           vt.daily_roi_min::float8 AS daily_roi_min,
           vt.daily_roi_max::float8 AS daily_roi_max,
+          vt.required_direct_members,
           vt.activation_limit_per_day,
           vt.activation_duration_minutes,
           vt.activation_assets,
-          ap.active_investment
+          ap.active_investment,
+          vdm.count AS valid_direct_members
         FROM active_positions ap
+        CROSS JOIN valid_direct_members vdm
         LEFT JOIN latest_tier lt ON TRUE
         LEFT JOIN computed_tier ct ON TRUE
         JOIN vip_tiers vt ON vt.id = COALESCE(lt.tier_id, ct.id, 1)
       `,
-      [userId]
+      [userId, MINIMUM_VALID_MEMBER_ACTIVATION_DEPOSIT]
     );
 
     if (tier) {
@@ -1012,10 +1083,12 @@ export class TaskService {
       min_deposit: starter.minDeposit,
       daily_roi_min: starter.dailyRoiMin,
       daily_roi_max: starter.dailyRoiMax,
+      required_direct_members: starter.requiredDirectMembers,
       activation_limit_per_day: starter.activationLimitPerDay,
       activation_duration_minutes: starter.activationDurationMinutes,
       activation_assets: starter.activationAssets,
-      active_investment: 0
+      active_investment: 0,
+      valid_direct_members: 0
     };
   }
 
@@ -1295,6 +1368,7 @@ export class TaskService {
       dailyRoiMax: tier.daily_roi_max,
       dailyRoi: tier.daily_roi_max,
       monthlyRoi: Number((tier.daily_roi_max * 30).toFixed(2)),
+      requiredDirectMembers: tier.required_direct_members,
       activationLimitPerDay: tier.activation_limit_per_day,
       activationDurationMinutes: tier.activation_duration_minutes,
       activationAssets: tier.activation_assets,

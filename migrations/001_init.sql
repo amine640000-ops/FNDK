@@ -46,6 +46,7 @@ CREATE TABLE vip_tiers (
   name TEXT NOT NULL,
   min_deposit NUMERIC(18, 2) NOT NULL,
   daily_roi NUMERIC(8, 6) NOT NULL,
+  required_direct_members INTEGER NOT NULL DEFAULT 0,
   features JSONB NOT NULL DEFAULT '[]'::jsonb
 );
 
@@ -89,12 +90,12 @@ CREATE TABLE admin_settings (
   value JSONB NOT NULL
 );
 
-INSERT INTO vip_tiers (id, name, min_deposit, daily_roi, features) VALUES
-  (1, 'Starter', 50, 0.005, '["Basic AI trading","Standard support"]'::jsonb),
-  (2, 'Silver', 500, 0.01, '["Priority support","Weekly reports"]'::jsonb),
-  (3, 'Gold', 2000, 0.015, '["Dedicated account manager","Daily reports"]'::jsonb),
-  (4, 'Platinum', 10000, 0.02, '["Advanced AI strategies","Instant withdrawals"]'::jsonb),
-  (5, 'Diamond', 50000, 0.025, '["All assets","Custom AI strategy","VIP concierge"]'::jsonb);
+INSERT INTO vip_tiers (id, name, min_deposit, daily_roi, required_direct_members, features) VALUES
+  (1, 'Starter', 50, 0.005, 0, '["Basic AI trading","Standard support"]'::jsonb),
+  (2, 'Silver', 500, 0.01, 0, '["Priority support","Weekly reports"]'::jsonb),
+  (3, 'Gold', 2000, 0.015, 0, '["Dedicated account manager","Daily reports"]'::jsonb),
+  (4, 'Platinum', 10000, 0.02, 0, '["Advanced AI strategies","Instant withdrawals"]'::jsonb),
+  (5, 'Diamond', 50000, 0.025, 0, '["All assets","Custom AI strategy","VIP concierge"]'::jsonb);
 
 INSERT INTO admin_settings (key, value) VALUES
   ('platform.name', '"FNDK"'::jsonb),

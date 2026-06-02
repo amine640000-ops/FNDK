@@ -8,11 +8,19 @@ type VipTierRow = {
   min_deposit: number;
   daily_roi_min: number;
   daily_roi_max: number;
+  required_direct_members: number;
   activation_limit_per_day: number;
   activation_duration_minutes: number;
   activation_assets: Array<"BTC" | "ETH" | "USDT_TRC20" | "USDT_ERC20" | "USD" | "EUR" | "GBP" | "STOCKS">;
   features: string[];
 };
+
+type PendingDepositContext = {
+  userId: string;
+  amount: number;
+};
+
+const MINIMUM_VALID_MEMBER_ACTIVATION_DEPOSIT = 50;
 
 @Injectable()
 export class VipService implements OnModuleInit {
@@ -21,8 +29,10 @@ export class VipService implements OnModuleInit {
       "user.registered": async ({ userId }: RabbitEventMap["user.registered"]) => {
         await this.ensureStartingTier(userId);
       },
-      "deposit.confirmed": async ({ userId }: RabbitEventMap["deposit.confirmed"]) => {
-        await this.recalculateTier(userId);
+      "deposit.confirmed": async (payload: RabbitEventMap["deposit.confirmed"]) => {
+        const pendingDeposit = await this.getPendingDepositContext(payload);
+        await this.recalculateTier(payload.userId, pendingDeposit);
+        await this.recalculateReferrerTier(payload.userId, pendingDeposit);
       },
       "withdrawal.approved": async ({ userId }: RabbitEventMap["withdrawal.approved"]) => {
         await this.recalculateTier(userId);
@@ -39,6 +49,7 @@ export class VipService implements OnModuleInit {
           min_deposit::float8 AS min_deposit,
           daily_roi_min::float8 AS daily_roi_min,
           daily_roi_max::float8 AS daily_roi_max,
+          required_direct_members,
           activation_limit_per_day,
           activation_duration_minutes,
           activation_assets,
@@ -56,6 +67,7 @@ export class VipService implements OnModuleInit {
       dailyRoiMax: tier.daily_roi_max,
       dailyRoi: tier.daily_roi_max,
       monthlyRoi: Number((tier.daily_roi_max * 30).toFixed(2)),
+      requiredDirectMembers: tier.required_direct_members,
       activationLimitPerDay: tier.activation_limit_per_day,
       activationDurationMinutes: tier.activation_duration_minutes,
       activationAssets: tier.activation_assets,
@@ -76,12 +88,16 @@ export class VipService implements OnModuleInit {
     const tiers = await this.getTiers();
     const activeInvestment = await this.getEffectiveInvestment(userId);
     const currentTier = await this.getLatestTierAssignment(userId);
-    const nextTier = tiers.find((tier: { minDeposit: number }) => tier.minDeposit > currentTier.minDeposit) ?? null;
+    const validDirectMembers = await this.getValidDirectMemberCount(userId);
+    const nextTier = tiers.find((tier: { id: number }) => tier.id > currentTier.id) ?? null;
 
     return {
       currentTier,
       nextTier,
-      amountRequired: nextTier ? Math.max(nextTier.minDeposit - activeInvestment, 0) : 0
+      activeInvestment,
+      validDirectMembers,
+      amountRequired: nextTier ? Math.max(nextTier.minDeposit - activeInvestment, 0) : 0,
+      directMembersRequired: nextTier ? Math.max(nextTier.requiredDirectMembers - validDirectMembers, 0) : 0
     };
   }
 
@@ -100,7 +116,7 @@ export class VipService implements OnModuleInit {
     );
   }
 
-  private async recalculateTier(userId: string) {
+  private async recalculateTier(userId: string, pendingDeposit?: PendingDepositContext) {
     const latestAssignment = await getOne<{ tier_id: number }>(
       `
         SELECT tier_id
@@ -112,8 +128,9 @@ export class VipService implements OnModuleInit {
       [userId]
     );
     const previous = await this.getLatestTierAssignment(userId);
-    const activeInvestment = await this.getEffectiveInvestment(userId);
-    const nextTier = await this.getTierDefinitionForInvestment(activeInvestment);
+    const activeInvestment = await this.getEffectiveInvestment(userId) + (pendingDeposit?.userId === userId ? pendingDeposit.amount : 0);
+    const validDirectMembers = await this.getValidDirectMemberCount(userId, pendingDeposit);
+    const nextTier = await this.getTierDefinitionForEligibility(activeInvestment, validDirectMembers);
 
     if (latestAssignment && previous.id === nextTier.id) {
       return;
@@ -135,6 +152,42 @@ export class VipService implements OnModuleInit {
     });
   }
 
+  private async recalculateReferrerTier(userId: string, pendingDeposit?: PendingDepositContext) {
+    const referrer = await getOne<{ referred_by: string | null }>(
+      `
+        SELECT referred_by
+        FROM users
+        WHERE id = $1
+      `,
+      [userId]
+    );
+
+    if (referrer?.referred_by) {
+      await this.recalculateTier(referrer.referred_by, pendingDeposit);
+    }
+  }
+
+  private async getPendingDepositContext(payload: RabbitEventMap["deposit.confirmed"]): Promise<PendingDepositContext | undefined> {
+    const transaction = await getOne<{ status: string }>(
+      `
+        SELECT status
+        FROM transactions
+        WHERE id = $1
+          AND type = 'deposit'
+      `,
+      [payload.transactionId]
+    );
+
+    if (transaction?.status !== "pending") {
+      return undefined;
+    }
+
+    return {
+      userId: payload.userId,
+      amount: payload.amount
+    };
+  }
+
   private async getLatestTierAssignment(userId: string) {
     const assignedTier = await getOne<VipTierRow>(
       `
@@ -144,6 +197,7 @@ export class VipService implements OnModuleInit {
           vt.min_deposit::float8 AS min_deposit,
           vt.daily_roi_min::float8 AS daily_roi_min,
           vt.daily_roi_max::float8 AS daily_roi_max,
+          vt.required_direct_members,
           vt.activation_limit_per_day,
           vt.activation_duration_minutes,
           vt.activation_assets,
@@ -162,7 +216,8 @@ export class VipService implements OnModuleInit {
     }
 
     const activeInvestment = await this.getEffectiveInvestment(userId);
-    const derivedTier = await this.getTierDefinitionForInvestment(activeInvestment);
+    const validDirectMembers = await this.getValidDirectMemberCount(userId);
+    const derivedTier = await this.getTierDefinitionForEligibility(activeInvestment, validDirectMembers);
     return this.mapTier(derivedTier);
   }
 
@@ -179,7 +234,55 @@ export class VipService implements OnModuleInit {
     return walletTotals?.total_balance ?? 0;
   }
 
-  private async getTierDefinitionForInvestment(activeInvestment: number) {
+  private async getValidDirectMemberCount(userId: string, pendingDeposit?: PendingDepositContext) {
+    const result = await getOne<{ valid_direct_members: number }>(
+      `
+        WITH direct_member_funding AS (
+          SELECT
+            direct_users.id,
+            COALESCE(
+              SUM(transactions.amount) FILTER (
+                WHERE transactions.type = 'deposit'
+                  AND transactions.status = 'approved'
+                  AND transactions.amount > 0
+              ),
+              0
+            )::float8 AS approved_deposit,
+            COALESCE(
+              SUM(transactions.amount) FILTER (
+                WHERE transactions.type IN ('deposit', 'adjustment')
+                  AND transactions.status = 'approved'
+                  AND transactions.amount > 0
+              ),
+              0
+            )::float8 AS activation_funding
+          FROM users direct_users
+          LEFT JOIN transactions
+            ON transactions.user_id = direct_users.id
+          WHERE direct_users.referred_by = $1
+            AND direct_users.role = 'USER'
+            AND direct_users.is_active = TRUE
+          GROUP BY direct_users.id
+        )
+        SELECT COUNT(*)::int AS valid_direct_members
+        FROM direct_member_funding
+        WHERE approved_deposit
+            + CASE WHEN id = $2::uuid THEN $3::float8 ELSE 0 END > 0
+          AND activation_funding
+            + CASE WHEN id = $2::uuid THEN $3::float8 ELSE 0 END >= $4
+      `,
+      [
+        userId,
+        pendingDeposit?.userId ?? null,
+        pendingDeposit?.amount ?? 0,
+        MINIMUM_VALID_MEMBER_ACTIVATION_DEPOSIT
+      ]
+    );
+
+    return result?.valid_direct_members ?? 0;
+  }
+
+  private async getTierDefinitionForEligibility(activeInvestment: number, validDirectMembers: number) {
     const tier = await getOne<VipTierRow>(
       `
         SELECT
@@ -188,16 +291,18 @@ export class VipService implements OnModuleInit {
           min_deposit::float8 AS min_deposit,
           daily_roi_min::float8 AS daily_roi_min,
           daily_roi_max::float8 AS daily_roi_max,
+          required_direct_members,
           activation_limit_per_day,
           activation_duration_minutes,
           activation_assets,
           features
         FROM vip_tiers
         WHERE min_deposit <= $1
+          AND required_direct_members <= $2
         ORDER BY min_deposit DESC
         LIMIT 1
       `,
-      [activeInvestment]
+      [activeInvestment, validDirectMembers]
     );
 
     if (tier) {
@@ -212,6 +317,7 @@ export class VipService implements OnModuleInit {
           min_deposit::float8 AS min_deposit,
           daily_roi_min::float8 AS daily_roi_min,
           daily_roi_max::float8 AS daily_roi_max,
+          required_direct_members,
           activation_limit_per_day,
           activation_duration_minutes,
           activation_assets,
@@ -232,6 +338,7 @@ export class VipService implements OnModuleInit {
       dailyRoiMax: tier.daily_roi_max,
       dailyRoi: tier.daily_roi_max,
       monthlyRoi: Number((tier.daily_roi_max * 30).toFixed(2)),
+      requiredDirectMembers: tier.required_direct_members,
       activationLimitPerDay: tier.activation_limit_per_day,
       activationDurationMinutes: tier.activation_duration_minutes,
       activationAssets: tier.activation_assets,

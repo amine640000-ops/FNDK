@@ -20,7 +20,7 @@ import {
 import type { AiTradingActivation, AssetType, MissionTaskCategory, MissionTaskProgress, VipTier, WalletSummary } from "@nevo/shared-types";
 import { formatCurrency, resolveTierByDeposit } from "@nevo/shared-utils";
 import { useLocation, useNavigate } from "react-router-dom";
-import { getApiErrorMessage, isApiAuthError, notificationApi, taskApi, walletApi } from "@/api/client";
+import { getApiErrorMessage, isApiAuthError, notificationApi, taskApi, vipApi, walletApi } from "@/api/client";
 import { BrandMark } from "@/components/brand-mark";
 import { clearAuthSession, getAccessToken } from "@/lib/auth";
 import { applyLanguagePreference, getNextLanguage, translateText, useAppLanguage } from "@/lib/i18n";
@@ -29,6 +29,7 @@ import { useDashboardStore } from "@/store/use-dashboard-store";
 type ActivationState = {
   currentTier: VipTier;
   activeInvestment: number;
+  validDirectMembers: number;
   accountVerified: boolean;
   accountFunded: boolean;
   accountActive: boolean;
@@ -226,7 +227,9 @@ function AssetBadge({ asset, className = "" }: { asset: AssetType; className?: s
 export function VipPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const vipTiers = useDashboardStore((state) => state.vipTiers);
+  const fallbackVipTiers = useDashboardStore((state) => state.vipTiers);
+  const [liveVipTiers, setLiveVipTiers] = useState<VipTier[]>([]);
+  const vipTiers = liveVipTiers.length ? liveVipTiers : fallbackVipTiers;
   const wallet = useDashboardStore((state) => state.wallet);
   const overview = useDashboardStore((state) => state.overview);
   const depositRecords = useDashboardStore((state) => state.depositRecords);
@@ -261,6 +264,7 @@ export function VipPage() {
     () => ({
       currentTier: staticCurrentTier,
       activeInvestment: wallet.activeInvestment,
+      validDirectMembers: 0,
       accountVerified: false,
       accountFunded: wallet.activeInvestment >= minimumAccountActivationDeposit,
       accountActive: false,
@@ -278,6 +282,7 @@ export function VipPage() {
     return {
       currentTier: tier,
       activeInvestment,
+      validDirectMembers: 0,
       accountVerified: false,
       accountFunded: activeInvestment >= minimumAccountActivationDeposit,
       accountActive: false,
@@ -292,6 +297,32 @@ export function VipPage() {
   useEffect(() => {
     setActiveTab(location.pathname.endsWith("/mission") ? "tasks" : "strategy");
   }, [location.pathname]);
+
+  useEffect(() => {
+    const token = getAccessToken();
+    if (!token) {
+      return;
+    }
+
+    let active = true;
+
+    vipApi
+      .get<VipTier[]>("/vip/tiers")
+      .then((response) => {
+        if (active) {
+          setLiveVipTiers(response.data);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setLiveVipTiers([]);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     const token = getAccessToken();
@@ -1002,7 +1033,7 @@ export function VipPage() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-[1.35rem] font-extrabold text-white">VIP Conditions</div>
-                <div className="mt-1 text-sm text-slate-300">Every tier unlocks automatically when the required active investment is reached.</div>
+                <div className="mt-1 text-sm text-slate-300">Every tier unlocks automatically when investment and direct-member requirements are reached.</div>
               </div>
               <button
                 className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white"
@@ -1016,9 +1047,16 @@ export function VipPage() {
             <div className="hide-scrollbar mt-5 max-h-[60vh] space-y-3 overflow-y-auto pr-1">
               {sortedVipTiers.map((tier, index) => {
                 const followingTier = sortedVipTiers[index + 1];
-                const unlocked = unlockReferenceAmount >= tier.minDeposit;
+                const unlocked = unlockReferenceAmount >= tier.minDeposit && liveState.validDirectMembers >= tier.requiredDirectMembers;
                 const isCurrentTier = currentTier.id === tier.id;
                 const missingAmount = Math.max(tier.minDeposit - unlockReferenceAmount, 0);
+                const missingDirectMembers = Math.max(tier.requiredDirectMembers - liveState.validDirectMembers, 0);
+                const missingRequirements = [
+                  missingAmount > 0 ? `${formatCurrency(missingAmount)} more` : null,
+                  missingDirectMembers > 0 ? `${missingDirectMembers} direct members` : null
+                ]
+                  .filter((item): item is string => Boolean(item))
+                  .join(" + ");
 
                 return (
                   <button
@@ -1068,13 +1106,21 @@ export function VipPage() {
                         <span className="font-semibold text-white">{tier.activationLimitPerDay}</span>
                       </div>
                       <div className="flex items-center justify-between gap-4">
+                        <span>Valid direct members</span>
+                        <span className="font-semibold text-white">
+                          {liveState.validDirectMembers}/{tier.requiredDirectMembers}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between gap-4">
                         <span>Participating assets</span>
                         <span className="font-semibold text-white">{tier.activationAssets.length}</span>
                       </div>
                       <div className="flex items-center justify-between gap-4">
                         <span>Unlock status</span>
-                        <span className={`font-semibold ${missingAmount > 0 ? "text-amber-100" : "text-cyan-100"}`}>
-                          {missingAmount > 0 ? `${formatCurrency(missingAmount)} more needed` : "Condition met"}
+                        <span className={`font-semibold ${unlocked ? "text-cyan-100" : "text-amber-100"}`}>
+                          {unlocked
+                            ? "Condition met"
+                            : `${missingRequirements} needed`}
                         </span>
                       </div>
                     </div>

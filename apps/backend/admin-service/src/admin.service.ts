@@ -17,6 +17,7 @@ import type { AdjustUserBalanceDto, UpdateAdminSettingsDto, UpdateVipTierDto } f
 type AdminSettingValue = string | number | boolean | null | AdCarouselSlide[] | AssetRouteSetting[] | MissionTaskSetting[];
 
 const maxAdCarouselSlides = 8;
+const minimumValidMemberActivationDeposit = 50;
 
 const defaultAdCarouselSlides: AdCarouselSlide[] = [
   {
@@ -158,6 +159,7 @@ type VipTierRow = {
   min_deposit: number;
   daily_roi_min: number;
   daily_roi_max: number;
+  required_direct_members: number;
   activation_limit_per_day: number;
   activation_duration_minutes: number;
   activation_assets: AssetType[];
@@ -175,6 +177,7 @@ export class AdminService {
           min_deposit::float8 AS min_deposit,
           daily_roi_min::float8 AS daily_roi_min,
           daily_roi_max::float8 AS daily_roi_max,
+          required_direct_members,
           activation_limit_per_day,
           activation_duration_minutes,
           activation_assets,
@@ -767,8 +770,9 @@ export class AdminService {
           daily_roi_min = COALESCE($4, daily_roi_min),
           daily_roi_max = COALESCE($5, daily_roi_max),
           daily_roi = COALESCE($5, daily_roi_max, daily_roi),
-          activation_limit_per_day = COALESCE($6, activation_limit_per_day),
-          activation_duration_minutes = COALESCE($7, activation_duration_minutes)
+          required_direct_members = COALESCE($6, required_direct_members),
+          activation_limit_per_day = COALESCE($7, activation_limit_per_day),
+          activation_duration_minutes = COALESCE($8, activation_duration_minutes)
         WHERE id = $1
         RETURNING
           id,
@@ -776,6 +780,7 @@ export class AdminService {
           min_deposit::float8 AS min_deposit,
           daily_roi_min::float8 AS daily_roi_min,
           daily_roi_max::float8 AS daily_roi_max,
+          required_direct_members,
           activation_limit_per_day,
           activation_duration_minutes,
           activation_assets,
@@ -787,6 +792,7 @@ export class AdminService {
         input.minDeposit ?? null,
         input.dailyRoiMin ?? null,
         input.dailyRoiMax ?? null,
+        input.requiredDirectMembers ?? null,
         input.activationLimitPerDay ?? null,
         input.activationDurationMinutes ?? null
       ]
@@ -822,6 +828,7 @@ export class AdminService {
 
     for (const user of users.rows) {
       const activeInvestment = await this.getEffectiveInvestment(user.id);
+      const validDirectMembers = await this.getValidDirectMemberCount(user.id);
       const targetTier = await getOne<VipTierRow>(
         `
           SELECT
@@ -830,16 +837,18 @@ export class AdminService {
             min_deposit::float8 AS min_deposit,
             daily_roi_min::float8 AS daily_roi_min,
             daily_roi_max::float8 AS daily_roi_max,
+            required_direct_members,
             activation_limit_per_day,
             activation_duration_minutes,
             activation_assets,
             features
           FROM vip_tiers
           WHERE min_deposit <= $1
+            AND required_direct_members <= $2
           ORDER BY min_deposit DESC
           LIMIT 1
         `,
-        [activeInvestment]
+        [activeInvestment, validDirectMembers]
       );
 
       const starterTier = targetTier ?? (await getOne<VipTierRow>(
@@ -850,6 +859,7 @@ export class AdminService {
             min_deposit::float8 AS min_deposit,
             daily_roi_min::float8 AS daily_roi_min,
             daily_roi_max::float8 AS daily_roi_max,
+            required_direct_members,
             activation_limit_per_day,
             activation_duration_minutes,
             activation_assets,
@@ -1026,6 +1036,7 @@ export class AdminService {
       dailyRoiMax: tier.daily_roi_max,
       dailyRoi: tier.daily_roi_max,
       monthlyRoi: Number((tier.daily_roi_max * 30).toFixed(2)),
+      requiredDirectMembers: tier.required_direct_members,
       activationLimitPerDay: tier.activation_limit_per_day,
       activationDurationMinutes: tier.activation_duration_minutes,
       activationAssets: tier.activation_assets,
@@ -1057,6 +1068,47 @@ export class AdminService {
     );
 
     return walletTotals?.total_balance ?? 0;
+  }
+
+  private async getValidDirectMemberCount(userId: string) {
+    const result = await getOne<{ valid_direct_members: number }>(
+      `
+        WITH direct_member_funding AS (
+          SELECT
+            direct_users.id,
+            COALESCE(
+              SUM(transactions.amount) FILTER (
+                WHERE transactions.type = 'deposit'
+                  AND transactions.status = 'approved'
+                  AND transactions.amount > 0
+              ),
+              0
+            )::float8 AS approved_deposit,
+            COALESCE(
+              SUM(transactions.amount) FILTER (
+                WHERE transactions.type IN ('deposit', 'adjustment')
+                  AND transactions.status = 'approved'
+                  AND transactions.amount > 0
+              ),
+              0
+            )::float8 AS activation_funding
+          FROM users direct_users
+          LEFT JOIN transactions
+            ON transactions.user_id = direct_users.id
+          WHERE direct_users.referred_by = $1
+            AND direct_users.role = 'USER'
+            AND direct_users.is_active = TRUE
+          GROUP BY direct_users.id
+        )
+        SELECT COUNT(*)::int AS valid_direct_members
+        FROM direct_member_funding
+        WHERE approved_deposit > 0
+          AND activation_funding >= $2
+      `,
+      [userId, minimumValidMemberActivationDeposit]
+    );
+
+    return result?.valid_direct_members ?? 0;
   }
 
   private toSettingEntries(input: UpdateAdminSettingsDto): Array<[string, AdminSettingValue]> {

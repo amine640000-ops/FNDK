@@ -81,6 +81,7 @@ const createApiClient = (baseURL: string) => {
 export const apiBaseUrls = {
   identity: readApiBaseUrl("VITE_IDENTITY_API_URL", "http://localhost:4001/api", "https://identity-service-raa1.onrender.com/api"),
   wallet: readApiBaseUrl("VITE_WALLET_API_URL", "http://localhost:4002/api"),
+  vip: readApiBaseUrl("VITE_VIP_API_URL", "http://localhost:4003/api"),
   task: readApiBaseUrl("VITE_TASK_API_URL", "http://localhost:4004/api"),
   notification: readApiBaseUrl("VITE_NOTIFICATION_API_URL", "http://localhost:4005/api"),
   admin: readApiBaseUrl("VITE_ADMIN_API_URL", "http://localhost:4006/api")
@@ -94,6 +95,7 @@ export const uploadBaseUrls = {
 
 export const identityApi = createApiClient(apiBaseUrls.identity);
 export const walletApi = createApiClient(apiBaseUrls.wallet);
+export const vipApi = createApiClient(apiBaseUrls.vip);
 export const taskApi = createApiClient(apiBaseUrls.task);
 export const notificationApi = createApiClient(apiBaseUrls.notification);
 export const adminApi = createApiClient(apiBaseUrls.admin);

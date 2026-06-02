@@ -18,6 +18,7 @@ type TierEditorState = {
   minDeposit: string;
   dailyRoiMinPercent: string;
   dailyRoiMaxPercent: string;
+  requiredDirectMembers: string;
   activationLimitPerDay: string;
   activationDurationMinutes: string;
 };
@@ -28,6 +29,7 @@ const toEditorState = (tier: VipTier): TierEditorState => ({
   minDeposit: String(tier.minDeposit),
   dailyRoiMinPercent: String(Number((tier.dailyRoiMin * 100).toFixed(2))),
   dailyRoiMaxPercent: String(Number((tier.dailyRoiMax * 100).toFixed(2))),
+  requiredDirectMembers: String(tier.requiredDirectMembers),
   activationLimitPerDay: String(tier.activationLimitPerDay),
   activationDurationMinutes: String(tier.activationDurationMinutes)
 });
@@ -109,6 +111,7 @@ export function AdminProfitPage() {
           minDeposit: Number(editingTier.minDeposit),
           dailyRoiMin: Number(editingTier.dailyRoiMinPercent) / 100,
           dailyRoiMax: Number(editingTier.dailyRoiMaxPercent) / 100,
+          requiredDirectMembers: Number(editingTier.requiredDirectMembers),
           activationLimitPerDay: Number(editingTier.activationLimitPerDay),
           activationDurationMinutes: Number(editingTier.activationDurationMinutes)
         }
@@ -282,6 +285,22 @@ export function AdminProfitPage() {
                   }
                 />
               </label>
+              <label className="grid gap-2">
+                <span className="text-sm text-slate-300">Valid direct members</span>
+                <input
+                  className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white"
+                  inputMode="numeric"
+                  min="0"
+                  step="1"
+                  type="number"
+                  value={editingTier.requiredDirectMembers}
+                  onChange={(event) =>
+                    setEditingTier((current) =>
+                      current ? { ...current, requiredDirectMembers: event.target.value } : current
+                    )
+                  }
+                />
+              </label>
               <label className="grid gap-2 md:col-span-2">
                 <span className="text-sm text-slate-300">Reservation duration (minutes)</span>
                 <input
@@ -335,7 +354,7 @@ export function AdminProfitPage() {
             </button>
           }
           title="VIP & Profit Settings"
-          subtitle="Tier thresholds and automated distribution controls."
+          subtitle="Tier thresholds, direct-member requirements, and automated distribution controls."
         >
           {adminApiOffline ? (
             <div className="mb-4 rounded-3xl border border-amber-300/20 bg-amber-300/10 p-4 text-sm text-amber-100">
@@ -346,7 +365,7 @@ export function AdminProfitPage() {
           <div className="space-y-3">
             {vipTiers.length ? (
               vipTiers.map((tier) => (
-                <div key={tier.id} className="grid gap-3 rounded-3xl border border-white/10 bg-white/5 p-4 md:grid-cols-4">
+                <div key={tier.id} className="grid gap-3 rounded-3xl border border-white/10 bg-white/5 p-4 md:grid-cols-5">
                   <div>
                     <div className="text-sm text-slate-400">Tier</div>
                     <div className="font-semibold text-white">{tier.name}</div>
@@ -354,6 +373,10 @@ export function AdminProfitPage() {
                   <div>
                     <div className="text-sm text-slate-400">Min deposit</div>
                     <div className="font-semibold text-white">{formatCurrency(tier.minDeposit)}</div>
+                  </div>
+                  <div>
+                    <div className="text-sm text-slate-400">Valid direct members</div>
+                    <div className="font-semibold text-white">{tier.requiredDirectMembers}</div>
                   </div>
                   <div>
                     <div className="text-sm text-slate-400">Daily ROI</div>

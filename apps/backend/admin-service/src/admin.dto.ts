@@ -132,6 +132,11 @@ export class UpdateVipTierDto {
 
   @IsOptional()
   @IsInt()
+  @Min(0)
+  requiredDirectMembers?: number;
+
+  @IsOptional()
+  @IsInt()
   @Min(1)
   activationLimitPerDay?: number;
 
