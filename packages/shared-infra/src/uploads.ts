@@ -55,14 +55,24 @@ const getCloudinaryConfig = (): CloudinaryConfig | null => {
   const cloudinaryUrl = process.env.CLOUDINARY_URL;
 
   if (cloudinaryUrl) {
-    const parsedUrl = new URL(cloudinaryUrl);
+    let parsedUrl: URL | null = null;
 
-    return {
-      cloudName: parsedUrl.hostname,
-      apiKey: decodeURIComponent(parsedUrl.username),
-      apiSecret: decodeURIComponent(parsedUrl.password),
-      folder: process.env.CLOUDINARY_UPLOAD_FOLDER || "fndk"
-    };
+    try {
+      parsedUrl = new URL(cloudinaryUrl);
+    } catch {
+      console.warn("[uploads] Ignoring invalid CLOUDINARY_URL. Expected cloudinary://API_KEY:API_SECRET@CLOUD_NAME.");
+    }
+
+    if (parsedUrl && parsedUrl.protocol === "cloudinary:" && parsedUrl.hostname && parsedUrl.username && parsedUrl.password) {
+      return {
+        cloudName: parsedUrl.hostname,
+        apiKey: decodeURIComponent(parsedUrl.username),
+        apiSecret: decodeURIComponent(parsedUrl.password),
+        folder: process.env.CLOUDINARY_UPLOAD_FOLDER || "fndk"
+      };
+    }
+
+    console.warn("[uploads] Ignoring CLOUDINARY_URL because it is not a Cloudinary URL. Expected cloudinary://API_KEY:API_SECRET@CLOUD_NAME.");
   }
 
   const cloudName = process.env.CLOUDINARY_CLOUD_NAME;

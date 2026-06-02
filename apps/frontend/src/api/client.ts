@@ -3,10 +3,17 @@ import { expireAuthSession, getAccessToken } from "@/lib/auth";
 
 const htmlResponsePattern = /<html|<!doctype/i;
 
-const readApiBaseUrl = (envName: string, developmentFallback: string) => {
+const isStaticFrontendApiUrl = (value: string) => /^https?:\/\/(www\.)?fndk\.site\/api\/?$/i.test(value) || value === "/api";
+
+const readApiBaseUrl = (envName: string, developmentFallback: string, productionFallback = "/api") => {
   const value = import.meta.env[envName] as string | undefined;
 
   if (value) {
+    if (import.meta.env.PROD && isStaticFrontendApiUrl(value) && productionFallback !== "/api") {
+      console.warn(`Ignoring ${envName}=${value}. Using ${productionFallback}.`);
+      return productionFallback;
+    }
+
     return value;
   }
 
@@ -14,8 +21,8 @@ const readApiBaseUrl = (envName: string, developmentFallback: string) => {
     return developmentFallback;
   }
 
-  console.warn(`Missing ${envName}. Falling back to same-origin /api.`);
-  return "/api";
+  console.warn(`Missing ${envName}. Falling back to ${productionFallback}.`);
+  return productionFallback;
 };
 
 const toUploadsBaseUrl = (apiBaseUrl: string) => apiBaseUrl.replace(/\/api\/?$/, "");
@@ -72,7 +79,7 @@ const createApiClient = (baseURL: string) => {
 };
 
 export const apiBaseUrls = {
-  identity: readApiBaseUrl("VITE_IDENTITY_API_URL", "http://localhost:4001/api"),
+  identity: readApiBaseUrl("VITE_IDENTITY_API_URL", "http://localhost:4001/api", "https://identity-service-raa1.onrender.com/api"),
   wallet: readApiBaseUrl("VITE_WALLET_API_URL", "http://localhost:4002/api"),
   task: readApiBaseUrl("VITE_TASK_API_URL", "http://localhost:4004/api"),
   notification: readApiBaseUrl("VITE_NOTIFICATION_API_URL", "http://localhost:4005/api"),
