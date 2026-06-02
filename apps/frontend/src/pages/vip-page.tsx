@@ -20,7 +20,7 @@ import {
 import type { AiTradingActivation, AssetType, MissionTaskCategory, MissionTaskProgress, VipTier, WalletSummary } from "@nevo/shared-types";
 import { formatCurrency, resolveTierByDeposit } from "@nevo/shared-utils";
 import { useLocation, useNavigate } from "react-router-dom";
-import { getApiErrorMessage, isApiAuthError, taskApi, walletApi } from "@/api/client";
+import { getApiErrorMessage, isApiAuthError, notificationApi, taskApi, walletApi } from "@/api/client";
 import { BrandMark } from "@/components/brand-mark";
 import { clearAuthSession, getAccessToken } from "@/lib/auth";
 import { applyLanguagePreference, getNextLanguage, translateText, useAppLanguage } from "@/lib/i18n";
@@ -55,6 +55,41 @@ type MissionCenterState = {
   minimumActivationDeposit: number;
   totalRewardAmount: number;
   tasks: MissionTaskProgress[];
+};
+
+type NotificationItem = {
+  id: string;
+  title: string;
+  message: string;
+  isRead: boolean;
+  createdAt: string;
+};
+
+const normalizeNotifications = (value: unknown): NotificationItem[] => {
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => {
+      if (!item || typeof item !== "object") {
+        return [];
+      }
+
+      const notification = item as Partial<NotificationItem>;
+      return [
+        {
+          id: typeof notification.id === "string" ? notification.id : crypto.randomUUID(),
+          title: typeof notification.title === "string" ? notification.title : "Notification",
+          message: typeof notification.message === "string" ? notification.message : "",
+          isRead: Boolean(notification.isRead),
+          createdAt: typeof notification.createdAt === "string" ? notification.createdAt : new Date().toISOString()
+        }
+      ];
+    });
+  }
+
+  if (value && typeof value === "object" && "notifications" in value) {
+    return normalizeNotifications((value as { notifications?: unknown }).notifications);
+  }
+
+  return [];
 };
 
 const emptyMissionCenter: MissionCenterState = {
@@ -215,6 +250,9 @@ export function VipPage() {
   const [passcodeVisible, setPasscodeVisible] = useState(false);
   const [failedReservation, setFailedReservation] = useState<StartActivationResponse | null>(null);
   const [vipListOpen, setVipListOpen] = useState(false);
+  const [notificationPanelOpen, setNotificationPanelOpen] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
   const completionRefreshInFlight = useRef<string | null>(null);
   const reservationResetRefreshInFlight = useRef(false);
   const activationStartInFlight = useRef(false);
@@ -493,6 +531,7 @@ export function VipPage() {
     () => completedHistory.reduce((sum, activation) => sum + (activation.profit ?? 0), 0),
     [completedHistory]
   );
+  const visibleNotifications = Array.isArray(notifications) ? notifications : [];
 
   const todayReservation = useMemo(() => {
     const today = new Date().toDateString();
@@ -570,13 +609,25 @@ export function VipPage() {
     }
   ] as const;
 
-  const handleNotifications = () => {
-    if (completedHistory.length) {
-      toast.success(`${completedHistory.length} completed run${completedHistory.length === 1 ? "" : "s"} in your record.`);
+  const openNotifications = async () => {
+    const token = getAccessToken();
+    if (!token) {
+      toast.error(tt("Sign in first."));
       return;
     }
 
-    toast("No mission alerts yet.");
+    setNotificationPanelOpen(true);
+    setNotificationsLoading(true);
+
+    try {
+      const response = await notificationApi.get<unknown>("/notifications");
+      setNotifications(normalizeNotifications(response.data));
+    } catch {
+      setNotifications([]);
+      toast.error(tt("Could not load notifications."));
+    } finally {
+      setNotificationsLoading(false);
+    }
   };
 
   const handleLanguage = () => {
@@ -710,7 +761,7 @@ export function VipPage() {
             <button
               aria-label="Notifications"
               className="flex h-11 w-11 items-center justify-center rounded-full border border-cyan-300/15 bg-white/5 text-cyan-200 transition hover:bg-cyan-300/10"
-              onClick={handleNotifications}
+              onClick={() => void openNotifications()}
               type="button"
             >
               <Bell className="h-[18px] w-[18px]" />
@@ -742,6 +793,60 @@ export function VipPage() {
           </div>
         </div>
       </header>
+
+      {notificationPanelOpen ? (
+        <div className="fixed inset-0 z-50 bg-[#020223]/65 backdrop-blur-sm">
+          <button
+            aria-label="Close notifications"
+            className="absolute inset-0"
+            onClick={() => setNotificationPanelOpen(false)}
+            type="button"
+          />
+          <div className="absolute inset-x-4 top-20 mx-auto max-w-[448px] rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(12,14,96,0.98)_0%,rgba(7,9,79,0.99)_38%,rgba(4,8,58,1)_100%)] p-5 shadow-[0_24px_50px_rgba(0,0,0,0.35)]">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm uppercase tracking-[0.26em] text-cyan-200/75">{tt("Notifications")}</div>
+                <div className="mt-1 text-lg font-semibold text-white">{tt("Recent account activity")}</div>
+              </div>
+              <button
+                aria-label="Close notifications"
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-cyan-200"
+                onClick={() => setNotificationPanelOpen(false)}
+                type="button"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mt-4 max-h-[52vh] space-y-3 overflow-y-auto">
+              {notificationsLoading ? (
+                <div className="rounded-[22px] border border-white/10 bg-white/5 px-4 py-4 text-sm text-slate-300">
+                  {tt("Loading notifications...")}
+                </div>
+              ) : visibleNotifications.length ? (
+                visibleNotifications.map((notification) => (
+                  <div key={notification.id} className="rounded-[22px] border border-white/10 bg-white/5 px-4 py-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-white">{notification.title}</div>
+                        <div className="mt-1 text-sm leading-6 text-slate-300">{notification.message}</div>
+                      </div>
+                      {!notification.isRead ? <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-cyan-300" /> : null}
+                    </div>
+                    <div className="mt-3 text-[11px] uppercase tracking-[0.22em] text-slate-400">
+                      {new Date(notification.createdAt).toLocaleString(language === "ar" ? "ar-TN" : language === "fr" ? "fr-FR" : "en-GB")}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-[22px] border border-white/10 bg-white/5 px-4 py-4 text-sm text-slate-300">
+                  {tt("No notifications yet.")}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {reservationModalOpen ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/75 px-4">
