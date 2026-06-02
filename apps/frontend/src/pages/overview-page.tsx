@@ -134,6 +134,33 @@ type NotificationItem = {
   createdAt: string;
 };
 
+const normalizeNotifications = (value: unknown): NotificationItem[] => {
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => {
+      if (!item || typeof item !== "object") {
+        return [];
+      }
+
+      const notification = item as Partial<NotificationItem>;
+      return [
+        {
+          id: typeof notification.id === "string" ? notification.id : crypto.randomUUID(),
+          title: typeof notification.title === "string" ? notification.title : "Notification",
+          message: typeof notification.message === "string" ? notification.message : "",
+          isRead: Boolean(notification.isRead),
+          createdAt: typeof notification.createdAt === "string" ? notification.createdAt : new Date().toISOString()
+        }
+      ];
+    });
+  }
+
+  if (value && typeof value === "object" && "notifications" in value) {
+    return normalizeNotifications((value as { notifications?: unknown }).notifications);
+  }
+
+  return [];
+};
+
 type MarketTicker = {
   symbol: string;
   pair: string;
@@ -373,9 +400,10 @@ export function OverviewPage() {
     setNotificationsLoading(true);
 
     try {
-      const response = await notificationApi.get<NotificationItem[]>("/notifications");
-      setNotifications(response.data);
+      const response = await notificationApi.get<unknown>("/notifications");
+      setNotifications(normalizeNotifications(response.data));
     } catch {
+      setNotifications([]);
       toast.error("Could not load notifications.");
     } finally {
       setNotificationsLoading(false);
@@ -421,6 +449,7 @@ export function OverviewPage() {
   const activeAdSlide = adSlides[activeAdIndex] ?? defaultAdCarouselSlides[0];
   const activeAdImageUrl = resolveAdminAssetUrl(activeAdSlide.imageUrl);
   const tt = (text: string) => translateText(language, text);
+  const visibleNotifications = Array.isArray(notifications) ? notifications : [];
 
   const goToPreviousAd = () => {
     setActiveAdIndex((current) => (current - 1 + adSlides.length) % adSlides.length);
@@ -492,8 +521,8 @@ export function OverviewPage() {
                 <div className="rounded-[22px] border border-white/10 bg-white/5 px-4 py-4 text-sm text-slate-300">
                   {tt("Loading notifications...")}
                 </div>
-              ) : notifications.length ? (
-                notifications.map((notification) => (
+              ) : visibleNotifications.length ? (
+                visibleNotifications.map((notification) => (
                   <div key={notification.id} className="rounded-[22px] border border-white/10 bg-white/5 px-4 py-4">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">

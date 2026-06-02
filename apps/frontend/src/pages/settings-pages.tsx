@@ -564,14 +564,14 @@ export function ActivityInformationPage() {
 
     Promise.allSettled([
       walletApi.get<DashboardTransaction[]>("/wallet/transactions", { headers: authHeaders() }),
-      notificationApi.get<NotificationItem[]>("/notifications", { headers: authHeaders() })
+      notificationApi.get<unknown>("/notifications", { headers: authHeaders() })
     ])
       .then(([transactionResult, notificationResult]) => {
         if (transactionResult.status === "fulfilled") {
           setTransactions(transactionResult.value.data);
         }
         if (notificationResult.status === "fulfilled") {
-          setNotifications(notificationResult.value.data);
+          setNotifications(normalizeNotifications(notificationResult.value.data));
         }
       })
       .finally(() => setLoading(false));
