@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from "@nestjs/common";
-import { dbQuery, ensureVipDailyProfitCapColumn, getOne, publishEvent, withTransaction } from "@nevo/shared-infra";
+import { dbQuery, ensureVipTierRuntimeColumns, getOne, publishEvent, withTransaction } from "@nevo/shared-infra";
 import type {
   AdCarouselSlide,
   AdminOverviewMetrics,
@@ -169,7 +169,7 @@ type VipTierRow = {
 @Injectable()
 export class AdminService implements OnModuleInit {
   async onModuleInit() {
-    await ensureVipDailyProfitCapColumn();
+    await ensureVipTierRuntimeColumns();
   }
 
   async getVipTiers(): Promise<VipTier[]> {

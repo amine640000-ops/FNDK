@@ -71,6 +71,7 @@ psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/018_kyc_real_name_
 psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/019_public_user_ids.sql
 psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/020_vip_direct_member_requirements.sql
 psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/021_vip_daily_profit_cap.sql
+psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/022_ensure_vip_runtime_columns.sql
 ```
 
 Initial admin login after running migrations:

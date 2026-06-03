@@ -1,5 +1,5 @@
 import { Injectable, OnModuleInit } from "@nestjs/common";
-import { dbQuery, ensureVipDailyProfitCapColumn, getOne, publishEvent, subscribeToEvents } from "@nevo/shared-infra";
+import { dbQuery, ensureVipTierRuntimeColumns, getOne, publishEvent, subscribeToEvents } from "@nevo/shared-infra";
 import type { RabbitEventMap } from "@nevo/shared-types";
 
 type VipTierRow = {
@@ -21,7 +21,7 @@ const MINIMUM_VALID_MEMBER_ACTIVATION_DEPOSIT = 50;
 @Injectable()
 export class VipService implements OnModuleInit {
   async onModuleInit() {
-    await ensureVipDailyProfitCapColumn();
+    await ensureVipTierRuntimeColumns();
 
     await subscribeToEvents("vip-service", {
       "user.registered": async ({ userId }: RabbitEventMap["user.registered"]) => {
