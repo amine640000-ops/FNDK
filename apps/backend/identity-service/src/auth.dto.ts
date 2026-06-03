@@ -15,7 +15,7 @@ export class RegisterDto {
   @MinLength(2, { message: "Full name must be at least 2 characters" })
   fullName!: string;
 
-  @IsPhoneNumber(undefined, { message: "Enter a valid phone number with country code, for example +21656109879" })
+  @IsPhoneNumber(undefined, { message: "Enter a valid phone number with country code" })
   phone!: string;
 
   @IsOptional()
@@ -82,7 +82,7 @@ export class UpdateProfileDto {
   fullName?: string;
 
   @IsOptional()
-  @IsPhoneNumber(undefined, { message: "Enter a valid phone number with country code, for example +21656109879" })
+  @IsPhoneNumber(undefined, { message: "Enter a valid phone number with country code" })
   phone?: string;
 }
 

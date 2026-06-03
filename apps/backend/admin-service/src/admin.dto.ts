@@ -131,6 +131,11 @@ export class UpdateVipTierDto {
   dailyRoiMax?: number;
 
   @IsOptional()
+  @IsNumber()
+  @Min(0)
+  dailyProfitCap?: number | null;
+
+  @IsOptional()
   @IsInt()
   @Min(0)
   requiredDirectMembers?: number;

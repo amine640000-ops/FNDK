@@ -270,7 +270,7 @@ export function PersonalInformationPage() {
         </label>
         <label className="grid gap-2">
           <span className="text-sm font-semibold text-slate-300">{tt("Phone number")}</span>
-          <input className="fndk-app-input" placeholder="+216 XXXXXXX" value={phone} onChange={(event) => setPhone(event.target.value)} />
+          <input className="fndk-app-input" placeholder={tt("Phone number")} value={phone} onChange={(event) => setPhone(event.target.value)} />
         </label>
         <button className="fndk-primary-action disabled:opacity-60" disabled={saving} type="submit">
           {saving ? tt("Saving...") : tt("Save information")}

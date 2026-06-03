@@ -8,6 +8,7 @@ type VipTierRow = {
   min_deposit: number;
   daily_roi_min: number;
   daily_roi_max: number;
+  daily_profit_cap: number | null;
   required_direct_members: number;
   activation_limit_per_day: number;
   activation_duration_minutes: number;
@@ -43,6 +44,7 @@ export class VipService implements OnModuleInit {
           min_deposit::float8 AS min_deposit,
           daily_roi_min::float8 AS daily_roi_min,
           daily_roi_max::float8 AS daily_roi_max,
+          daily_profit_cap::float8 AS daily_profit_cap,
           required_direct_members,
           activation_limit_per_day,
           activation_duration_minutes,
@@ -61,6 +63,7 @@ export class VipService implements OnModuleInit {
       dailyRoiMax: tier.daily_roi_max,
       dailyRoi: tier.daily_roi_max,
       monthlyRoi: Number((tier.daily_roi_max * 30).toFixed(2)),
+      dailyProfitCap: tier.daily_profit_cap,
       requiredDirectMembers: tier.required_direct_members,
       activationLimitPerDay: tier.activation_limit_per_day,
       activationDurationMinutes: tier.activation_duration_minutes,
@@ -170,6 +173,7 @@ export class VipService implements OnModuleInit {
           vt.min_deposit::float8 AS min_deposit,
           vt.daily_roi_min::float8 AS daily_roi_min,
           vt.daily_roi_max::float8 AS daily_roi_max,
+          vt.daily_profit_cap::float8 AS daily_profit_cap,
           vt.required_direct_members,
           vt.activation_limit_per_day,
           vt.activation_duration_minutes,
@@ -257,6 +261,7 @@ export class VipService implements OnModuleInit {
           min_deposit::float8 AS min_deposit,
           daily_roi_min::float8 AS daily_roi_min,
           daily_roi_max::float8 AS daily_roi_max,
+          daily_profit_cap::float8 AS daily_profit_cap,
           required_direct_members,
           activation_limit_per_day,
           activation_duration_minutes,
@@ -283,6 +288,7 @@ export class VipService implements OnModuleInit {
           min_deposit::float8 AS min_deposit,
           daily_roi_min::float8 AS daily_roi_min,
           daily_roi_max::float8 AS daily_roi_max,
+          daily_profit_cap::float8 AS daily_profit_cap,
           required_direct_members,
           activation_limit_per_day,
           activation_duration_minutes,
@@ -304,6 +310,7 @@ export class VipService implements OnModuleInit {
       dailyRoiMax: tier.daily_roi_max,
       dailyRoi: tier.daily_roi_max,
       monthlyRoi: Number((tier.daily_roi_max * 30).toFixed(2)),
+      dailyProfitCap: tier.daily_profit_cap,
       requiredDirectMembers: tier.required_direct_members,
       activationLimitPerDay: tier.activation_limit_per_day,
       activationDurationMinutes: tier.activation_duration_minutes,

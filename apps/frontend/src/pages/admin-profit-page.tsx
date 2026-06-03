@@ -18,6 +18,7 @@ type TierEditorState = {
   minDeposit: string;
   dailyRoiMinPercent: string;
   dailyRoiMaxPercent: string;
+  dailyProfitCap: string;
   requiredDirectMembers: string;
   activationLimitPerDay: string;
   activationDurationMinutes: string;
@@ -29,6 +30,7 @@ const toEditorState = (tier: VipTier): TierEditorState => ({
   minDeposit: String(tier.minDeposit),
   dailyRoiMinPercent: String(Number((tier.dailyRoiMin * 100).toFixed(2))),
   dailyRoiMaxPercent: String(Number((tier.dailyRoiMax * 100).toFixed(2))),
+  dailyProfitCap: tier.dailyProfitCap == null ? "" : String(tier.dailyProfitCap),
   requiredDirectMembers: String(tier.requiredDirectMembers),
   activationLimitPerDay: String(tier.activationLimitPerDay),
   activationDurationMinutes: String(tier.activationDurationMinutes)
@@ -111,6 +113,7 @@ export function AdminProfitPage() {
           minDeposit: Number(editingTier.minDeposit),
           dailyRoiMin: Number(editingTier.dailyRoiMinPercent) / 100,
           dailyRoiMax: Number(editingTier.dailyRoiMaxPercent) / 100,
+          dailyProfitCap: editingTier.dailyProfitCap.trim() ? Number(editingTier.dailyProfitCap) : null,
           requiredDirectMembers: Number(editingTier.requiredDirectMembers),
           activationLimitPerDay: Number(editingTier.activationLimitPerDay),
           activationDurationMinutes: Number(editingTier.activationDurationMinutes)
@@ -270,6 +273,20 @@ export function AdminProfitPage() {
                 />
               </label>
               <label className="grid gap-2">
+                <span className="text-sm text-slate-300">Daily profit cap (USDT)</span>
+                <input
+                  className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white"
+                  inputMode="decimal"
+                  min="0"
+                  step="0.01"
+                  type="number"
+                  value={editingTier.dailyProfitCap}
+                  onChange={(event) =>
+                    setEditingTier((current) => (current ? { ...current, dailyProfitCap: event.target.value } : current))
+                  }
+                />
+              </label>
+              <label className="grid gap-2">
                 <span className="text-sm text-slate-300">Daily reservations</span>
                 <input
                   className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white"
@@ -385,6 +402,9 @@ export function AdminProfitPage() {
                     </div>
                     <div className="mt-1 text-xs text-slate-400">
                       {tier.activationLimitPerDay} runs/day · {tier.activationDurationMinutes} min
+                    </div>
+                    <div className="mt-1 text-xs text-slate-400">
+                      Daily cap: {tier.dailyProfitCap == null ? "No cap" : formatCurrency(tier.dailyProfitCap)}
                     </div>
                   </div>
                   <div className="flex items-end justify-start md:justify-end">

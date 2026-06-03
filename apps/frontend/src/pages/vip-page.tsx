@@ -18,7 +18,7 @@ import {
   X
 } from "lucide-react";
 import type { AiTradingActivation, AssetType, MissionTaskCategory, MissionTaskProgress, VipTier, WalletSummary } from "@nevo/shared-types";
-import { formatCurrency, resolveTierByDeposit } from "@nevo/shared-utils";
+import { VIP_TIERS, formatCurrency, resolveTierByDeposit } from "@nevo/shared-utils";
 import { useLocation, useNavigate } from "react-router-dom";
 import { getApiErrorMessage, isApiAuthError, notificationApi, taskApi, walletApi } from "@/api/client";
 import { BrandMark } from "@/components/brand-mark";
@@ -176,6 +176,9 @@ const formatRoiBand = (tier: VipTier) => {
   return `${lower}% ~ ${upper}%`;
 };
 
+const formatDailyProfitCap = (tier: VipTier, translate: (text: string) => string) =>
+  tier.dailyProfitCap == null ? translate("No cap") : formatCurrency(tier.dailyProfitCap);
+
 const formatReservationOrderNumber = (activation: AiTradingActivation) => `QR-${activation.id.replace(/-/g, "").slice(0, 18).toUpperCase()}`;
 
 const formatReservationPair = (asset: AssetType) =>
@@ -226,7 +229,8 @@ function AssetBadge({ asset, className = "" }: { asset: AssetType; className?: s
 export function VipPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const vipTiers = useDashboardStore((state) => state.vipTiers);
+  const storedVipTiers = useDashboardStore((state) => state.vipTiers) as unknown;
+  const vipTiers = Array.isArray(storedVipTiers) && storedVipTiers.length ? storedVipTiers : VIP_TIERS;
   const wallet = useDashboardStore((state) => state.wallet);
   const overview = useDashboardStore((state) => state.overview);
   const depositRecords = useDashboardStore((state) => state.depositRecords);
@@ -386,6 +390,10 @@ export function VipPage() {
 
   const liveState = activationState ?? fallbackActivationState;
   const currentTier = liveState.currentTier;
+  const tierActivationAssets = Array.isArray(currentTier.activationAssets)
+    ? currentTier.activationAssets
+    : staticCurrentTier.activationAssets;
+  const activationHistory = Array.isArray(liveState.history) ? liveState.history : [];
   const runningActivation = liveState.runningActivation;
   const nextTier = vipTiers.find((tier) => tier.id === currentTier.id + 1);
   const countdownSeconds = runningActivation
@@ -497,8 +505,8 @@ export function VipPage() {
   }, [reservationLimitReached, reservationResetCountdownSeconds]);
 
   const completedHistory = useMemo(
-    () => liveState.history.filter((activation) => activation.status === "completed"),
-    [liveState.history]
+    () => activationHistory.filter((activation) => activation.status === "completed"),
+    [activationHistory]
   );
 
   const todayProfit = useMemo(() => {
@@ -537,17 +545,17 @@ export function VipPage() {
     const today = new Date().toDateString();
     return (
       liveRunningActivation ??
-      liveState.history.find((activation) => {
+      activationHistory.find((activation) => {
         const referenceTime = activation.completedAt ?? activation.startedAt;
         return new Date(referenceTime).toDateString() === today;
       }) ??
       null
     );
-  }, [liveState.history, liveRunningActivation]);
+  }, [activationHistory, liveRunningActivation]);
 
   const strategyAssets = liveRunningActivation
-    ? [liveRunningActivation.asset, ...currentTier.activationAssets.filter((asset) => asset !== liveRunningActivation.asset)]
-    : currentTier.activationAssets;
+    ? [liveRunningActivation.asset, ...tierActivationAssets.filter((asset) => asset !== liveRunningActivation.asset)]
+    : tierActivationAssets;
   const parsedReservationAmount = Number(reservationAmount || 0);
   const sortedVipTiers = useMemo(() => [...vipTiers].sort((left, right) => left.id - right.id), [vipTiers]);
   const unlockReferenceAmount = Math.max(liveState.activeInvestment, 0);
@@ -1068,6 +1076,10 @@ export function VipPage() {
                         <span className="font-semibold text-white">{tier.activationLimitPerDay}</span>
                       </div>
                       <div className="flex items-center justify-between gap-4">
+                        <span>Daily profit cap</span>
+                        <span className="font-semibold text-white">{formatDailyProfitCap(tier, tt)}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-4">
                         <span>Participating assets</span>
                         <span className="font-semibold text-white">{tier.activationAssets.length}</span>
                       </div>
@@ -1292,6 +1304,10 @@ export function VipPage() {
                 <div className="flex items-center justify-between gap-4 text-[15px]">
                   <span className="text-white/45">{tt("Taux De Rendement Quotidien")}</span>
                   <span className="font-semibold text-white">{formatRoiBand(currentTier)}</span>
+                </div>
+                <div className="flex items-center justify-between gap-4 text-[15px]">
+                  <span className="text-white/45">{tt("Daily profit cap")}</span>
+                  <span className="font-semibold text-white">{formatDailyProfitCap(currentTier, tt)}</span>
                 </div>
                 <div className="flex items-center justify-between gap-4 text-[15px]">
                   <span className="text-white/45">{tt("Depot Minimum")}</span>

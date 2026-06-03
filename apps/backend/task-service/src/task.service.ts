@@ -16,6 +16,7 @@ type DistributionCandidate = {
   tier_id: number;
   daily_roi_min: number;
   daily_roi_max: number;
+  daily_profit_cap: number | null;
   active_investment: number;
 };
 
@@ -25,6 +26,7 @@ type ActivationTierRow = {
   min_deposit: number;
   daily_roi_min: number;
   daily_roi_max: number;
+  daily_profit_cap: number | null;
   required_direct_members: number;
   activation_limit_per_day: number;
   activation_duration_minutes: number;
@@ -52,6 +54,9 @@ type ActivationRow = {
   exit_price: number | null;
   profit: number | null;
   daily_limit: number;
+  daily_roi_min?: number;
+  daily_roi_max?: number;
+  daily_profit_cap?: number | null;
 };
 
 type ReservationRulesRow = {
@@ -188,7 +193,10 @@ export class TaskService {
           ata.entry_price::float8 AS entry_price,
           ata.exit_price::float8 AS exit_price,
           ata.profit::float8 AS profit,
-          vt.activation_limit_per_day AS daily_limit
+          vt.activation_limit_per_day AS daily_limit,
+          vt.daily_roi_min::float8 AS daily_roi_min,
+          vt.daily_roi_max::float8 AS daily_roi_max,
+          vt.daily_profit_cap::float8 AS daily_profit_cap
         FROM ai_trading_activations ata
         JOIN vip_tiers vt ON vt.id = ata.tier_id
         WHERE ata.user_id = $1
@@ -220,7 +228,10 @@ export class TaskService {
           ata.entry_price::float8 AS entry_price,
           ata.exit_price::float8 AS exit_price,
           ata.profit::float8 AS profit,
-          vt.activation_limit_per_day AS daily_limit
+          vt.activation_limit_per_day AS daily_limit,
+          vt.daily_roi_min::float8 AS daily_roi_min,
+          vt.daily_roi_max::float8 AS daily_roi_max,
+          vt.daily_profit_cap::float8 AS daily_profit_cap
         FROM ai_trading_activations ata
         JOIN vip_tiers vt ON vt.id = ata.tier_id
         WHERE ata.user_id = $1
@@ -530,7 +541,10 @@ export class TaskService {
           ata.entry_price::float8 AS entry_price,
           ata.exit_price::float8 AS exit_price,
           ata.profit::float8 AS profit,
-          vt.activation_limit_per_day AS daily_limit
+          vt.activation_limit_per_day AS daily_limit,
+          vt.daily_roi_min::float8 AS daily_roi_min,
+          vt.daily_roi_max::float8 AS daily_roi_max,
+          vt.daily_profit_cap::float8 AS daily_profit_cap
         FROM ai_trading_activations ata
         JOIN vip_tiers vt ON vt.id = ata.tier_id
         WHERE ata.user_id = $1
@@ -546,7 +560,9 @@ export class TaskService {
       const expectedIncome = this.buildExpectedIncome(runningActivation.reservation_amount || tier.active_investment, {
         dailyRoiMin: tier.daily_roi_min,
         dailyRoiMax: tier.daily_roi_max,
-        activationLimitPerDay: tier.activation_limit_per_day
+        activationLimitPerDay: tier.activation_limit_per_day,
+        dailyProfitCap: tier.daily_profit_cap,
+        dailySlotNumber: runningActivation.daily_slot_number
       });
 
       return {
@@ -585,7 +601,9 @@ export class TaskService {
     const expectedIncome = this.buildExpectedIncome(effectiveReservationAmount, {
       dailyRoiMin: tier.daily_roi_min,
       dailyRoiMax: tier.daily_roi_max,
-      activationLimitPerDay: tier.activation_limit_per_day
+      activationLimitPerDay: tier.activation_limit_per_day,
+      dailyProfitCap: tier.daily_profit_cap,
+      dailySlotNumber: usedActivations + 1
     });
 
     if (reservationDayUsage.failed_activation_count < (reservationRules?.reservation_failures_per_day ?? 0)) {
@@ -643,7 +661,10 @@ export class TaskService {
             entry_price::float8 AS entry_price,
             exit_price::float8 AS exit_price,
             profit::float8 AS profit,
-            $11::int AS daily_limit
+            $11::int AS daily_limit,
+            $12::float8 AS daily_roi_min,
+            $13::float8 AS daily_roi_max,
+            $14::float8 AS daily_profit_cap
         `,
         [
           userId,
@@ -656,7 +677,10 @@ export class TaskService {
           usedActivations + 1,
           effectiveReservationAmount,
           tier.name,
-          tier.activation_limit_per_day
+          tier.activation_limit_per_day,
+          tier.daily_roi_min,
+          tier.daily_roi_max,
+          tier.daily_profit_cap
         ]
       );
 
@@ -720,7 +744,10 @@ export class TaskService {
           entry_price::float8 AS entry_price,
           exit_price::float8 AS exit_price,
           profit::float8 AS profit,
-          $11::int AS daily_limit
+          $11::int AS daily_limit,
+          $12::float8 AS daily_roi_min,
+          $13::float8 AS daily_roi_max,
+          $14::float8 AS daily_profit_cap
       `,
       [
         userId,
@@ -733,7 +760,10 @@ export class TaskService {
         usedActivations + 1,
         effectiveReservationAmount,
         tier.name,
-        tier.activation_limit_per_day
+        tier.activation_limit_per_day,
+        tier.daily_roi_min,
+        tier.daily_roi_max,
+        tier.daily_profit_cap
       ]
     );
 
@@ -778,10 +808,12 @@ export class TaskService {
       asset: AssetType;
       strategy: string;
       duration_minutes: number;
+      daily_slot_number: number;
       active_investment: number;
       reservation_amount: number;
       daily_roi_min: number;
       daily_roi_max: number;
+      daily_profit_cap: number | null;
       activation_limit_per_day: number;
     }>(
       `
@@ -799,10 +831,12 @@ export class TaskService {
           ata.asset,
           ata.strategy,
           ata.duration_minutes,
+          ata.daily_slot_number,
           COALESCE(ap.active_investment, 0)::float8 AS active_investment,
           ata.reservation_amount::float8 AS reservation_amount,
           vt.daily_roi_min::float8 AS daily_roi_min,
           vt.daily_roi_max::float8 AS daily_roi_max,
+          vt.daily_profit_cap::float8 AS daily_profit_cap,
           vt.activation_limit_per_day
         FROM ai_trading_activations ata
         JOIN vip_tiers vt ON vt.id = ata.tier_id
@@ -933,6 +967,7 @@ export class TaskService {
           COALESCE(lt.tier_id, 1) AS tier_id,
           vt.daily_roi_min::float8 AS daily_roi_min,
           vt.daily_roi_max::float8 AS daily_roi_max,
+          vt.daily_profit_cap::float8 AS daily_profit_cap,
           ap.active_investment::float8 AS active_investment
         FROM active_positions ap
         LEFT JOIN latest_tier lt ON lt.user_id = ap.user_id
@@ -948,7 +983,7 @@ export class TaskService {
 
   private buildDistributionEvent(candidate: DistributionCandidate): ProfitDistributionEvent {
     const sampledRoi = this.sampleRoi(candidate.daily_roi_min, candidate.daily_roi_max);
-    const profit = calculateDailyProfit(candidate.active_investment, sampledRoi);
+    const profit = this.applyDailyProfitCap(calculateDailyProfit(candidate.active_investment, sampledRoi), candidate.daily_profit_cap);
     const entryPrice = Number((5000 + Math.random() * 600).toFixed(2));
     const exitPrice = Number((entryPrice + profit / 4).toFixed(2));
 
@@ -1057,6 +1092,7 @@ export class TaskService {
           vt.min_deposit::float8 AS min_deposit,
           vt.daily_roi_min::float8 AS daily_roi_min,
           vt.daily_roi_max::float8 AS daily_roi_max,
+          vt.daily_profit_cap::float8 AS daily_profit_cap,
           vt.required_direct_members,
           vt.activation_limit_per_day,
           vt.activation_duration_minutes,
@@ -1083,6 +1119,7 @@ export class TaskService {
       min_deposit: starter.minDeposit,
       daily_roi_min: starter.dailyRoiMin,
       daily_roi_max: starter.dailyRoiMax,
+      daily_profit_cap: starter.dailyProfitCap,
       required_direct_members: starter.requiredDirectMembers,
       activation_limit_per_day: starter.activationLimitPerDay,
       activation_duration_minutes: starter.activationDurationMinutes,
@@ -1335,12 +1372,14 @@ export class TaskService {
     reservation_amount: number;
     daily_roi_min: number;
     daily_roi_max: number;
+    daily_profit_cap: number | null;
     activation_limit_per_day: number;
+    daily_slot_number: number;
   }) {
     const reservedAmount = activation.reservation_amount > 0 ? activation.reservation_amount : activation.active_investment;
     const sampledRoi = this.sampleRoi(activation.daily_roi_min, activation.daily_roi_max);
-    const fullDayProfit = calculateDailyProfit(reservedAmount, sampledRoi);
-    const profit = Number((fullDayProfit / Math.max(activation.activation_limit_per_day, 1)).toFixed(2));
+    const fullDayProfit = this.applyDailyProfitCap(calculateDailyProfit(reservedAmount, sampledRoi), activation.daily_profit_cap);
+    const profit = this.splitDailyProfitForSlot(fullDayProfit, activation.activation_limit_per_day, activation.daily_slot_number);
     const entryPrice = Number((5000 + Math.random() * 700).toFixed(2));
     const exitPrice = Number((entryPrice + Math.max(profit / 6, 1.2)).toFixed(2));
     return { profit, entryPrice, exitPrice };
@@ -1348,15 +1387,40 @@ export class TaskService {
 
   private buildExpectedIncome(
     reservationAmount: number,
-    tier: { dailyRoiMin: number; dailyRoiMax: number; activationLimitPerDay: number }
+    tier: {
+      dailyRoiMin: number;
+      dailyRoiMax: number;
+      activationLimitPerDay: number;
+      dailyProfitCap?: number | null;
+      dailySlotNumber?: number;
+    }
   ) {
-    const fullDayMinProfit = calculateDailyProfit(reservationAmount, tier.dailyRoiMin);
-    const fullDayMaxProfit = calculateDailyProfit(reservationAmount, tier.dailyRoiMax);
+    const fullDayMinProfit = this.applyDailyProfitCap(calculateDailyProfit(reservationAmount, tier.dailyRoiMin), tier.dailyProfitCap ?? null);
+    const fullDayMaxProfit = this.applyDailyProfitCap(calculateDailyProfit(reservationAmount, tier.dailyRoiMax), tier.dailyProfitCap ?? null);
 
     return {
-      min: Number((fullDayMinProfit / Math.max(tier.activationLimitPerDay, 1)).toFixed(2)),
-      max: Number((fullDayMaxProfit / Math.max(tier.activationLimitPerDay, 1)).toFixed(2))
+      min: this.splitDailyProfitForSlot(fullDayMinProfit, tier.activationLimitPerDay, tier.dailySlotNumber ?? 1),
+      max: this.splitDailyProfitForSlot(fullDayMaxProfit, tier.activationLimitPerDay, tier.dailySlotNumber ?? 1)
     };
+  }
+
+  private splitDailyProfitForSlot(fullDayProfit: number, activationLimitPerDay: number, dailySlotNumber: number) {
+    const slotCount = Math.max(activationLimitPerDay, 1);
+    const slotNumber = Math.min(Math.max(Math.trunc(dailySlotNumber), 1), slotCount);
+    const totalCents = Math.max(Math.round(fullDayProfit * 100), 0);
+    const baseSlotCents = Math.floor(totalCents / slotCount);
+    const extraCentSlots = totalCents % slotCount;
+    const slotCents = baseSlotCents + (slotNumber <= extraCentSlots ? 1 : 0);
+
+    return Number((slotCents / 100).toFixed(2));
+  }
+
+  private applyDailyProfitCap(profit: number, dailyProfitCap?: number | null) {
+    if (dailyProfitCap === null || dailyProfitCap === undefined) {
+      return profit;
+    }
+
+    return Number(Math.min(profit, Math.max(dailyProfitCap, 0)).toFixed(2));
   }
 
   private mapTierRow(tier: ActivationTierRow): VipTier {
@@ -1368,6 +1432,7 @@ export class TaskService {
       dailyRoiMax: tier.daily_roi_max,
       dailyRoi: tier.daily_roi_max,
       monthlyRoi: Number((tier.daily_roi_max * 30).toFixed(2)),
+      dailyProfitCap: tier.daily_profit_cap,
       requiredDirectMembers: tier.required_direct_members,
       activationLimitPerDay: tier.activation_limit_per_day,
       activationDurationMinutes: tier.activation_duration_minutes,
@@ -1396,13 +1461,21 @@ export class TaskService {
       entryPrice: activation.entry_price,
       exitPrice: activation.exit_price,
       profit: activation.profit,
-      expectedIncomeMin: activation.reservation_amount
-        ? this.buildExpectedIncome(activation.reservation_amount, getTierConfig(activation.tier_id)).min
-        : null,
-      expectedIncomeMax: activation.reservation_amount
-        ? this.buildExpectedIncome(activation.reservation_amount, getTierConfig(activation.tier_id)).max
-        : null
+      expectedIncomeMin: activation.reservation_amount ? this.buildActivationExpectedIncome(activation).min : null,
+      expectedIncomeMax: activation.reservation_amount ? this.buildActivationExpectedIncome(activation).max : null
     };
+  }
+
+  private buildActivationExpectedIncome(activation: ActivationRow) {
+    const fallbackTier = getTierConfig(activation.tier_id);
+
+    return this.buildExpectedIncome(activation.reservation_amount, {
+      dailyRoiMin: activation.daily_roi_min ?? fallbackTier.dailyRoiMin,
+      dailyRoiMax: activation.daily_roi_max ?? fallbackTier.dailyRoiMax,
+      activationLimitPerDay: activation.daily_limit,
+      dailyProfitCap: activation.daily_profit_cap !== undefined ? activation.daily_profit_cap : fallbackTier.dailyProfitCap,
+      dailySlotNumber: activation.daily_slot_number
+    });
   }
 
   private sampleRoi(min: number, max: number) {

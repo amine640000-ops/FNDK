@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { Eye, Headphones, Languages, Loader2, ShieldQuestion } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { getCountries, getCountryCallingCode } from "libphonenumber-js/min";
+import { ChevronDown, Eye, Headphones, Languages, Loader2, Search, ShieldQuestion } from "lucide-react";
 import toast from "react-hot-toast";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { axios, identityApi } from "@/api/client";
@@ -15,6 +16,25 @@ type RegisterResponse = {
 
 const strongPasswordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{8,}$/;
 const internationalPhonePattern = /^\+[1-9]\d{7,14}$/;
+type PhoneCountryCode = ReturnType<typeof getCountries>[number];
+
+const countryNameFormatter = new Intl.DisplayNames(["en"], { type: "region" });
+const phoneCountryOptions = getCountries()
+  .map((countryCode) => {
+    const countryName = countryNameFormatter.of(countryCode) ?? countryCode;
+    const dialCode = `+${getCountryCallingCode(countryCode)}`;
+
+    return {
+      countryCode,
+      countryName,
+      dialCode,
+      label: `${countryName} (${dialCode})`
+    };
+  })
+  .sort((firstCountry, secondCountry) => firstCountry.countryName.localeCompare(secondCountry.countryName));
+
+const getPhoneDialCode = (countryCode: PhoneCountryCode | "") =>
+  phoneCountryOptions.find((countryOption) => countryOption.countryCode === countryCode)?.dialCode ?? "";
 
 const resolveApiErrorMessage = (error: unknown, fallback: string) => {
   if (!axios.isAxiosError(error)) {
@@ -69,21 +89,59 @@ export function RegisterPage() {
   const [verificationCode, setVerificationCode] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [fullName, setFullName] = useState("");
-  const [phone, setPhone] = useState("");
+  const [phoneCountryCode, setPhoneCountryCode] = useState<PhoneCountryCode | "">("");
+  const [phonePickerOpen, setPhonePickerOpen] = useState(false);
+  const [phoneCountrySearch, setPhoneCountrySearch] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [referralCode, setReferralCode] = useState(searchParams.get("ref") ?? "");
+  const phonePickerRef = useRef<HTMLDivElement>(null);
+  const selectedPhoneCountry = phoneCountryOptions.find((countryOption) => countryOption.countryCode === phoneCountryCode);
+  const filteredPhoneCountryOptions = useMemo(() => {
+    const searchTerm = phoneCountrySearch.trim().toLowerCase();
+
+    if (!searchTerm) {
+      return phoneCountryOptions;
+    }
+
+    return phoneCountryOptions.filter(
+      (countryOption) =>
+        countryOption.countryName.toLowerCase().includes(searchTerm) ||
+        countryOption.countryCode.toLowerCase().includes(searchTerm) ||
+        countryOption.dialCode.includes(searchTerm)
+    );
+  }, [phoneCountrySearch]);
+
+  useEffect(() => {
+    if (!phonePickerOpen) {
+      return undefined;
+    }
+
+    const closePickerOnOutsideClick = (event: MouseEvent) => {
+      if (event.target instanceof Node && phonePickerRef.current?.contains(event.target)) {
+        return;
+      }
+
+      setPhonePickerOpen(false);
+    };
+
+    document.addEventListener("mousedown", closePickerOnOutsideClick);
+    return () => document.removeEventListener("mousedown", closePickerOnOutsideClick);
+  }, [phonePickerOpen]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setFormError("");
 
     const normalizedEmail = email.trim().toLowerCase();
-    const normalizedPhone = phone.trim().replace(/[^\d+]/g, "");
+    const selectedDialCode = getPhoneDialCode(phoneCountryCode);
+    const normalizedPhoneNumber = phoneNumber.trim().replace(/\D/g, "");
+    const normalizedPhone = selectedDialCode && normalizedPhoneNumber ? `${selectedDialCode}${normalizedPhoneNumber}` : "";
     const trimmedFullName = fullName.trim();
 
     if (!internationalPhonePattern.test(normalizedPhone)) {
-      const message = tt("Enter a valid phone number with country code, for example +216 XXXXXXX.");
+      const message = tt("Select a country code and enter a valid phone number.");
       setFormError(message);
       toast.error(message);
       return;
@@ -295,16 +353,80 @@ export function RegisterPage() {
                   onChange={(event) => setFullName(event.target.value)}
                   required
                 />
-                <input
-                  className="fndk-auth-input"
-                  autoComplete="tel"
-                  inputMode="tel"
-                  placeholder="+216 XXXXXXX"
-                  type="tel"
-                  value={phone}
-                  onChange={(event) => setPhone(event.target.value)}
-                  required
-                />
+                <div className="grid gap-3">
+                  <div className="relative" ref={phonePickerRef}>
+                    <button
+                      aria-expanded={phonePickerOpen}
+                      aria-label={tt("Country code")}
+                      className="fndk-auth-input flex items-center justify-between gap-3 text-left"
+                      onClick={() => setPhonePickerOpen((current) => !current)}
+                      type="button"
+                    >
+                      <span className={selectedPhoneCountry ? "min-w-0 truncate text-white" : "min-w-0 truncate text-white/50"}>
+                        {selectedPhoneCountry?.label ?? tt("Select country code")}
+                      </span>
+                      <ChevronDown className={`h-5 w-5 shrink-0 text-cyan-200 transition ${phonePickerOpen ? "rotate-180" : ""}`} />
+                    </button>
+                    {phonePickerOpen ? (
+                      <div className="absolute left-0 right-0 top-[calc(100%+0.45rem)] z-50 overflow-hidden rounded-[10px] border border-cyan-300/35 bg-[#07105f] shadow-[0_18px_42px_rgba(0,0,0,0.45)]">
+                        <div className="relative border-b border-cyan-200/15 p-2">
+                          <Search className="pointer-events-none absolute left-5 top-1/2 h-4 w-4 -translate-y-1/2 text-cyan-200/75" />
+                          <input
+                            className="w-full rounded-[8px] border border-cyan-300/25 bg-[#0b1576] py-2.5 pl-11 pr-3 text-sm font-bold text-white outline-none placeholder:text-white/40 focus:border-cyan-200"
+                            placeholder={tt("Search country or code")}
+                            value={phoneCountrySearch}
+                            onChange={(event) => setPhoneCountrySearch(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                              }
+
+                              if (event.key === "Escape") {
+                                setPhonePickerOpen(false);
+                              }
+                            }}
+                          />
+                        </div>
+                        <div className="max-h-56 overflow-y-auto py-1">
+                          {filteredPhoneCountryOptions.length ? (
+                            filteredPhoneCountryOptions.map((countryOption) => {
+                              const isSelected = countryOption.countryCode === phoneCountryCode;
+
+                              return (
+                                <button
+                                  className={`flex w-full items-center justify-between gap-3 px-4 py-2.5 text-left text-sm font-bold transition ${
+                                    isSelected ? "bg-cyan-300/18 text-cyan-100" : "text-slate-100 hover:bg-cyan-300/10"
+                                  }`}
+                                  key={countryOption.countryCode}
+                                  onClick={() => {
+                                    setPhoneCountryCode(countryOption.countryCode);
+                                    setPhoneCountrySearch("");
+                                    setPhonePickerOpen(false);
+                                  }}
+                                  type="button"
+                                >
+                                  <span className="min-w-0 truncate">{countryOption.countryName}</span>
+                                  <span className="shrink-0 text-cyan-200">{countryOption.dialCode}</span>
+                                </button>
+                              );
+                            })
+                          ) : (
+                            <div className="px-4 py-3 text-sm font-bold text-slate-300">{tt("No countries found.")}</div>
+                          )}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                  <input
+                    className="fndk-auth-input"
+                    autoComplete="tel-national"
+                    inputMode="tel"
+                    placeholder={tt("Phone number")}
+                    type="tel"
+                    value={phoneNumber}
+                    onChange={(event) => setPhoneNumber(event.target.value.replace(/\D/g, ""))}
+                  />
+                </div>
                 <input
                   className="fndk-auth-input"
                   autoComplete="email"

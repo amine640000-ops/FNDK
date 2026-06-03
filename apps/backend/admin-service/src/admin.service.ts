@@ -158,6 +158,7 @@ type VipTierRow = {
   min_deposit: number;
   daily_roi_min: number;
   daily_roi_max: number;
+  daily_profit_cap: number | null;
   required_direct_members: number;
   activation_limit_per_day: number;
   activation_duration_minutes: number;
@@ -176,6 +177,7 @@ export class AdminService {
           min_deposit::float8 AS min_deposit,
           daily_roi_min::float8 AS daily_roi_min,
           daily_roi_max::float8 AS daily_roi_max,
+          daily_profit_cap::float8 AS daily_profit_cap,
           required_direct_members,
           activation_limit_per_day,
           activation_duration_minutes,
@@ -760,6 +762,16 @@ export class AdminService {
       throw new BadRequestException("Minimum ROI must be less than or equal to maximum ROI");
     }
 
+    const dailyProfitCapProvided = Object.prototype.hasOwnProperty.call(input, "dailyProfitCap");
+    if (
+      dailyProfitCapProvided &&
+      input.dailyProfitCap !== null &&
+      input.dailyProfitCap !== undefined &&
+      (!Number.isFinite(input.dailyProfitCap) || input.dailyProfitCap < 0)
+    ) {
+      throw new BadRequestException("Daily profit cap must be zero or greater");
+    }
+
     const updated = await getOne<VipTierRow>(
       `
         UPDATE vip_tiers
@@ -771,7 +783,8 @@ export class AdminService {
           daily_roi = COALESCE($5, daily_roi_max, daily_roi),
           required_direct_members = COALESCE($6, required_direct_members),
           activation_limit_per_day = COALESCE($7, activation_limit_per_day),
-          activation_duration_minutes = COALESCE($8, activation_duration_minutes)
+          activation_duration_minutes = COALESCE($8, activation_duration_minutes),
+          daily_profit_cap = CASE WHEN $9::boolean THEN $10::numeric ELSE daily_profit_cap END
         WHERE id = $1
         RETURNING
           id,
@@ -779,6 +792,7 @@ export class AdminService {
           min_deposit::float8 AS min_deposit,
           daily_roi_min::float8 AS daily_roi_min,
           daily_roi_max::float8 AS daily_roi_max,
+          daily_profit_cap::float8 AS daily_profit_cap,
           required_direct_members,
           activation_limit_per_day,
           activation_duration_minutes,
@@ -793,7 +807,9 @@ export class AdminService {
         input.dailyRoiMax ?? null,
         input.requiredDirectMembers ?? null,
         input.activationLimitPerDay ?? null,
-        input.activationDurationMinutes ?? null
+        input.activationDurationMinutes ?? null,
+        dailyProfitCapProvided,
+        input.dailyProfitCap ?? null
       ]
     );
 
@@ -836,6 +852,7 @@ export class AdminService {
             min_deposit::float8 AS min_deposit,
             daily_roi_min::float8 AS daily_roi_min,
             daily_roi_max::float8 AS daily_roi_max,
+            daily_profit_cap::float8 AS daily_profit_cap,
             required_direct_members,
             activation_limit_per_day,
             activation_duration_minutes,
@@ -858,6 +875,7 @@ export class AdminService {
             min_deposit::float8 AS min_deposit,
             daily_roi_min::float8 AS daily_roi_min,
             daily_roi_max::float8 AS daily_roi_max,
+            daily_profit_cap::float8 AS daily_profit_cap,
             required_direct_members,
             activation_limit_per_day,
             activation_duration_minutes,
@@ -1035,6 +1053,7 @@ export class AdminService {
       dailyRoiMax: tier.daily_roi_max,
       dailyRoi: tier.daily_roi_max,
       monthlyRoi: Number((tier.daily_roi_max * 30).toFixed(2)),
+      dailyProfitCap: tier.daily_profit_cap,
       requiredDirectMembers: tier.required_direct_members,
       activationLimitPerDay: tier.activation_limit_per_day,
       activationDurationMinutes: tier.activation_duration_minutes,

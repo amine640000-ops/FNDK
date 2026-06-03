@@ -20,6 +20,7 @@ export interface VipTier {
   dailyRoiMax: number;
   dailyRoi: number;
   monthlyRoi: number;
+  dailyProfitCap: number | null;
   requiredDirectMembers: number;
   activationLimitPerDay: number;
   activationDurationMinutes: number;
