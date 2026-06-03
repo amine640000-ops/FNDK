@@ -65,6 +65,12 @@ psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/012_ad_carousel_se
 psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/013_asset_route_settings.sql
 psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/014_verification_codes.sql
 psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/015_fix_deposit_carousel_cta.sql
+psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/016_security_passcode_and_mission_tasks.sql
+psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/017_unique_user_phone.sql
+psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/018_kyc_real_name_fields.sql
+psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/019_public_user_ids.sql
+psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/020_vip_direct_member_requirements.sql
+psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/021_vip_daily_profit_cap.sql
 ```
 
 Initial admin login after running migrations:

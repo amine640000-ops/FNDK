@@ -1,5 +1,5 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
-import { dbQuery, getOne, hashSecurityPasscode, publishEvent, withTransaction } from "@nevo/shared-infra";
+import { BadRequestException, Injectable, OnModuleInit } from "@nestjs/common";
+import { dbQuery, ensureVipDailyProfitCapColumn, getOne, hashSecurityPasscode, publishEvent, withTransaction } from "@nevo/shared-infra";
 import type {
   AiTradingActivation,
   AssetType,
@@ -146,8 +146,12 @@ const MINIMUM_ACCOUNT_ACTIVATION_DEPOSIT = 50;
 const MINIMUM_VALID_MEMBER_ACTIVATION_DEPOSIT = 50;
 
 @Injectable()
-export class TaskService {
+export class TaskService implements OnModuleInit {
   private readonly reservationTimeZone = process.env.RESERVATION_TIME_ZONE ?? "Africa/Tunis";
+
+  async onModuleInit() {
+    await ensureVipDailyProfitCapColumn();
+  }
 
   async getStatus() {
     const settings = await getOne<{ value: boolean }>(
