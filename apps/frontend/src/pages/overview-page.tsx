@@ -29,6 +29,9 @@ const compactNumber = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2
 });
 
+const WALLET_REFRESH_INTERVAL_MS = 60000;
+const MARKET_FEED_REFRESH_INTERVAL_MS = 120000;
+
 const shortcutItems = [
   {
     title: "Agency\nCooperation",
@@ -277,7 +280,7 @@ export function OverviewPage() {
     };
 
     void loadWallet();
-    const intervalId = window.setInterval(() => void loadWallet(), 15000);
+    const intervalId = window.setInterval(() => void loadWallet(), WALLET_REFRESH_INTERVAL_MS);
 
     return () => {
       active = false;
@@ -334,7 +337,7 @@ export function OverviewPage() {
     void loadMarketFeed();
     const intervalId = window.setInterval(() => {
       void loadMarketFeed();
-    }, 30000);
+    }, MARKET_FEED_REFRESH_INTERVAL_MS);
 
     return () => {
       cancelled = true;

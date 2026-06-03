@@ -65,6 +65,8 @@ type NotificationItem = {
   createdAt: string;
 };
 
+const ACTIVATION_STATE_REFRESH_INTERVAL_MS = 60000;
+
 const normalizeNotifications = (value: unknown): NotificationItem[] => {
   if (Array.isArray(value)) {
     return value.flatMap((item) => {
@@ -343,7 +345,7 @@ export function VipPage() {
     };
 
     void loadState();
-    const interval = window.setInterval(() => void loadState(), 15000);
+    const interval = window.setInterval(() => void loadState(), ACTIVATION_STATE_REFRESH_INTERVAL_MS);
 
     return () => {
       active = false;

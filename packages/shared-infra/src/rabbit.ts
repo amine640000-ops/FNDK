@@ -2,6 +2,69 @@ import { connect, type Channel, type ChannelModel, type ConsumeMessage } from "a
 import type { RabbitEventMap } from "@nevo/shared-types";
 
 const EXCHANGE_NAME = "nevo.events";
+const RETRY_COUNT_HEADER = "nevo-retry-count";
+
+const readPositiveIntegerEnv = (name: string, fallback: number) => {
+  const value = process.env[name];
+  if (!value) {
+    return fallback;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const readNonNegativeIntegerEnv = (name: string, fallback: number) => {
+  const value = process.env[name];
+  if (!value) {
+    return fallback;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+};
+
+const getRetryCount = (message: ConsumeMessage) => {
+  const value = message.properties.headers?.[RETRY_COUNT_HEADER];
+  if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number.parseInt(value, 10);
+    if (Number.isInteger(parsed) && parsed >= 0) {
+      return parsed;
+    }
+  }
+
+  return 0;
+};
+
+const scheduleRetry = (
+  channel: Channel,
+  message: ConsumeMessage,
+  routingKey: keyof RabbitEventMap,
+  retryCount: number,
+  retryDelayMs: number
+) => {
+  const timer = setTimeout(() => {
+    try {
+      channel.publish(EXCHANGE_NAME, routingKey, message.content, {
+        persistent: true,
+        contentType: message.properties.contentType ?? "application/json",
+        correlationId: message.properties.correlationId,
+        headers: {
+          ...message.properties.headers,
+          [RETRY_COUNT_HEADER]: retryCount
+        }
+      });
+    } catch (error) {
+      console.error(`[rabbit] failed to republish ${routingKey} retry ${retryCount}`, error);
+    }
+  }, retryDelayMs);
+
+  timer.unref?.();
+};
 
 let connectionPromise: Promise<ChannelModel> | undefined;
 let channelPromise: Promise<Channel> | undefined;
@@ -60,6 +123,10 @@ type EventHandlers = {
 
 export const subscribeToEvents = async (serviceName: string, handlers: EventHandlers) => {
   const channel = await getRabbitChannel();
+  const maxRetries = readNonNegativeIntegerEnv("RABBITMQ_FAILED_EVENT_MAX_RETRIES", 2);
+  const retryDelayMs = readPositiveIntegerEnv("RABBITMQ_FAILED_EVENT_RETRY_DELAY_MS", 5000);
+  await channel.prefetch(readPositiveIntegerEnv("RABBITMQ_PREFETCH", 5));
+
   const queueName = `${serviceName}.queue`;
   await channel.assertQueue(queueName, { durable: true });
 
@@ -87,7 +154,19 @@ export const subscribeToEvents = async (serviceName: string, handlers: EventHand
       channel.ack(message);
     } catch (error) {
       console.error(`[${serviceName}] failed to process ${routingKey}`, error);
-      channel.nack(message, false, true);
+
+      const nextRetryCount = getRetryCount(message) + 1;
+      if (nextRetryCount <= maxRetries) {
+        scheduleRetry(channel, message, routingKey, nextRetryCount, retryDelayMs);
+        channel.ack(message);
+        console.warn(
+          `[${serviceName}] scheduled retry ${nextRetryCount}/${maxRetries} for ${routingKey} in ${retryDelayMs}ms`
+        );
+        return;
+      }
+
+      console.error(`[${serviceName}] dropping ${routingKey} after ${maxRetries} failed retries`);
+      channel.nack(message, false, false);
     }
   });
 };
