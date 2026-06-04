@@ -143,6 +143,20 @@ export class VipService implements OnModuleInit {
       [userId, nextTier.id]
     );
 
+    if (latestAssignment) {
+      await dbQuery(
+        `
+          INSERT INTO notifications (id, user_id, title, message, is_read, created_at)
+          VALUES (gen_random_uuid(), $1, $2, $3, FALSE, NOW())
+        `,
+        [
+          userId,
+          "VIP level updated",
+          `Your account moved to VIP ${nextTier.id} (${nextTier.name}).`
+        ]
+      );
+    }
+
     await publishEvent("vip.upgraded", {
       userId,
       previousTierId: previous.id,

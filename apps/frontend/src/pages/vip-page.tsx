@@ -18,9 +18,9 @@ import {
   X
 } from "lucide-react";
 import type { AiTradingActivation, AssetType, MissionTaskCategory, MissionTaskProgress, VipTier, WalletSummary } from "@nevo/shared-types";
-import { VIP_TIERS, formatCurrency, resolveTierByDeposit } from "@nevo/shared-utils";
+import { VIP_TIERS, formatCurrency } from "@nevo/shared-utils";
 import { useLocation, useNavigate } from "react-router-dom";
-import { getApiErrorMessage, isApiAuthError, notificationApi, taskApi, walletApi } from "@/api/client";
+import { getApiErrorMessage, isApiAuthError, notificationApi, taskApi, vipApi, walletApi } from "@/api/client";
 import { BrandMark } from "@/components/brand-mark";
 import { clearAuthSession, getAccessToken } from "@/lib/auth";
 import { applyLanguagePreference, getNextLanguage, translateText, useAppLanguage } from "@/lib/i18n";
@@ -105,6 +105,14 @@ const compactNumber = new Intl.NumberFormat("en-US", {
   notation: "compact",
   maximumFractionDigits: 2
 });
+
+const sortVipTiersByDeposit = (tiers: VipTier[]) =>
+  [...tiers].sort((left, right) => left.minDeposit - right.minDeposit || left.id - right.id);
+
+const resolveTierByDepositFromList = (amount: number, tiers: VipTier[]) => {
+  const sortedTiers = sortVipTiersByDeposit(tiers);
+  return [...sortedTiers].reverse().find((tier) => amount >= tier.minDeposit) ?? sortedTiers[0] ?? VIP_TIERS[0];
+};
 
 const assetLogoUrls: Partial<Record<AssetType, string>> = {
   BTC: "https://cdn.jsdelivr.net/gh/spothq/cryptocurrency-icons@master/128/color/btc.png",
@@ -232,12 +240,17 @@ export function VipPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const storedVipTiers = useDashboardStore((state) => state.vipTiers) as unknown;
-  const vipTiers = Array.isArray(storedVipTiers) && storedVipTiers.length ? storedVipTiers : VIP_TIERS;
+  const dashboardVipTiers = Array.isArray(storedVipTiers) && storedVipTiers.length ? (storedVipTiers as VipTier[]) : VIP_TIERS;
+  const [remoteVipTiers, setRemoteVipTiers] = useState<VipTier[]>([]);
+  const vipTiers = useMemo(
+    () => sortVipTiersByDeposit(remoteVipTiers.length ? remoteVipTiers : dashboardVipTiers),
+    [dashboardVipTiers, remoteVipTiers]
+  );
   const wallet = useDashboardStore((state) => state.wallet);
   const overview = useDashboardStore((state) => state.overview);
   const depositRecords = useDashboardStore((state) => state.depositRecords);
   const fallbackTierInvestment = Math.max(wallet.activeInvestment, wallet.totalBalance, overview.totalBalance, 0);
-  const staticCurrentTier = resolveTierByDeposit(fallbackTierInvestment);
+  const staticCurrentTier = resolveTierByDepositFromList(fallbackTierInvestment, vipTiers);
   const [activationState, setActivationState] = useState<ActivationState | null>(null);
   const [loadingActivation, setLoadingActivation] = useState(false);
   const [now, setNow] = useState(Date.now());
@@ -280,7 +293,7 @@ export function VipPage() {
   );
 
   const buildFallbackState = (activeInvestment: number): ActivationState => {
-    const tier = resolveTierByDeposit(activeInvestment);
+    const tier = resolveTierByDepositFromList(activeInvestment, vipTiers);
     return {
       currentTier: tier,
       activeInvestment,
@@ -298,6 +311,30 @@ export function VipPage() {
   useEffect(() => {
     setActiveTab(location.pathname.endsWith("/mission") ? "tasks" : "strategy");
   }, [location.pathname]);
+
+  useEffect(() => {
+    const token = getAccessToken();
+    if (!token) {
+      return;
+    }
+
+    let active = true;
+
+    vipApi
+      .get<VipTier[]>("/vip/tiers")
+      .then((response) => {
+        if (active && Array.isArray(response.data) && response.data.length) {
+          setRemoteVipTiers(response.data);
+        }
+      })
+      .catch(() => {
+        // Keep the bundled VIP tiers if the live VIP service is unavailable.
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     const token = getAccessToken();
@@ -397,7 +434,9 @@ export function VipPage() {
     : staticCurrentTier.activationAssets;
   const activationHistory = Array.isArray(liveState.history) ? liveState.history : [];
   const runningActivation = liveState.runningActivation;
-  const nextTier = vipTiers.find((tier) => tier.id === currentTier.id + 1);
+  const nextTier = vipTiers.find(
+    (tier) => tier.minDeposit > currentTier.minDeposit || (tier.minDeposit === currentTier.minDeposit && tier.id > currentTier.id)
+  );
   const countdownSeconds = runningActivation
     ? Math.max(Math.ceil((new Date(runningActivation.endsAt).getTime() - now) / 1000), 0)
     : 0;
@@ -559,7 +598,7 @@ export function VipPage() {
     ? [liveRunningActivation.asset, ...tierActivationAssets.filter((asset) => asset !== liveRunningActivation.asset)]
     : tierActivationAssets;
   const parsedReservationAmount = Number(reservationAmount || 0);
-  const sortedVipTiers = useMemo(() => [...vipTiers].sort((left, right) => left.id - right.id), [vipTiers]);
+  const sortedVipTiers = vipTiers;
   const unlockReferenceAmount = Math.max(liveState.activeInvestment, 0);
   const visibleMissionTasks = useMemo(
     () => missionCenter.tasks.filter((task) => task.enabled && task.category === missionCategory),

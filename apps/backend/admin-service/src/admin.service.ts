@@ -914,6 +914,18 @@ export class AdminService implements OnModuleInit {
         updatedUsers += 1;
 
         if (latestTier) {
+          await dbQuery(
+            `
+              INSERT INTO notifications (id, user_id, title, message, is_read, created_at)
+              VALUES (gen_random_uuid(), $1, $2, $3, FALSE, NOW())
+            `,
+            [
+              user.id,
+              "VIP level updated",
+              `Your account moved to VIP ${starterTier!.id} (${starterTier!.name}).`
+            ]
+          );
+
           await publishEvent("vip.upgraded", {
             userId: user.id,
             previousTierId: latestTier.tier_id,

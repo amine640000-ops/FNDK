@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { AssetType, WalletSummary } from "@nevo/shared-types";
-import { SUPPORTED_ASSETS, formatCurrency } from "@nevo/shared-utils";
+import { formatCurrency } from "@nevo/shared-utils";
 import { getApiErrorMessage, walletApi } from "@/api/client";
 import { getAccessToken } from "@/lib/auth";
 import { useAppLanguage } from "@/lib/i18n";
@@ -194,31 +194,56 @@ export function WithdrawPage() {
   const parsedAmount = useMemo(() => Number(amount || 0), [amount]);
   const feeAmount = useMemo(() => Number((parsedAmount * 0.05).toFixed(2)), [parsedAmount]);
   const netAmount = useMemo(() => Number((parsedAmount - feeAmount).toFixed(2)), [parsedAmount, feeAmount]);
-  const selectableAssets = useMemo(
-    () => (summary.assets.length ? summary.assets.map((walletAsset) => walletAsset.asset) : [...SUPPORTED_ASSETS]),
+  const withdrawableAssets = useMemo(
+    () => summary.assets.filter((walletAsset) => walletAsset.balance > 0).map((walletAsset) => walletAsset.asset),
     [summary.assets]
+  );
+  const hasWithdrawableBalance = summary.availableToWithdraw > 0 && withdrawableAssets.length > 0;
+  const selectableAssets = useMemo(
+    () => (hasWithdrawableBalance ? withdrawableAssets : []),
+    [hasWithdrawableBalance, withdrawableAssets]
   );
   const currencyOptions = useMemo(() => uniqueAssetsByCurrency(selectableAssets), [selectableAssets]);
   const networkOptions = useMemo(() => {
+    if (!hasWithdrawableBalance) {
+      return [];
+    }
+
     if (currencyLabels[asset] === "USDT") {
       const usdtAssets = selectableAssets.filter((selectableAsset) => currencyLabels[selectableAsset] === "USDT");
-      return usdtAssets.length ? usdtAssets : (["USDT_TRC20", "USDT_ERC20"] as AssetType[]);
+      return usdtAssets.length ? usdtAssets : [];
     }
 
     return [asset];
-  }, [asset, selectableAssets]);
+  }, [asset, hasWithdrawableBalance, selectableAssets]);
   const selectedAssetBalance = useMemo(
     () => summary.assets.find((walletAsset) => walletAsset.asset === asset)?.balance ?? 0,
     [asset, summary.assets]
   );
   const selectedCurrencyLabel = currencyLabels[asset];
-  const confirmDisabled = loadingSummary || sendingVerificationCode || submitting || parsedAmount < 1;
+  const confirmDisabled =
+    loadingSummary ||
+    !hasWithdrawableBalance ||
+    selectedAssetBalance <= 0 ||
+    sendingVerificationCode ||
+    submitting ||
+    parsedAmount < 1 ||
+    parsedAmount > selectedAssetBalance;
 
   const resetVerification = () => {
     setVerificationCode("");
     setSecurityPasscode("");
     setVerificationCodeSent(false);
   };
+
+  useEffect(() => {
+    if (loadingSummary || !withdrawableAssets.length || withdrawableAssets.includes(asset)) {
+      return;
+    }
+
+    setAsset(withdrawableAssets[0]);
+    resetVerification();
+  }, [asset, loadingSummary, withdrawableAssets]);
 
   const reservePendingWithdrawal = (withdrawal: WithdrawalResponse) => {
     setSummary((current) => ({
@@ -245,6 +270,16 @@ export function WithdrawPage() {
 
     if (!parsedAmount || parsedAmount < 1) {
       toast.error("Entrez un montant de retrait d'au moins 1.");
+      return null;
+    }
+
+    if (!hasWithdrawableBalance) {
+      toast.error("Vous devez avoir de l'argent disponible dans votre portefeuille avant de retirer.");
+      return null;
+    }
+
+    if (selectedAssetBalance <= 0) {
+      toast.error(`Aucun solde ${selectedCurrencyLabel} disponible pour le retrait.`);
       return null;
     }
 
@@ -351,7 +386,12 @@ export function WithdrawPage() {
       <main className="withdraw-reference-content">
         <section className="withdraw-field-block">
           <div className="withdraw-label">Devise D'arrivée</div>
-          <button className="withdraw-select" onClick={() => setPickerMode("asset")} type="button">
+          <button
+            className="withdraw-select"
+            disabled={loadingSummary || !hasWithdrawableBalance}
+            onClick={() => setPickerMode("asset")}
+            type="button"
+          >
             <span className="withdraw-select-left">
               <TokenMark asset={asset} />
               <span>{selectedCurrencyLabel}</span>
@@ -362,13 +402,32 @@ export function WithdrawPage() {
 
         <section className="withdraw-field-block withdraw-network-block">
           <div className="withdraw-label">Réseau</div>
-          <button className="withdraw-select" onClick={() => setPickerMode("network")} type="button">
+          <button
+            className="withdraw-select"
+            disabled={loadingSummary || !hasWithdrawableBalance}
+            onClick={() => setPickerMode("network")}
+            type="button"
+          >
             <span className="withdraw-select-left">
               <NetworkMark asset={asset} />
               <span>{networkLabels[asset]}</span>
             </span>
             <ChevronDown className="withdraw-chevron" />
           </button>
+        </section>
+
+        <section className={`withdraw-balance-card ${!loadingSummary && !hasWithdrawableBalance ? "is-empty" : ""}`}>
+          <div>
+            <span>Disponible au retrait</span>
+            <strong>{loadingSummary ? "Chargement..." : formatCurrency(summary.availableToWithdraw)}</strong>
+          </div>
+          <p>
+            {loadingSummary
+              ? "Vérification du solde du portefeuille."
+              : hasWithdrawableBalance
+                ? `${selectedCurrencyLabel} disponible: ${formatCurrency(selectedAssetBalance)}`
+                : "Vous devez avoir de l'argent dans votre portefeuille avant de demander un retrait."}
+          </p>
         </section>
 
         <section className="withdraw-amount-section">
@@ -378,7 +437,9 @@ export function WithdrawPage() {
           <div className="withdraw-amount-shell">
             <input
               id="withdraw-amount"
+              disabled={!hasWithdrawableBalance}
               inputMode="decimal"
+              max={selectedAssetBalance || undefined}
               min="1"
               step="0.01"
               type="text"
@@ -403,6 +464,7 @@ export function WithdrawPage() {
           <div className="withdraw-address-shell">
             <input
               className="withdraw-address-input"
+              disabled={!hasWithdrawableBalance}
               value={destinationAddress}
               onChange={(event) => {
                 setDestinationAddress(event.target.value);

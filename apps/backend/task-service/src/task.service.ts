@@ -31,6 +31,7 @@ type ActivationTierRow = {
   activation_limit_per_day: number;
   activation_duration_minutes: number;
   activation_assets: AssetType[];
+  features: string[];
   active_investment: number;
   valid_direct_members: number;
 };
@@ -1101,6 +1102,7 @@ export class TaskService implements OnModuleInit {
           vt.activation_limit_per_day,
           vt.activation_duration_minutes,
           vt.activation_assets,
+          vt.features,
           ap.active_investment,
           vdm.count AS valid_direct_members
         FROM active_positions ap
@@ -1128,6 +1130,7 @@ export class TaskService implements OnModuleInit {
       activation_limit_per_day: starter.activationLimitPerDay,
       activation_duration_minutes: starter.activationDurationMinutes,
       activation_assets: starter.activationAssets,
+      features: starter.features,
       active_investment: 0,
       valid_direct_members: 0
     };
@@ -1441,7 +1444,7 @@ export class TaskService implements OnModuleInit {
       activationLimitPerDay: tier.activation_limit_per_day,
       activationDurationMinutes: tier.activation_duration_minutes,
       activationAssets: tier.activation_assets,
-      features: getTierConfig(tier.id).features
+      features: Array.isArray(tier.features) ? tier.features : getTierConfig(tier.id).features
     };
   }
 

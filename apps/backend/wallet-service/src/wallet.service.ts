@@ -400,7 +400,11 @@ export class WalletService implements OnModuleInit {
     );
     const spendableBalance = Number(Math.max((wallet?.balance ?? 0) - (wallet?.pending_withdrawals ?? 0), 0).toFixed(2));
 
-    if (!wallet || spendableBalance < dto.amount) {
+    if (!wallet || spendableBalance <= 0) {
+      throw new BadRequestException("Add funds to your wallet before requesting a withdrawal");
+    }
+
+    if (spendableBalance < dto.amount) {
       throw new BadRequestException("Insufficient balance for withdrawal request");
     }
 
@@ -459,7 +463,11 @@ export class WalletService implements OnModuleInit {
     const row = wallet.rows[0];
     const spendableBalance = Number(Math.max((row?.balance ?? 0) - (row?.pending_withdrawals ?? 0), 0).toFixed(2));
 
-    if (!row || spendableBalance < amount) {
+    if (!row || spendableBalance <= 0) {
+      throw new BadRequestException("Add funds to your wallet before requesting a withdrawal");
+    }
+
+    if (spendableBalance < amount) {
       throw new BadRequestException("Insufficient balance for withdrawal request");
     }
   }

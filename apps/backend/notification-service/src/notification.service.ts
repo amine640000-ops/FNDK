@@ -20,17 +20,29 @@ export class NotificationService implements OnModuleInit {
         await this.insertNotification(userId, "Welcome to FNDK", `Your account for ${fullName} is pending email verification.`);
       },
       "deposit.confirmed": async ({ userId, amount, asset }: RabbitEventMap["deposit.confirmed"]) => {
-        await this.insertNotification(userId, "Deposit confirmed", `${amount} ${asset} has been approved and activated.`);
+        await this.insertNotificationIfMissing(
+          userId,
+          "Deposit approved",
+          `Your ${asset} deposit of ${amount} has been approved.`
+        );
       },
       "withdrawal.approved": async ({ userId, amount, asset }: RabbitEventMap["withdrawal.approved"]) => {
-        await this.insertNotification(userId, "Withdrawal approved", `${amount} ${asset} is queued for settlement.`);
+        await this.insertNotificationIfMissing(
+          userId,
+          "Withdrawal approved",
+          `Your ${asset} withdrawal request has been approved for processing.`
+        );
       },
       "profit.distributed": async ({ userId, profit, strategy }: RabbitEventMap["profit.distributed"]) => {
         await this.insertNotification(userId, "Profit credited", `${profit.toFixed(2)} USD was credited from ${strategy}.`);
       },
       "vip.upgraded": async ({ userId, nextTierId }: RabbitEventMap["vip.upgraded"]) => {
         const tier = await getOne<{ name: string }>("SELECT name FROM vip_tiers WHERE id = $1", [nextTierId]);
-        await this.insertNotification(userId, "VIP upgraded", `Your account moved to ${tier?.name ?? "a new tier"}.`);
+        await this.insertNotificationIfMissing(
+          userId,
+          "VIP level updated",
+          `Your account moved to VIP ${nextTierId} (${tier?.name ?? "a new tier"}).`
+        );
       }
     });
   }
@@ -121,6 +133,43 @@ export class NotificationService implements OnModuleInit {
         INSERT INTO notifications (id, user_id, title, message, is_read, created_at)
         VALUES (gen_random_uuid(), $1, $2, $3, FALSE, NOW())
         RETURNING id, user_id, title, message, is_read, created_at
+      `,
+      [userId, title, message]
+    );
+
+    return {
+      id: result!.id,
+      userId: result!.user_id,
+      title: result!.title,
+      message: result!.message,
+      isRead: result!.is_read,
+      createdAt: result!.created_at
+    };
+  }
+
+  private async insertNotificationIfMissing(userId: string, title: string, message: string) {
+    const result = await getOne<NotificationRow>(
+      `
+        WITH existing AS (
+          SELECT id, user_id, title, message, is_read, created_at
+          FROM notifications
+          WHERE user_id = $1
+            AND title = $2
+            AND message = $3
+            AND created_at > NOW() - INTERVAL '10 minutes'
+          ORDER BY created_at DESC
+          LIMIT 1
+        ),
+        inserted AS (
+          INSERT INTO notifications (id, user_id, title, message, is_read, created_at)
+          SELECT gen_random_uuid(), $1, $2, $3, FALSE, NOW()
+          WHERE NOT EXISTS (SELECT 1 FROM existing)
+          RETURNING id, user_id, title, message, is_read, created_at
+        )
+        SELECT id, user_id, title, message, is_read, created_at FROM inserted
+        UNION ALL
+        SELECT id, user_id, title, message, is_read, created_at FROM existing
+        LIMIT 1
       `,
       [userId, title, message]
     );
