@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getCountries, getCountryCallingCode } from "libphonenumber-js/min";
+import { getCountries, getCountryCallingCode, parsePhoneNumberFromString } from "libphonenumber-js/min";
 import { ChevronDown, Eye, Headphones, Languages, Loader2, Search, ShieldQuestion } from "lucide-react";
 import toast from "react-hot-toast";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -35,6 +35,35 @@ const phoneCountryOptions = getCountries()
 
 const getPhoneDialCode = (countryCode: PhoneCountryCode | "") =>
   phoneCountryOptions.find((countryOption) => countryOption.countryCode === countryCode)?.dialCode ?? "";
+
+const getDialCodeDigits = (countryCode: PhoneCountryCode | "") => getPhoneDialCode(countryCode).replace(/\D/g, "");
+
+const normalizeNationalPhoneInput = (value: string, countryCode: PhoneCountryCode | "") => {
+  const trimmedValue = value.trim();
+  const dialCodeDigits = getDialCodeDigits(countryCode);
+  let phoneDigits = trimmedValue.replace(/\D/g, "");
+
+  if (dialCodeDigits && (trimmedValue.startsWith("+") || trimmedValue.startsWith("00")) && phoneDigits.startsWith(dialCodeDigits)) {
+    phoneDigits = phoneDigits.slice(dialCodeDigits.length);
+  }
+
+  return phoneDigits;
+};
+
+const buildInternationalPhone = (nationalPhone: string, countryCode: PhoneCountryCode | "") => {
+  if (!countryCode || !nationalPhone.trim()) {
+    return "";
+  }
+
+  const parsedPhone = parsePhoneNumberFromString(nationalPhone.trim(), countryCode);
+  if (parsedPhone?.isValid()) {
+    return parsedPhone.number;
+  }
+
+  const selectedDialCode = getPhoneDialCode(countryCode);
+  const normalizedPhoneNumber = normalizeNationalPhoneInput(nationalPhone, countryCode);
+  return selectedDialCode && normalizedPhoneNumber ? `${selectedDialCode}${normalizedPhoneNumber}` : "";
+};
 
 const resolveApiErrorMessage = (error: unknown, fallback: string) => {
   if (!axios.isAxiosError(error)) {
@@ -135,9 +164,7 @@ export function RegisterPage() {
     setFormError("");
 
     const normalizedEmail = email.trim().toLowerCase();
-    const selectedDialCode = getPhoneDialCode(phoneCountryCode);
-    const normalizedPhoneNumber = phoneNumber.trim().replace(/\D/g, "");
-    const normalizedPhone = selectedDialCode && normalizedPhoneNumber ? `${selectedDialCode}${normalizedPhoneNumber}` : "";
+    const normalizedPhone = buildInternationalPhone(phoneNumber, phoneCountryCode);
     const trimmedFullName = fullName.trim();
 
     if (!internationalPhonePattern.test(normalizedPhone)) {
@@ -417,15 +444,25 @@ export function RegisterPage() {
                       </div>
                     ) : null}
                   </div>
-                  <input
-                    className="fndk-auth-input"
-                    autoComplete="tel-national"
-                    inputMode="tel"
-                    placeholder={tt("Phone number")}
-                    type="tel"
-                    value={phoneNumber}
-                    onChange={(event) => setPhoneNumber(event.target.value.replace(/\D/g, ""))}
-                  />
+                  <div className="fndk-auth-input fndk-auth-phone-field flex items-center gap-3 px-3 py-2.5">
+                    <span
+                      className={`shrink-0 rounded-[8px] border border-cyan-200/20 bg-cyan-300/10 px-3 py-2 text-sm font-extrabold ${
+                        selectedPhoneCountry ? "text-cyan-100" : "text-white/45"
+                      }`}
+                    >
+                      {selectedPhoneCountry?.dialCode ?? "+"}
+                    </span>
+                    <input
+                      className="min-w-0 flex-1 bg-transparent py-1 text-base font-bold text-white outline-none placeholder:text-white/45"
+                      autoComplete="tel-national"
+                      inputMode="tel"
+                      placeholder={tt("Local phone number")}
+                      type="tel"
+                      value={phoneNumber}
+                      onChange={(event) => setPhoneNumber(normalizeNationalPhoneInput(event.target.value, phoneCountryCode))}
+                      required
+                    />
+                  </div>
                 </div>
                 <input
                   className="fndk-auth-input"

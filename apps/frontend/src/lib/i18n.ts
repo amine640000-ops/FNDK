@@ -73,6 +73,7 @@ const arabicLabels: Record<string, string> = {
   "Login Now": "تسجيل الدخول الآن",
   "Login service is unreachable. Check the identity API status.": "خدمة تسجيل الدخول غير متاحة. تحقق من خدمة الهوية.",
   "Login successful": "تم تسجيل الدخول بنجاح",
+  "Local phone number": "رقم الهاتف المحلي",
   "Mark all as read": "وضع الكل كمقروء",
   "Mark read": "وضع كمقروء",
   "Monthly usage": "الاستخدام الشهري",
