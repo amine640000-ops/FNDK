@@ -24,7 +24,7 @@ const emptySummary: LuckyDrawSummary = {
 };
 
 const spinDurationMs = 4600;
-const wheelColors = ["#0ea5e9", "#f97316", "#22c55e", "#a855f7", "#facc15", "#ef4444", "#14b8a6", "#f472b6"];
+const wheelColors = ["#102a4c", "#17365f", "#1d4775", "#245889", "#2b6a96", "#334f70", "#263b58", "#1b314d"];
 
 const defaultPrizes: LuckyDrawPrize[] = [
   {
@@ -102,8 +102,6 @@ const formatReward = (prize: { rewardAmount?: number; rewardAsset?: LuckyDrawPri
 
   return `${prize.rewardAmount.toFixed(2)} ${prize.rewardAsset.startsWith("USDT") ? "USDT" : prize.rewardAsset}`;
 };
-
-const shortPrizeLabel = (label: string) => (label.length > 22 ? `${label.slice(0, 20)}...` : label);
 
 const formatEventDate = (value: string) =>
   new Date(value).toLocaleString("en-GB", {
@@ -264,19 +262,21 @@ export function LuckyDrawPage() {
         <section className="mt-5 grid place-items-center">
           <div className="relative h-72 w-72 sm:h-80 sm:w-80">
             <div
-              className="absolute left-1/2 top-0 z-30 h-9 w-7 -translate-x-1/2 -translate-y-2 bg-white shadow-[0_8px_24px_rgba(0,0,0,0.35)]"
+              className="absolute left-1/2 top-1 z-30 h-8 w-5 -translate-x-1/2 -translate-y-2 bg-cyan-100 shadow-[0_10px_26px_rgba(0,0,0,0.38)]"
               style={{ clipPath: "polygon(50% 100%, 0 0, 100% 0)" }}
             />
             <div
-              className="absolute inset-0 overflow-hidden rounded-full border-[10px] border-white/20 shadow-[0_0_55px_rgba(34,211,238,0.34)]"
+              className="absolute inset-0 overflow-hidden rounded-full border-[9px] border-cyan-100/10 bg-[#091442] shadow-[0_24px_70px_rgba(0,0,0,0.46),0_0_42px_rgba(34,211,238,0.16)]"
               style={{
                 background: wheelGradient,
                 transform: `rotate(${wheelRotation}deg)`,
                 transition: spinning ? `transform ${spinDurationMs}ms cubic-bezier(0.12, 0.72, 0.12, 1)` : "none"
               }}
             >
-              <div className="absolute inset-4 rounded-full border border-white/25" />
-              {wheelSegments.map((segment) => (
+              <div className="absolute inset-0 rounded-full bg-[radial-gradient(circle_at_50%_50%,rgba(5,8,73,0)_0_51%,rgba(255,255,255,0.10)_52%,rgba(255,255,255,0)_53%),radial-gradient(circle_at_35%_22%,rgba(255,255,255,0.20),rgba(255,255,255,0)_36%)]" />
+              <div className="absolute inset-[1.05rem] rounded-full border border-white/10" />
+              <div className="absolute inset-[3.55rem] rounded-full border border-cyan-100/10" />
+              {wheelSegments.map((segment, index) => (
                 <div
                   key={segment.id}
                   className="absolute left-1/2 top-1/2 origin-center"
@@ -285,18 +285,18 @@ export function LuckyDrawPage() {
                   }}
                 >
                   <span
-                    className="block w-20 rounded-full border border-white/20 bg-black/35 px-2 py-1 text-center text-[10px] font-extrabold uppercase leading-tight text-white shadow-[0_6px_18px_rgba(0,0,0,0.26)] sm:w-24 sm:text-[11px]"
+                    className="grid h-8 w-8 place-items-center rounded-full border border-white/15 bg-[#061238]/55 text-[11px] font-bold text-cyan-50/80 shadow-[0_8px_20px_rgba(0,0,0,0.28)] backdrop-blur-sm sm:h-9 sm:w-9 sm:text-xs"
                     style={{
                       transform: segment.centerDeg > 90 && segment.centerDeg < 270 ? "rotate(180deg)" : "none"
                     }}
                   >
-                    {tt(shortPrizeLabel(segment.label))}
+                    {String(index + 1).padStart(2, "0")}
                   </span>
                 </div>
               ))}
             </div>
             <button
-              className="absolute left-1/2 top-1/2 z-20 grid h-28 w-28 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-white/25 bg-[#050849] text-center text-sm font-extrabold uppercase tracking-[0.16em] text-white shadow-[0_18px_40px_rgba(0,0,0,0.45)] transition hover:border-cyan-200/60 disabled:opacity-60"
+              className="absolute left-1/2 top-1/2 z-20 grid h-28 w-28 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-cyan-100/20 bg-[#07133f] text-center text-sm font-extrabold uppercase tracking-[0.16em] text-cyan-50 shadow-[0_18px_40px_rgba(0,0,0,0.48),inset_0_1px_0_rgba(255,255,255,0.10)] transition hover:border-cyan-200/50 disabled:opacity-60"
               disabled={loading || spinning || !summary.event.isActive || summary.availableSpins <= 0}
               onClick={() => void useSpin()}
               type="button"
