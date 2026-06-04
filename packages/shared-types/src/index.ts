@@ -9,7 +9,7 @@ export type AssetType =
   | "EUR"
   | "GBP"
   | "STOCKS";
-export type TransactionType = "deposit" | "withdrawal" | "profit" | "referral" | "adjustment";
+export type TransactionType = "deposit" | "withdrawal" | "profit" | "referral" | "adjustment" | "lucky_draw_prize";
 export type TransactionStatus = "pending" | "approved" | "rejected";
 
 export interface VipTier {
@@ -72,6 +72,7 @@ export interface LuckyDrawEventInfo {
   startsAt: string;
   endsAt: string;
   isActive: boolean;
+  showPrizeChancesToUsers: boolean;
   rules: string[];
   prizes: LuckyDrawPrize[];
 }
@@ -83,7 +84,11 @@ export interface LuckyDrawSpinAward {
   spinsUsed: number;
   note: string;
   createdAt: string;
+  expiresAt?: string | null;
+  revokedAt?: string | null;
 }
+
+export type LuckyDrawRewardStatus = "none" | "credited" | "pending_review" | "rejected";
 
 export interface LuckyDrawSpinResult {
   id: string;
@@ -93,6 +98,9 @@ export interface LuckyDrawSpinResult {
   prizeIndex?: number;
   rewardAmount?: number;
   rewardAsset?: AssetType;
+  rewardStatus?: LuckyDrawRewardStatus;
+  rollValue?: number;
+  rollMax?: number;
 }
 
 export interface LuckyDrawSummary {
@@ -154,6 +162,9 @@ export interface LuckyDrawPrize {
   chance: number;
   rewardAmount: number;
   rewardAsset: AssetType;
+  maxWinners?: number | null;
+  maxTotalRewardAmount?: number | null;
+  reviewRequired?: boolean;
 }
 
 export interface LuckyDrawEventConfig {
@@ -165,9 +176,59 @@ export interface LuckyDrawEventConfig {
   referralSpinReward: number;
   depositOneSpinAmount: number;
   depositTwoSpinAmount: number;
+  maxTotalRewardAmount: number;
+  maxRewardPerUserAmount: number;
+  instantRewardMaxAmount: number;
+  requireKycAboveAmount: number;
+  showPrizeChancesToUsers: boolean;
   rules: string[];
   prizeLabels: string[];
   prizes: LuckyDrawPrize[];
+}
+
+export interface LuckyDrawAnalytics {
+  totalSpins: number;
+  usedSpins: number;
+  availableSpins: number;
+  resultCount: number;
+  creditedRewardAmount: number;
+  pendingRewardAmount: number;
+  rejectedRewardAmount: number;
+  eventBudgetRemaining: number | null;
+  prizes: Array<{
+    id: string;
+    label: string;
+    chance: number;
+    rewardAmount: number;
+    rewardAsset: AssetType;
+    wins: number;
+    creditedAmount: number;
+    pendingAmount: number;
+    maxWinners?: number | null;
+    maxTotalRewardAmount?: number | null;
+  }>;
+  pendingReviews: Array<{
+    id: string;
+    transactionId: string;
+    userId: string;
+    userName: string;
+    label: string;
+    rewardAmount: number;
+    rewardAsset: AssetType;
+    createdAt: string;
+  }>;
+  recentAwards: Array<{
+    id: string;
+    userId: string;
+    userName: string;
+    sourceType: string;
+    spinCount: number;
+    spinsUsed: number;
+    note: string;
+    createdAt: string;
+    expiresAt?: string | null;
+    revokedAt?: string | null;
+  }>;
 }
 
 export interface AdminPlatformSettings {

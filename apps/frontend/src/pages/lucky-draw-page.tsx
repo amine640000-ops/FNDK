@@ -13,6 +13,7 @@ const emptySummary: LuckyDrawSummary = {
     startsAt: "2026-06-03T22:00:00.000Z",
     endsAt: "2026-06-08T21:59:00.000Z",
     isActive: false,
+    showPrizeChancesToUsers: false,
     rules: [],
     prizes: []
   },
@@ -113,6 +114,22 @@ const formatEventDate = (value: string) =>
     timeZone: "Europe/Berlin"
   });
 
+const getRewardStatusLabel = (result: LuckyDrawSpinResult) => {
+  if (!result.rewardAmount || result.rewardAmount <= 0) {
+    return "";
+  }
+
+  if (result.rewardStatus === "pending_review") {
+    return "Pending admin review";
+  }
+
+  if (result.rewardStatus === "rejected") {
+    return "Prize rejected";
+  }
+
+  return "Prize credited";
+};
+
 export function LuckyDrawPage() {
   const language = useAppLanguage();
   const tt = (text: string) => translateText(language, text);
@@ -150,7 +167,13 @@ export function LuckyDrawPage() {
 
     try {
       const response = await walletApi.get<LuckyDrawSummary>("/wallet/lucky-draw");
-      setSummary(response.data);
+      setSummary({
+        ...response.data,
+        event: {
+          ...emptySummary.event,
+          ...response.data.event
+        }
+      });
     } catch (error) {
       toast.error(getApiErrorMessage(error, tt("Could not load Lucky Draw.")));
     } finally {
@@ -305,11 +328,18 @@ export function LuckyDrawPage() {
             </button>
           </div>
           {lastResult ? (
-            <div className="mt-5 w-full rounded-[22px] border border-emerald-300/25 bg-emerald-300/10 px-4 py-4 text-center text-sm font-semibold text-emerald-100">
-              <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-100/70">{tt("Prize result")}</div>
+            <div className={`mt-5 w-full rounded-[22px] border px-4 py-4 text-center text-sm font-semibold ${
+              lastResult.rewardStatus === "pending_review"
+                ? "border-amber-300/25 bg-amber-300/10 text-amber-100"
+                : "border-emerald-300/25 bg-emerald-300/10 text-emerald-100"
+            }`}>
+              <div className="text-[11px] uppercase tracking-[0.18em] opacity-70">{tt("Prize result")}</div>
               <div className="mt-1 text-lg font-extrabold text-white">{tt(lastResult.resultLabel)}</div>
               {formatReward(lastResult) ? (
                 <div className="mt-2 text-sm text-emerald-100">{formatReward(lastResult)}</div>
+              ) : null}
+              {getRewardStatusLabel(lastResult) ? (
+                <div className="mt-2 text-xs font-bold uppercase tracking-[0.14em] opacity-80">{tt(getRewardStatusLabel(lastResult))}</div>
               ) : null}
             </div>
           ) : null}
@@ -321,7 +351,7 @@ export function LuckyDrawPage() {
             {tt("Prize pool")}
           </div>
           <div className="grid gap-3">
-            {wheelSegments.map((segment) => (
+            {wheelSegments.map((segment, index) => (
               <div key={segment.id} className="flex items-center justify-between gap-3 rounded-[18px] border border-white/10 bg-white/[0.04] px-4 py-3">
                 <div className="min-w-0">
                   <div className="truncate text-sm font-semibold text-white">{tt(segment.label)}</div>
@@ -330,7 +360,7 @@ export function LuckyDrawPage() {
                   ) : null}
                 </div>
                 <div className="shrink-0 rounded-full border border-white/10 px-3 py-1 text-xs font-extrabold text-cyan-100">
-                  {segment.actualChance.toFixed(2)}%
+                  {summary.event.showPrizeChancesToUsers ? `${segment.actualChance.toFixed(2)}%` : `#${String(index + 1).padStart(2, "0")}`}
                 </div>
               </div>
             ))}
@@ -351,6 +381,11 @@ export function LuckyDrawPage() {
                       <div className="text-sm font-semibold text-white">{tt(result.resultLabel)}</div>
                       {formatReward(result) ? (
                         <div className="mt-1 text-[12px] font-semibold text-emerald-100">{formatReward(result)}</div>
+                      ) : null}
+                      {getRewardStatusLabel(result) ? (
+                        <div className="mt-1 text-[11px] font-bold uppercase tracking-[0.12em] text-amber-100/85">
+                          {tt(getRewardStatusLabel(result))}
+                        </div>
                       ) : null}
                       <div className="mt-1 text-[12px] text-white/35">{new Date(result.createdAt).toLocaleString("en-GB")}</div>
                     </div>
@@ -395,6 +430,13 @@ export function LuckyDrawPage() {
                     <div>
                       <div className="text-sm font-semibold text-white">{tt(award.note)}</div>
                       <div className="mt-1 text-[12px] text-white/35">{new Date(award.createdAt).toLocaleString("en-GB")}</div>
+                      {award.expiresAt || award.revokedAt ? (
+                        <div className="mt-1 text-[11px] font-bold uppercase tracking-[0.12em] text-amber-100/80">
+                          {award.revokedAt
+                            ? tt("Revoked")
+                            : `${tt("Expires")} ${new Date(award.expiresAt!).toLocaleDateString("en-GB")}`}
+                        </div>
+                      ) : null}
                     </div>
                     <div className="text-right text-sm font-extrabold text-cyan-200">
                       +{award.spinCount}

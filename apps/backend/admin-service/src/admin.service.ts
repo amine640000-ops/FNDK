@@ -6,6 +6,7 @@ import type {
   AdminPlatformSettings,
   AssetRouteSetting,
   AssetType,
+  LuckyDrawAnalytics,
   LuckyDrawEventConfig,
   LuckyDrawPrize,
   MissionTaskSetting,
@@ -14,7 +15,7 @@ import type {
 } from "@nevo/shared-types";
 import { DEFAULT_ASSET_LABELS, DEFAULT_ASSET_ROUTE_SETTINGS, SUPPORTED_ASSETS } from "@nevo/shared-utils";
 import type { PoolClient } from "pg";
-import type { AdjustUserBalanceDto, UpdateAdminSettingsDto, UpdateVipTierDto } from "./admin.dto";
+import type { AdjustUserBalanceDto, GrantLuckyDrawSpinsDto, UpdateAdminSettingsDto, UpdateVipTierDto } from "./admin.dto";
 
 type AdminSettingValue =
   | string
@@ -152,6 +153,11 @@ const defaultLuckyDrawConfig: LuckyDrawEventConfig = {
   referralSpinReward: 1,
   depositOneSpinAmount: 200,
   depositTwoSpinAmount: 300,
+  maxTotalRewardAmount: 500,
+  maxRewardPerUserAmount: 50,
+  instantRewardMaxAmount: 10,
+  requireKycAboveAmount: 10,
+  showPrizeChancesToUsers: false,
   rules: [
     "Invite a direct referral who makes their first deposit of 100 USDT or more to receive 1 spin.",
     "Deposit 200 USDT or more in one transaction to receive 1 spin.",
@@ -577,7 +583,323 @@ export class AdminService implements OnModuleInit {
     }));
   }
 
-  async approveTransaction(transactionId: string) {
+  async getLuckyDrawAnalytics(): Promise<LuckyDrawAnalytics> {
+    const settings = await this.getSettings();
+    const config = settings.luckyDraw;
+    const [spinTotals, rewardTotals, prizeTotals, pendingReviews, recentAwards] = await Promise.all([
+      getOne<{
+        total_spins: number;
+        used_spins: number;
+        available_spins: number;
+      }>(
+        `
+          SELECT
+            COALESCE(SUM(spin_count), 0)::int AS total_spins,
+            COALESCE(SUM(spins_used), 0)::int AS used_spins,
+            COALESCE(SUM(GREATEST(spin_count - spins_used, 0)) FILTER (
+              WHERE revoked_at IS NULL
+                AND (expires_at IS NULL OR expires_at > NOW())
+            ), 0)::int AS available_spins
+          FROM lucky_draw_spin_ledger
+          WHERE created_at >= $1::timestamptz
+            AND created_at <= $2::timestamptz
+        `,
+        [config.startsAt, config.endsAt]
+      ),
+      getOne<{
+        result_count: number;
+        credited_reward_amount: number;
+        pending_reward_amount: number;
+        rejected_reward_amount: number;
+      }>(
+        `
+          SELECT
+            COUNT(*)::int AS result_count,
+            COALESCE(SUM(reward_amount) FILTER (WHERE reward_status = 'credited'), 0)::float8 AS credited_reward_amount,
+            COALESCE(SUM(reward_amount) FILTER (WHERE reward_status = 'pending_review'), 0)::float8 AS pending_reward_amount,
+            COALESCE(SUM(reward_amount) FILTER (WHERE reward_status = 'rejected'), 0)::float8 AS rejected_reward_amount
+          FROM lucky_draw_spin_results
+          WHERE created_at >= $1::timestamptz
+            AND created_at <= $2::timestamptz
+        `,
+        [config.startsAt, config.endsAt]
+      ),
+      dbQuery<{
+        prize_id: string;
+        wins: number;
+        credited_amount: number;
+        pending_amount: number;
+      }>(
+        `
+          SELECT
+            prize_id,
+            COUNT(*) FILTER (WHERE reward_status <> 'rejected')::int AS wins,
+            COALESCE(SUM(reward_amount) FILTER (WHERE reward_status = 'credited'), 0)::float8 AS credited_amount,
+            COALESCE(SUM(reward_amount) FILTER (WHERE reward_status = 'pending_review'), 0)::float8 AS pending_amount
+          FROM lucky_draw_spin_results
+          WHERE created_at >= $1::timestamptz
+            AND created_at <= $2::timestamptz
+            AND prize_id IS NOT NULL
+          GROUP BY prize_id
+        `,
+        [config.startsAt, config.endsAt]
+      ),
+      dbQuery<{
+        id: string;
+        transaction_id: string;
+        user_id: string;
+        user_name: string;
+        label: string;
+        reward_amount: number;
+        reward_asset: AssetType;
+        created_at: string;
+      }>(
+        `
+          SELECT
+            r.id,
+            r.reward_transaction_id::text AS transaction_id,
+            r.user_id,
+            u.full_name AS user_name,
+            r.result_label AS label,
+            r.reward_amount::float8 AS reward_amount,
+            r.reward_asset AS reward_asset,
+            r.created_at
+          FROM lucky_draw_spin_results r
+          JOIN users u ON u.id = r.user_id
+          WHERE r.reward_status = 'pending_review'
+            AND r.reward_transaction_id IS NOT NULL
+          ORDER BY r.created_at DESC
+          LIMIT 25
+        `
+      ),
+      dbQuery<{
+        id: string;
+        user_id: string;
+        user_name: string;
+        source_type: string;
+        spin_count: number;
+        spins_used: number;
+        note: string;
+        created_at: string;
+        expires_at: string | null;
+        revoked_at: string | null;
+      }>(
+        `
+          SELECT
+            l.id,
+            l.beneficiary_user_id AS user_id,
+            u.full_name AS user_name,
+            l.source_type,
+            l.spin_count,
+            l.spins_used,
+            l.note,
+            l.created_at,
+            l.expires_at,
+            l.revoked_at
+          FROM lucky_draw_spin_ledger l
+          JOIN users u ON u.id = l.beneficiary_user_id
+          ORDER BY l.created_at DESC
+          LIMIT 25
+        `
+      )
+    ]);
+
+    const prizeUsage = new Map(prizeTotals.rows.map((row) => [row.prize_id, row]));
+    const creditedRewardAmount = rewardTotals?.credited_reward_amount ?? 0;
+    const pendingRewardAmount = rewardTotals?.pending_reward_amount ?? 0;
+    const eventBudgetRemaining = config.maxTotalRewardAmount > 0
+      ? Number(Math.max(0, config.maxTotalRewardAmount - creditedRewardAmount - pendingRewardAmount).toFixed(2))
+      : null;
+
+    return {
+      totalSpins: spinTotals?.total_spins ?? 0,
+      usedSpins: spinTotals?.used_spins ?? 0,
+      availableSpins: spinTotals?.available_spins ?? 0,
+      resultCount: rewardTotals?.result_count ?? 0,
+      creditedRewardAmount,
+      pendingRewardAmount,
+      rejectedRewardAmount: rewardTotals?.rejected_reward_amount ?? 0,
+      eventBudgetRemaining,
+      prizes: config.prizes.map((prize) => {
+        const usage = prizeUsage.get(prize.id);
+        return {
+          id: prize.id,
+          label: prize.label,
+          chance: prize.chance,
+          rewardAmount: prize.rewardAmount,
+          rewardAsset: prize.rewardAsset,
+          wins: usage?.wins ?? 0,
+          creditedAmount: usage?.credited_amount ?? 0,
+          pendingAmount: usage?.pending_amount ?? 0,
+          maxWinners: prize.maxWinners ?? null,
+          maxTotalRewardAmount: prize.maxTotalRewardAmount ?? null
+        };
+      }),
+      pendingReviews: pendingReviews.rows.map((review) => ({
+        id: review.id,
+        transactionId: review.transaction_id,
+        userId: review.user_id,
+        userName: review.user_name,
+        label: review.label,
+        rewardAmount: review.reward_amount,
+        rewardAsset: review.reward_asset,
+        createdAt: review.created_at
+      })),
+      recentAwards: recentAwards.rows.map((award) => ({
+        id: award.id,
+        userId: award.user_id,
+        userName: award.user_name,
+        sourceType: award.source_type,
+        spinCount: award.spin_count,
+        spinsUsed: award.spins_used,
+        note: award.note,
+        createdAt: award.created_at,
+        expiresAt: award.expires_at,
+        revokedAt: award.revoked_at
+      }))
+    };
+  }
+
+  async grantLuckyDrawSpins(actorUserId: string, input: GrantLuckyDrawSpinsDto) {
+    if (!Number.isInteger(input.spinCount) || input.spinCount < 1 || input.spinCount > 100) {
+      throw new BadRequestException("Spin count must be between 1 and 100");
+    }
+
+    const note = input.note?.trim() || "Manual Lucky Draw spin grant";
+    const expiresAt = input.expiresAt
+      ? this.cleanIsoDate(input.expiresAt, "")
+      : null;
+
+    if (input.expiresAt && !expiresAt) {
+      throw new BadRequestException("Expiration date is invalid");
+    }
+
+    return withTransaction(async (client: PoolClient) => {
+      const user = await client.query<{ id: string; full_name: string }>(
+        `
+          SELECT id, full_name
+          FROM users
+          WHERE id = $1
+            AND role = 'USER'
+            AND is_active = TRUE
+          FOR UPDATE
+        `,
+        [input.userId]
+      );
+
+      if (!user.rowCount) {
+        throw new NotFoundException("User account not found");
+      }
+
+      const inserted = await client.query<{ id: string; created_at: string }>(
+        `
+          INSERT INTO lucky_draw_spin_ledger (
+            id,
+            beneficiary_user_id,
+            source_user_id,
+            source_transaction_id,
+            source_type,
+            spin_count,
+            note,
+            expires_at
+          )
+          VALUES (gen_random_uuid(), $1, $2, NULL, 'admin_grant', $3, $4, $5)
+          RETURNING id, created_at
+        `,
+        [input.userId, actorUserId, input.spinCount, note.slice(0, 500), expiresAt]
+      );
+
+      await client.query(
+        `
+          INSERT INTO notifications (id, user_id, title, message, is_read, created_at)
+          VALUES (gen_random_uuid(), $1, $2, $3, FALSE, NOW())
+        `,
+        [
+          input.userId,
+          "Lucky Draw spins granted",
+          `${input.spinCount} Lucky Draw spin${input.spinCount > 1 ? "s" : ""} were added to your account.`
+        ]
+      );
+
+      await this.logAdminActivity(client, actorUserId, "lucky_draw_spins_granted", "lucky_draw_spin_ledger", inserted.rows[0].id, {
+        userId: input.userId,
+        spinCount: input.spinCount,
+        expiresAt,
+        note
+      });
+
+      return {
+        ledgerId: inserted.rows[0].id,
+        userId: input.userId,
+        fullName: user.rows[0].full_name,
+        spinCount: input.spinCount,
+        expiresAt,
+        createdAt: inserted.rows[0].created_at
+      };
+    });
+  }
+
+  async revokeLuckyDrawSpinAward(actorUserId: string, ledgerId: string, note?: string) {
+    const reviewNote = note?.trim() || "Revoked by admin";
+    return withTransaction(async (client: PoolClient) => {
+      const existing = await client.query<{
+        id: string;
+        beneficiary_user_id: string;
+        spin_count: number;
+        spins_used: number;
+        revoked_at: string | null;
+      }>(
+        `
+          SELECT id, beneficiary_user_id, spin_count, spins_used, revoked_at
+          FROM lucky_draw_spin_ledger
+          WHERE id = $1
+          FOR UPDATE
+        `,
+        [ledgerId]
+      );
+
+      if (!existing.rowCount) {
+        throw new NotFoundException("Lucky Draw spin award not found");
+      }
+
+      const award = existing.rows[0];
+      if (award.revoked_at) {
+        throw new BadRequestException("Lucky Draw spin award is already revoked");
+      }
+
+      if (award.spins_used >= award.spin_count) {
+        throw new BadRequestException("This award has no unused spins left to revoke");
+      }
+
+      const updated = await client.query<{ revoked_at: string }>(
+        `
+          UPDATE lucky_draw_spin_ledger
+          SET
+            revoked_at = NOW(),
+            revoked_by = $2,
+            revoked_note = $3
+          WHERE id = $1
+          RETURNING revoked_at
+        `,
+        [ledgerId, actorUserId, reviewNote.slice(0, 500)]
+      );
+
+      await this.logAdminActivity(client, actorUserId, "lucky_draw_spins_revoked", "lucky_draw_spin_ledger", ledgerId, {
+        userId: award.beneficiary_user_id,
+        spinCount: award.spin_count,
+        spinsUsed: award.spins_used,
+        note: reviewNote
+      });
+
+      return {
+        ledgerId,
+        userId: award.beneficiary_user_id,
+        revokedAt: updated.rows[0].revoked_at
+      };
+    });
+  }
+
+  async approveTransaction(transactionId: string, actorUserId: string) {
     const approved = await withTransaction(async (client: PoolClient) => {
       const existing = await client.query<AdminTransactionRow>(
         `
@@ -616,6 +938,69 @@ export class AdminService implements OnModuleInit {
         throw new BadRequestException("Withdrawal is still in the 72-hour holding period");
       }
 
+      if (transaction.type === "lucky_draw_prize") {
+        await client.query(
+          `
+            UPDATE transactions
+            SET status = 'approved'
+            WHERE id = $1
+          `,
+          [transaction.id]
+        );
+
+        await client.query(
+          `
+            INSERT INTO wallets (id, user_id, asset_type, balance, active_investment, total_earned)
+            VALUES (gen_random_uuid(), $1, $2, 0, 0, 0)
+            ON CONFLICT (user_id, asset_type) DO NOTHING
+          `,
+          [transaction.user_id, transaction.asset]
+        );
+
+        await client.query(
+          `
+            UPDATE wallets
+            SET
+              balance = balance + $3,
+              total_earned = total_earned + $3
+            WHERE user_id = $1
+              AND asset_type = $2
+          `,
+          [transaction.user_id, transaction.asset, transaction.amount]
+        );
+
+        await client.query(
+          `
+            UPDATE lucky_draw_spin_results
+            SET
+              reward_status = 'credited',
+              reviewed_at = NOW(),
+              reviewed_by = $2,
+              review_note = 'Approved by admin'
+            WHERE reward_transaction_id = $1
+          `,
+          [transaction.id, actorUserId]
+        );
+
+        await client.query(
+          `
+            INSERT INTO notifications (id, user_id, title, message, is_read, created_at)
+            VALUES (gen_random_uuid(), $1, $2, $3, FALSE, NOW())
+          `,
+          [
+            transaction.user_id,
+            "Lucky Draw prize approved",
+            `Your Lucky Draw prize of ${transaction.amount.toFixed(2)} ${transaction.asset.startsWith("USDT") ? "USDT" : transaction.asset} has been credited.`
+          ]
+        );
+
+        await this.logAdminActivity(client, actorUserId, "lucky_draw_prize_approved", "transaction", transaction.id, {
+          userId: transaction.user_id,
+          asset: transaction.asset,
+          amount: transaction.amount
+        });
+      }
+
       return transaction;
     });
 
@@ -625,7 +1010,7 @@ export class AdminService implements OnModuleInit {
         userId: approved.user_id,
         amount: approved.amount,
         asset: approved.asset,
-        approvedBy: "system-admin"
+        approvedBy: actorUserId
       });
     }
 
@@ -635,30 +1020,32 @@ export class AdminService implements OnModuleInit {
         userId: approved.user_id,
         amount: approved.amount,
         asset: approved.asset,
-        approvedBy: "system-admin"
+        approvedBy: actorUserId
       });
     }
 
-    await dbQuery(
-      `
-        INSERT INTO notifications (id, user_id, title, message, is_read, created_at)
-        VALUES (
-          gen_random_uuid(),
-          $1,
-          $2,
-          $3,
-          FALSE,
-          NOW()
-        )
-      `,
-      [
-        approved.user_id,
-        `${approved.type === "deposit" ? "Deposit" : "Withdrawal"} approved`,
-        approved.type === "deposit"
-          ? `Your ${approved.asset} deposit of ${approved.amount} has been approved.`
-          : `Your ${approved.asset} withdrawal request has been approved for processing.`
-      ]
-    );
+    if (approved.type !== "lucky_draw_prize") {
+      await dbQuery(
+        `
+          INSERT INTO notifications (id, user_id, title, message, is_read, created_at)
+          VALUES (
+            gen_random_uuid(),
+            $1,
+            $2,
+            $3,
+            FALSE,
+            NOW()
+          )
+        `,
+        [
+          approved.user_id,
+          `${approved.type === "deposit" ? "Deposit" : "Withdrawal"} approved`,
+          approved.type === "deposit"
+            ? `Your ${approved.asset} deposit of ${approved.amount} has been approved.`
+            : `Your ${approved.asset} withdrawal request has been approved for processing.`
+        ]
+      );
+    }
 
     return {
       transactionId: approved.id,
@@ -668,7 +1055,7 @@ export class AdminService implements OnModuleInit {
     };
   }
 
-  async rejectTransaction(transactionId: string, adminNote?: string) {
+  async rejectTransaction(transactionId: string, actorUserId: string, adminNote?: string) {
     const rejected = await withTransaction(async (client: PoolClient) => {
       const existing = await client.query<AdminTransactionRow>(
         `
@@ -711,6 +1098,28 @@ export class AdminService implements OnModuleInit {
       }
 
       const transaction = existing.rows[0];
+      if (transaction.type === "lucky_draw_prize") {
+        await client.query(
+          `
+            UPDATE lucky_draw_spin_results
+            SET
+              reward_status = 'rejected',
+              reviewed_at = NOW(),
+              reviewed_by = $2,
+              review_note = $3
+            WHERE reward_transaction_id = $1
+          `,
+          [transaction.id, actorUserId, adminNote ?? "Rejected by admin"]
+        );
+
+        await this.logAdminActivity(client, actorUserId, "lucky_draw_prize_rejected", "transaction", transaction.id, {
+          userId: transaction.user_id,
+          asset: transaction.asset,
+          amount: transaction.amount,
+          note: adminNote ?? null
+        });
+      }
+
       await client.query(
         `
           INSERT INTO notifications (id, user_id, title, message, is_read, created_at)
@@ -725,10 +1134,14 @@ export class AdminService implements OnModuleInit {
         `,
         [
           transaction.user_id,
-          `${transaction.type === "deposit" ? "Deposit" : "Withdrawal"} rejected`,
-          transaction.type === "deposit"
-            ? `Your ${transaction.asset} deposit request was rejected.${adminNote ? ` Note: ${adminNote}` : ""}`
-            : `Your ${transaction.asset} withdrawal request was rejected.${adminNote ? ` Note: ${adminNote}` : ""}`
+          transaction.type === "lucky_draw_prize"
+            ? "Lucky Draw prize rejected"
+            : `${transaction.type === "deposit" ? "Deposit" : "Withdrawal"} rejected`,
+          transaction.type === "lucky_draw_prize"
+            ? `Your Lucky Draw prize review was rejected.${adminNote ? ` Note: ${adminNote}` : ""}`
+            : transaction.type === "deposit"
+              ? `Your ${transaction.asset} deposit request was rejected.${adminNote ? ` Note: ${adminNote}` : ""}`
+              : `Your ${transaction.asset} withdrawal request was rejected.${adminNote ? ` Note: ${adminNote}` : ""}`
         ]
       );
 
@@ -1105,6 +1518,23 @@ export class AdminService implements OnModuleInit {
     }));
   }
 
+  private async logAdminActivity(
+    client: PoolClient,
+    actorUserId: string,
+    action: string,
+    entityType: string,
+    entityId: string | null,
+    metadata: Record<string, unknown>
+  ) {
+    await client.query(
+      `
+        INSERT INTO admin_activity_log (id, actor_user_id, action, entity_type, entity_id, metadata, created_at)
+        VALUES (gen_random_uuid(), $1, $2, $3, $4, $5::jsonb, NOW())
+      `,
+      [actorUserId, action, entityType, entityId, JSON.stringify(metadata)]
+    );
+  }
+
   private readonly settingKeys = [
     "platform.name",
     "platform.maintenanceMode",
@@ -1128,6 +1558,11 @@ export class AdminService implements OnModuleInit {
     "platform.luckyDraw.referralSpinReward",
     "platform.luckyDraw.depositOneSpinAmount",
     "platform.luckyDraw.depositTwoSpinAmount",
+    "platform.luckyDraw.maxTotalRewardAmount",
+    "platform.luckyDraw.maxRewardPerUserAmount",
+    "platform.luckyDraw.instantRewardMaxAmount",
+    "platform.luckyDraw.requireKycAboveAmount",
+    "platform.luckyDraw.showPrizeChancesToUsers",
     "platform.luckyDraw.rules",
     "platform.luckyDraw.prizeLabels",
     "platform.luckyDraw.prizes",
@@ -1294,6 +1729,11 @@ export class AdminService implements OnModuleInit {
       entries.push(["platform.luckyDraw.referralSpinReward", luckyDraw.referralSpinReward]);
       entries.push(["platform.luckyDraw.depositOneSpinAmount", luckyDraw.depositOneSpinAmount]);
       entries.push(["platform.luckyDraw.depositTwoSpinAmount", luckyDraw.depositTwoSpinAmount]);
+      entries.push(["platform.luckyDraw.maxTotalRewardAmount", luckyDraw.maxTotalRewardAmount]);
+      entries.push(["platform.luckyDraw.maxRewardPerUserAmount", luckyDraw.maxRewardPerUserAmount]);
+      entries.push(["platform.luckyDraw.instantRewardMaxAmount", luckyDraw.instantRewardMaxAmount]);
+      entries.push(["platform.luckyDraw.requireKycAboveAmount", luckyDraw.requireKycAboveAmount]);
+      entries.push(["platform.luckyDraw.showPrizeChancesToUsers", luckyDraw.showPrizeChancesToUsers]);
       entries.push(["platform.luckyDraw.rules", luckyDraw.rules]);
       entries.push(["platform.luckyDraw.prizeLabels", luckyDraw.prizeLabels]);
       entries.push(["platform.luckyDraw.prizes", luckyDraw.prizes]);
@@ -1448,6 +1888,11 @@ export class AdminService implements OnModuleInit {
       referralSpinReward: settings.get("platform.luckyDraw.referralSpinReward"),
       depositOneSpinAmount: settings.get("platform.luckyDraw.depositOneSpinAmount"),
       depositTwoSpinAmount: settings.get("platform.luckyDraw.depositTwoSpinAmount"),
+      maxTotalRewardAmount: settings.get("platform.luckyDraw.maxTotalRewardAmount"),
+      maxRewardPerUserAmount: settings.get("platform.luckyDraw.maxRewardPerUserAmount"),
+      instantRewardMaxAmount: settings.get("platform.luckyDraw.instantRewardMaxAmount"),
+      requireKycAboveAmount: settings.get("platform.luckyDraw.requireKycAboveAmount"),
+      showPrizeChancesToUsers: settings.get("platform.luckyDraw.showPrizeChancesToUsers"),
       rules: settings.get("platform.luckyDraw.rules"),
       prizeLabels: settings.get("platform.luckyDraw.prizeLabels"),
       prizes: settings.get("platform.luckyDraw.prizes")
@@ -1472,6 +1917,16 @@ export class AdminService implements OnModuleInit {
       referralSpinReward: this.cleanPositiveInteger(value.referralSpinReward, defaultLuckyDrawConfig.referralSpinReward),
       depositOneSpinAmount,
       depositTwoSpinAmount: Math.max(depositTwoSpinAmount, depositOneSpinAmount),
+      maxTotalRewardAmount: this.cleanPositiveNumber(value.maxTotalRewardAmount, defaultLuckyDrawConfig.maxTotalRewardAmount),
+      maxRewardPerUserAmount: this.cleanPositiveNumber(
+        value.maxRewardPerUserAmount,
+        defaultLuckyDrawConfig.maxRewardPerUserAmount
+      ),
+      instantRewardMaxAmount: this.cleanPositiveNumber(value.instantRewardMaxAmount, defaultLuckyDrawConfig.instantRewardMaxAmount),
+      requireKycAboveAmount: this.cleanPositiveNumber(value.requireKycAboveAmount, defaultLuckyDrawConfig.requireKycAboveAmount),
+      showPrizeChancesToUsers: typeof value.showPrizeChancesToUsers === "boolean"
+        ? value.showPrizeChancesToUsers
+        : defaultLuckyDrawConfig.showPrizeChancesToUsers,
       rules: this.cleanTextList(value.rules, defaultLuckyDrawConfig.rules, 8, 220),
       prizeLabels: prizes.map((prize) => prize.label),
       prizes
@@ -1501,6 +1956,8 @@ export class AdminService implements OnModuleInit {
       const label = this.cleanSettingText(prize.label, fallback.label, 120);
       const chance = Number(prize.chance);
       const rewardAmount = Number(prize.rewardAmount ?? 0);
+      const maxWinners = Number(prize.maxWinners);
+      const maxTotalRewardAmount = Number(prize.maxTotalRewardAmount);
       const rewardAsset = SUPPORTED_ASSETS.includes(prize.rewardAsset as AssetType)
         ? prize.rewardAsset as AssetType
         : "USDT_TRC20";
@@ -1519,7 +1976,12 @@ export class AdminService implements OnModuleInit {
           label,
           chance: Number(chance.toFixed(4)),
           rewardAmount: Number.isFinite(rewardAmount) && rewardAmount > 0 ? Number(rewardAmount.toFixed(2)) : 0,
-          rewardAsset
+          rewardAsset,
+          maxWinners: Number.isInteger(maxWinners) && maxWinners > 0 ? maxWinners : null,
+          maxTotalRewardAmount: Number.isFinite(maxTotalRewardAmount) && maxTotalRewardAmount > 0
+            ? Number(maxTotalRewardAmount.toFixed(2))
+            : null,
+          reviewRequired: prize.reviewRequired === true
         }
       ];
     });

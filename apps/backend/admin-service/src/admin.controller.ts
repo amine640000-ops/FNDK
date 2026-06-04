@@ -12,8 +12,16 @@ import {
   UseInterceptors
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
-import { AdminGuard, JwtAuthGuard, createDiskStorageOptions, toPublicUploadUrl } from "@nevo/shared-infra";
-import { AdjustUserBalanceDto, UpdateAdminSettingsDto, UpdateProfitSettingsDto, UpdateVipTierDto } from "./admin.dto";
+import { AdminGuard, CurrentUser, JwtAuthGuard, createDiskStorageOptions, toPublicUploadUrl } from "@nevo/shared-infra";
+import type { AccessTokenPayload } from "@nevo/shared-types";
+import {
+  AdjustUserBalanceDto,
+  GrantLuckyDrawSpinsDto,
+  RevokeLuckyDrawSpinDto,
+  UpdateAdminSettingsDto,
+  UpdateProfitSettingsDto,
+  UpdateVipTierDto
+} from "./admin.dto";
 import { AdminService } from "./admin.service";
 
 @Controller("admin")
@@ -61,14 +69,37 @@ export class AdminController {
     return this.adminService.getKycSubmissions();
   }
 
+  @Get("lucky-draw/analytics")
+  luckyDrawAnalytics() {
+    return this.adminService.getLuckyDrawAnalytics();
+  }
+
+  @Post("lucky-draw/spins/grant")
+  grantLuckyDrawSpins(@CurrentUser() user: AccessTokenPayload, @Body() body: GrantLuckyDrawSpinsDto) {
+    return this.adminService.grantLuckyDrawSpins(user.sub, body);
+  }
+
+  @Patch("lucky-draw/spins/:ledgerId/revoke")
+  revokeLuckyDrawSpinAward(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param("ledgerId") ledgerId: string,
+    @Body() body: RevokeLuckyDrawSpinDto
+  ) {
+    return this.adminService.revokeLuckyDrawSpinAward(user.sub, ledgerId, body.note);
+  }
+
   @Patch("transactions/:transactionId/approve")
-  approveTransaction(@Param("transactionId") transactionId: string) {
-    return this.adminService.approveTransaction(transactionId);
+  approveTransaction(@CurrentUser() user: AccessTokenPayload, @Param("transactionId") transactionId: string) {
+    return this.adminService.approveTransaction(transactionId, user.sub);
   }
 
   @Patch("transactions/:transactionId/reject")
-  rejectTransaction(@Param("transactionId") transactionId: string, @Body() body: { adminNote?: string }) {
-    return this.adminService.rejectTransaction(transactionId, body.adminNote);
+  rejectTransaction(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param("transactionId") transactionId: string,
+    @Body() body: { adminNote?: string }
+  ) {
+    return this.adminService.rejectTransaction(transactionId, user.sub, body.adminNote);
   }
 
   @Patch("kyc/:submissionId/review")

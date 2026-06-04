@@ -1,5 +1,5 @@
 import { Type } from "class-transformer";
-import { IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Min } from "class-validator";
+import { IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Min } from "class-validator";
 import type { AdCarouselSlide, AssetRouteSetting, AssetType, LuckyDrawEventConfig, MissionTaskSetting } from "@nevo/shared-types";
 import { SUPPORTED_ASSETS } from "@nevo/shared-utils";
 
@@ -174,4 +174,28 @@ export class AdjustUserBalanceDto {
 export class UpdateProfitSettingsDto {
   @IsBoolean()
   autoProfitDistribution!: boolean;
+}
+
+export class GrantLuckyDrawSpinsDto {
+  @IsUUID()
+  userId!: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  spinCount!: number;
+
+  @IsOptional()
+  @IsString()
+  note?: string;
+
+  @IsOptional()
+  @IsString()
+  expiresAt?: string | null;
+}
+
+export class RevokeLuckyDrawSpinDto {
+  @IsOptional()
+  @IsString()
+  note?: string;
 }

@@ -47,7 +47,13 @@ npm run typecheck --workspaces --if-present
 docker compose up --build
 ```
 
-Fresh database migration order:
+Fresh database migration:
+
+```bash
+npm run migrate
+```
+
+Manual migration order if you are applying files directly:
 
 ```bash
 psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/001_init.sql
@@ -74,6 +80,7 @@ psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/021_vip_daily_prof
 psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/022_ensure_vip_runtime_columns.sql
 psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/023_lucky_draw_event.sql
 psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/024_lucky_draw_weighted_prizes.sql
+psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/025_lucky_draw_controls_and_audit.sql
 ```
 
 Initial admin login after running migrations:

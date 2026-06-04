@@ -33,6 +33,7 @@ import type {
 import { DEFAULT_ASSET_LABELS, SUPPORTED_ASSETS } from "@nevo/shared-utils";
 import type { PoolClient } from "pg";
 import type { CreateDepositDto, CreateWithdrawalDto, RequestWithdrawalCodeDto } from "./wallet.dto";
+import { selectWeightedLuckyDrawPrize } from "./lucky-draw.util";
 
 type WalletRow = {
   asset_type: AssetType;
@@ -62,6 +63,8 @@ type LuckyDrawAwardRow = {
   spin_count: number;
   spins_used: number;
   note: string;
+  expires_at: string | null;
+  revoked_at: string | null;
   created_at: string;
 };
 
@@ -69,8 +72,13 @@ type LuckyDrawResultRow = {
   id: string;
   result_label: string;
   prize_id: string | null;
+  prize_index: number | null;
   reward_amount: number;
   reward_asset: AssetType | null;
+  reward_status: LuckyDrawSpinResult["rewardStatus"];
+  roll_value: number | null;
+  roll_max: number | null;
+  reward_transaction_id: string | null;
   created_at: string;
 };
 
@@ -82,6 +90,17 @@ type LuckyDrawSpinBalanceRow = {
 
 type LuckyDrawLedgerRow = {
   id: string;
+};
+
+type LuckyDrawRewardUsage = {
+  event_reward_amount: number;
+  user_reward_amount: number;
+};
+
+type LuckyDrawPrizeUsage = {
+  prize_id: string;
+  wins: number;
+  reward_amount: number;
 };
 
 type WithdrawalRulesRow = {
@@ -162,6 +181,11 @@ const defaultLuckyDrawConfig: LuckyDrawEventConfig = {
   referralSpinReward: 1,
   depositOneSpinAmount: 200,
   depositTwoSpinAmount: 300,
+  maxTotalRewardAmount: 500,
+  maxRewardPerUserAmount: 50,
+  instantRewardMaxAmount: 10,
+  requireKycAboveAmount: 10,
+  showPrizeChancesToUsers: false,
   rules: [
     "Invite a direct referral who makes their first deposit of 100 USDT or more to receive 1 spin.",
     "Deposit 200 USDT or more in one transaction to receive 1 spin.",
@@ -312,6 +336,8 @@ export class WalletService implements OnModuleInit {
             COALESCE(SUM(spin_count - spins_used), 0)::int AS available_spins
           FROM lucky_draw_spin_ledger
           WHERE beneficiary_user_id = $1
+            AND revoked_at IS NULL
+            AND (expires_at IS NULL OR expires_at > NOW())
         `,
         [userId]
       ),
@@ -323,6 +349,8 @@ export class WalletService implements OnModuleInit {
             spin_count,
             spins_used,
             note,
+            expires_at,
+            revoked_at,
             created_at
           FROM lucky_draw_spin_ledger
           WHERE beneficiary_user_id = $1
@@ -337,8 +365,13 @@ export class WalletService implements OnModuleInit {
             id,
             result_label,
             prize_id,
+            prize_index,
             reward_amount::float8 AS reward_amount,
             reward_asset,
+            reward_status,
+            roll_value,
+            roll_max,
+            reward_transaction_id,
             created_at
           FROM lucky_draw_spin_results
           WHERE user_id = $1
@@ -360,6 +393,8 @@ export class WalletService implements OnModuleInit {
         spinCount: award.spin_count,
         spinsUsed: award.spins_used,
         note: award.note,
+        expiresAt: award.expires_at,
+        revokedAt: award.revoked_at,
         createdAt: award.created_at
       })),
       results: results.rows.map((result) => ({
@@ -367,8 +402,12 @@ export class WalletService implements OnModuleInit {
         resultLabel: result.result_label,
         createdAt: result.created_at,
         prizeId: result.prize_id ?? undefined,
+        prizeIndex: result.prize_index ?? undefined,
         rewardAmount: result.reward_amount,
-        rewardAsset: result.reward_asset ?? undefined
+        rewardAsset: result.reward_asset ?? undefined,
+        rewardStatus: result.reward_status,
+        rollValue: result.roll_value ?? undefined,
+        rollMax: result.roll_max ?? undefined
       }))
     };
   }
@@ -386,6 +425,8 @@ export class WalletService implements OnModuleInit {
           FROM lucky_draw_spin_ledger
           WHERE beneficiary_user_id = $1
             AND spins_used < spin_count
+            AND revoked_at IS NULL
+            AND (expires_at IS NULL OR expires_at > NOW())
           ORDER BY created_at ASC
           LIMIT 1
           FOR UPDATE
@@ -407,8 +448,15 @@ export class WalletService implements OnModuleInit {
         [ledgerId]
       );
 
-      const prize = this.selectLuckyDrawPrize(config.prizes);
+      const availablePrizes = await this.getAvailableLuckyDrawPrizes(client, userId, config);
+      if (!availablePrizes.length) {
+        throw new BadRequestException("Lucky Draw reward pool is currently closed");
+      }
+
+      const selection = selectWeightedLuckyDrawPrize(availablePrizes);
+      const prize = selection.prize;
       const prizeIndex = config.prizes.findIndex((entry) => entry.id === prize.id);
+      const rewardStatus = await this.resolveLuckyDrawRewardStatus(client, userId, prize, config);
 
       const result = await client.query<LuckyDrawResultRow>(
         `
@@ -418,23 +466,55 @@ export class WalletService implements OnModuleInit {
             ledger_id,
             result_label,
             prize_id,
+            prize_index,
             reward_amount,
-            reward_asset
+            reward_asset,
+            reward_status,
+            roll_value,
+            roll_max,
+            weight_snapshot,
+            prize_snapshot
           )
-          VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6)
+          VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
           RETURNING
             id,
             result_label,
             prize_id,
+            prize_index,
             reward_amount::float8 AS reward_amount,
             reward_asset,
+            reward_status,
+            roll_value,
+            roll_max,
+            reward_transaction_id,
             created_at
         `,
-        [userId, ledgerId, prize.label, prize.id, prize.rewardAmount, prize.rewardAsset]
+        [
+          userId,
+          ledgerId,
+          prize.label,
+          prize.id,
+          prizeIndex >= 0 ? prizeIndex : selection.prizeIndex,
+          prize.rewardAmount,
+          prize.rewardAsset,
+          rewardStatus,
+          selection.rollValue,
+          selection.rollMax,
+          JSON.stringify(selection.weightSnapshot),
+          JSON.stringify(prize)
+        ]
       );
 
       if (prize.rewardAmount > 0) {
-        await this.creditLuckyDrawPrize(client, userId, prize);
+        const rewardTransactionId = await this.createLuckyDrawPrizeTransaction(client, userId, prize, rewardStatus, result.rows[0].id);
+        await client.query(
+          `
+            UPDATE lucky_draw_spin_results
+            SET reward_transaction_id = $2
+            WHERE id = $1
+          `,
+          [result.rows[0].id, rewardTransactionId]
+        );
       }
 
       const balance = await client.query<{ available_spins: number }>(
@@ -442,6 +522,8 @@ export class WalletService implements OnModuleInit {
           SELECT COALESCE(SUM(spin_count - spins_used), 0)::int AS available_spins
           FROM lucky_draw_spin_ledger
           WHERE beneficiary_user_id = $1
+            AND revoked_at IS NULL
+            AND (expires_at IS NULL OR expires_at > NOW())
         `,
         [userId]
       );
@@ -451,9 +533,12 @@ export class WalletService implements OnModuleInit {
         resultLabel: result.rows[0].result_label,
         createdAt: result.rows[0].created_at,
         prizeId: result.rows[0].prize_id ?? undefined,
-        prizeIndex: prizeIndex >= 0 ? prizeIndex : undefined,
+        prizeIndex: result.rows[0].prize_index ?? undefined,
         rewardAmount: result.rows[0].reward_amount,
         rewardAsset: result.rows[0].reward_asset ?? undefined,
+        rewardStatus: result.rows[0].reward_status,
+        rollValue: result.rows[0].roll_value ?? undefined,
+        rollMax: result.rows[0].roll_max ?? undefined,
         availableSpins: balance.rows[0]?.available_spins ?? 0
       };
     });
@@ -955,6 +1040,11 @@ export class WalletService implements OnModuleInit {
       "platform.luckyDraw.referralSpinReward",
       "platform.luckyDraw.depositOneSpinAmount",
       "platform.luckyDraw.depositTwoSpinAmount",
+      "platform.luckyDraw.maxTotalRewardAmount",
+      "platform.luckyDraw.maxRewardPerUserAmount",
+      "platform.luckyDraw.instantRewardMaxAmount",
+      "platform.luckyDraw.requireKycAboveAmount",
+      "platform.luckyDraw.showPrizeChancesToUsers",
       "platform.luckyDraw.rules",
       "platform.luckyDraw.prizeLabels",
       "platform.luckyDraw.prizes"
@@ -1001,6 +1091,25 @@ export class WalletService implements OnModuleInit {
       ),
       depositOneSpinAmount,
       depositTwoSpinAmount: Math.max(depositTwoSpinAmount, depositOneSpinAmount),
+      maxTotalRewardAmount: this.cleanPositiveNumber(
+        settings.get("platform.luckyDraw.maxTotalRewardAmount"),
+        defaultLuckyDrawConfig.maxTotalRewardAmount
+      ),
+      maxRewardPerUserAmount: this.cleanPositiveNumber(
+        settings.get("platform.luckyDraw.maxRewardPerUserAmount"),
+        defaultLuckyDrawConfig.maxRewardPerUserAmount
+      ),
+      instantRewardMaxAmount: this.cleanPositiveNumber(
+        settings.get("platform.luckyDraw.instantRewardMaxAmount"),
+        defaultLuckyDrawConfig.instantRewardMaxAmount
+      ),
+      requireKycAboveAmount: this.cleanPositiveNumber(
+        settings.get("platform.luckyDraw.requireKycAboveAmount"),
+        defaultLuckyDrawConfig.requireKycAboveAmount
+      ),
+      showPrizeChancesToUsers: typeof settings.get("platform.luckyDraw.showPrizeChancesToUsers") === "boolean"
+        ? Boolean(settings.get("platform.luckyDraw.showPrizeChancesToUsers"))
+        : defaultLuckyDrawConfig.showPrizeChancesToUsers,
       rules: this.cleanTextList(settings.get("platform.luckyDraw.rules"), defaultLuckyDrawConfig.rules, 8, 220),
       prizeLabels: prizes.map((prize) => prize.label),
       prizes
@@ -1017,49 +1126,154 @@ export class WalletService implements OnModuleInit {
       startsAt: startsAt.toISOString(),
       endsAt: endsAt.toISOString(),
       isActive: this.isLuckyDrawActive(config),
+      showPrizeChancesToUsers: config.showPrizeChancesToUsers,
       rules: config.rules,
       prizes: config.prizes
     };
   }
 
-  private selectLuckyDrawPrize(prizes: LuckyDrawPrize[]) {
-    const eligiblePrizes = (prizes.length ? prizes : defaultLuckyDrawPrizes).filter((prize) => prize.chance > 0);
-    const safePrizes = eligiblePrizes.length ? eligiblePrizes : defaultLuckyDrawPrizes;
-    const totalChance = safePrizes.reduce((sum, prize) => sum + prize.chance, 0);
-    let ticket = Math.random() * totalChance;
+  private async getAvailableLuckyDrawPrizes(client: PoolClient, userId: string, config: LuckyDrawEventConfig) {
+    const rewardUsage = await client.query<LuckyDrawRewardUsage>(
+      `
+        SELECT
+          COALESCE(SUM(reward_amount) FILTER (
+            WHERE reward_status IN ('credited', 'pending_review')
+              AND created_at >= $1::timestamptz
+              AND created_at <= $2::timestamptz
+          ), 0)::float8 AS event_reward_amount,
+          COALESCE(SUM(reward_amount) FILTER (
+            WHERE user_id = $3
+              AND reward_status IN ('credited', 'pending_review')
+              AND created_at >= $1::timestamptz
+              AND created_at <= $2::timestamptz
+          ), 0)::float8 AS user_reward_amount
+        FROM lucky_draw_spin_results
+      `,
+      [config.startsAt, config.endsAt, userId]
+    );
 
-    for (const prize of safePrizes) {
-      ticket -= prize.chance;
-      if (ticket <= 0) {
-        return prize;
+    const prizeUsage = await client.query<LuckyDrawPrizeUsage>(
+      `
+        SELECT
+          prize_id,
+          COUNT(*) FILTER (WHERE reward_status <> 'rejected')::int AS wins,
+          COALESCE(SUM(reward_amount) FILTER (
+            WHERE reward_status IN ('credited', 'pending_review')
+          ), 0)::float8 AS reward_amount
+        FROM lucky_draw_spin_results
+        WHERE created_at >= $1::timestamptz
+          AND created_at <= $2::timestamptz
+          AND prize_id IS NOT NULL
+        GROUP BY prize_id
+      `,
+      [config.startsAt, config.endsAt]
+    );
+
+    const usageByPrizeId = new Map(prizeUsage.rows.map((row) => [row.prize_id, row]));
+    const eventRewardAmount = rewardUsage.rows[0]?.event_reward_amount ?? 0;
+    const userRewardAmount = rewardUsage.rows[0]?.user_reward_amount ?? 0;
+
+    return config.prizes.filter((prize) => {
+      const usage = usageByPrizeId.get(prize.id);
+      const wins = usage?.wins ?? 0;
+      const prizeRewardAmount = usage?.reward_amount ?? 0;
+
+      if (prize.maxWinners !== null && prize.maxWinners !== undefined && wins >= prize.maxWinners) {
+        return false;
+      }
+
+      if (prize.rewardAmount <= 0) {
+        return true;
+      }
+
+      if (config.maxTotalRewardAmount > 0 && eventRewardAmount + prize.rewardAmount > config.maxTotalRewardAmount) {
+        return false;
+      }
+
+      if (config.maxRewardPerUserAmount > 0 && userRewardAmount + prize.rewardAmount > config.maxRewardPerUserAmount) {
+        return false;
+      }
+
+      if (
+        prize.maxTotalRewardAmount !== null &&
+        prize.maxTotalRewardAmount !== undefined &&
+        prizeRewardAmount + prize.rewardAmount > prize.maxTotalRewardAmount
+      ) {
+        return false;
+      }
+
+      return true;
+    });
+  }
+
+  private async resolveLuckyDrawRewardStatus(
+    client: PoolClient,
+    userId: string,
+    prize: LuckyDrawPrize,
+    config: LuckyDrawEventConfig
+  ): Promise<LuckyDrawSpinResult["rewardStatus"]> {
+    if (prize.rewardAmount <= 0) {
+      return "none";
+    }
+
+    if (prize.reviewRequired || (config.instantRewardMaxAmount > 0 && prize.rewardAmount > config.instantRewardMaxAmount)) {
+      return "pending_review";
+    }
+
+    if (config.requireKycAboveAmount > 0 && prize.rewardAmount >= config.requireKycAboveAmount) {
+      const user = await client.query<{ kyc_status: string }>(
+        `
+          SELECT kyc_status
+          FROM users
+          WHERE id = $1
+        `,
+        [userId]
+      );
+
+      if (user.rows[0]?.kyc_status !== "verified") {
+        return "pending_review";
       }
     }
 
-    return safePrizes[safePrizes.length - 1];
+    return "credited";
   }
 
-  private async creditLuckyDrawPrize(client: PoolClient, userId: string, prize: LuckyDrawPrize) {
-    await this.ensureWalletsWithClient(client, userId);
-
-    await client.query(
-      `
-        UPDATE wallets
-        SET
-          balance = balance + $3,
-          total_earned = total_earned + $3
-        WHERE user_id = $1
-          AND asset_type = $2
-      `,
-      [userId, prize.rewardAsset, prize.rewardAmount]
-    );
-
-    await client.query(
+  private async createLuckyDrawPrizeTransaction(
+    client: PoolClient,
+    userId: string,
+    prize: LuckyDrawPrize,
+    rewardStatus: LuckyDrawSpinResult["rewardStatus"],
+    resultId: string
+  ) {
+    const transaction = await client.query<{ id: string }>(
       `
         INSERT INTO transactions (id, user_id, type, asset, amount, fee_amount, status, admin_note)
-        VALUES (gen_random_uuid(), $1, 'adjustment', $2, $3, 0, 'approved', $4)
+        VALUES (gen_random_uuid(), $1, 'lucky_draw_prize', $2, $3, 0, $4, $5)
+        RETURNING id
       `,
-      [userId, prize.rewardAsset, prize.rewardAmount, `Lucky Draw prize: ${prize.label}`]
+      [
+        userId,
+        prize.rewardAsset,
+        prize.rewardAmount,
+        rewardStatus === "credited" ? "approved" : "pending",
+        `Lucky Draw prize: ${prize.label} (${resultId})`
+      ]
     );
+
+    if (rewardStatus === "credited") {
+      await this.ensureWalletsWithClient(client, userId);
+      await client.query(
+        `
+          UPDATE wallets
+          SET
+            balance = balance + $3,
+            total_earned = total_earned + $3
+          WHERE user_id = $1
+            AND asset_type = $2
+        `,
+        [userId, prize.rewardAsset, prize.rewardAmount]
+      );
+    }
 
     await client.query(
       `
@@ -1068,10 +1282,14 @@ export class WalletService implements OnModuleInit {
       `,
       [
         userId,
-        "Lucky Draw prize won",
-        `You won ${prize.rewardAmount.toFixed(2)} ${prize.rewardAsset.startsWith("USDT") ? "USDT" : prize.rewardAsset} from Lucky Draw.`
+        rewardStatus === "credited" ? "Lucky Draw prize won" : "Lucky Draw prize under review",
+        rewardStatus === "credited"
+          ? `You won ${prize.rewardAmount.toFixed(2)} ${prize.rewardAsset.startsWith("USDT") ? "USDT" : prize.rewardAsset} from Lucky Draw.`
+          : `Your Lucky Draw prize of ${prize.rewardAmount.toFixed(2)} ${prize.rewardAsset.startsWith("USDT") ? "USDT" : prize.rewardAsset} is pending admin review.`
       ]
     );
+
+    return transaction.rows[0].id;
   }
 
   private isLuckyDrawActive(config: LuckyDrawEventConfig) {
@@ -1121,10 +1339,17 @@ export class WalletService implements OnModuleInit {
       return;
     }
 
-    const referral = await client.query<{ referred_by: string | null; approved_deposit_count: number }>(
+    const referral = await client.query<{
+      referred_by: string | null;
+      user_kyc_status: string;
+      referrer_active: boolean | null;
+      approved_deposit_count: number;
+    }>(
       `
         SELECT
           users.referred_by,
+          users.kyc_status AS user_kyc_status,
+          referrer.is_active AS referrer_active,
           (
             SELECT COUNT(*)::int
             FROM transactions
@@ -1133,13 +1358,20 @@ export class WalletService implements OnModuleInit {
               AND status = 'approved'
           ) AS approved_deposit_count
         FROM users
-        WHERE id = $1
+        LEFT JOIN users referrer ON referrer.id = users.referred_by
+        WHERE users.id = $1
       `,
       [input.userId]
     );
 
     const referralContext = referral.rows[0];
-    if (!referralContext?.referred_by || referralContext.approved_deposit_count !== 1) {
+    if (
+      !referralContext?.referred_by ||
+      referralContext.referred_by === input.userId ||
+      referralContext.referrer_active !== true ||
+      referralContext.user_kyc_status === "rejected" ||
+      referralContext.approved_deposit_count !== 1
+    ) {
       return;
     }
 
@@ -1377,6 +1609,8 @@ export class WalletService implements OnModuleInit {
       const label = this.cleanSettingText(prize.label, fallback.label, 120);
       const chance = Number(prize.chance);
       const rewardAmount = Number(prize.rewardAmount ?? 0);
+      const maxWinners = Number(prize.maxWinners);
+      const maxTotalRewardAmount = Number(prize.maxTotalRewardAmount);
       const rewardAsset = SUPPORTED_ASSETS.includes(prize.rewardAsset as AssetType)
         ? prize.rewardAsset as AssetType
         : "USDT_TRC20";
@@ -1395,7 +1629,12 @@ export class WalletService implements OnModuleInit {
           label,
           chance: Number(chance.toFixed(4)),
           rewardAmount: Number.isFinite(rewardAmount) && rewardAmount > 0 ? Number(rewardAmount.toFixed(2)) : 0,
-          rewardAsset
+          rewardAsset,
+          maxWinners: Number.isInteger(maxWinners) && maxWinners > 0 ? maxWinners : null,
+          maxTotalRewardAmount: Number.isFinite(maxTotalRewardAmount) && maxTotalRewardAmount > 0
+            ? Number(maxTotalRewardAmount.toFixed(2))
+            : null,
+          reviewRequired: prize.reviewRequired === true
         }
       ];
     });

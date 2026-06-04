@@ -31,7 +31,8 @@ const typeLabel: Record<DashboardTransaction["type"], string> = {
   withdrawal: "Withdrawal",
   profit: "Trading income",
   referral: "Team income",
-  adjustment: "Balance adjustment"
+  adjustment: "Balance adjustment",
+  lucky_draw_prize: "Lucky Draw prize"
 };
 
 const statusLabel: Record<DashboardTransaction["status"], string> = {
@@ -119,16 +120,20 @@ export function WalletPage() {
     const today = new Date().toDateString();
     const tradingTransactions = transactions.filter((transaction) => transaction.type === "profit");
     const teamTransactions = transactions.filter((transaction) => transaction.type === "referral");
+    const prizeTransactions = transactions.filter((transaction) => transaction.type === "lucky_draw_prize");
     const tradingToday = tradingTransactions
       .filter((transaction) => new Date(transaction.createdAt).toDateString() === today)
       .reduce((sum, transaction) => sum + transaction.amount, 0);
     const teamToday = teamTransactions
       .filter((transaction) => new Date(transaction.createdAt).toDateString() === today)
       .reduce((sum, transaction) => sum + transaction.amount, 0);
+    const prizesToday = prizeTransactions
+      .filter((transaction) => new Date(transaction.createdAt).toDateString() === today)
+      .reduce((sum, transaction) => sum + transaction.amount, 0);
 
     return {
       totalRevenue: summary.totalEarned,
-      todayRevenue: Number((tradingToday + teamToday).toFixed(2)),
+      todayRevenue: Number((tradingToday + teamToday + prizesToday).toFixed(2)),
       totalTradingRevenue: tradingTransactions.reduce((sum, transaction) => sum + transaction.amount, 0),
       todayTradingRevenue: Number(tradingToday.toFixed(2)),
       totalTeamRevenue: teamTransactions.reduce((sum, transaction) => sum + transaction.amount, 0),
@@ -139,7 +144,12 @@ export function WalletPage() {
   const visibleTransactions = useMemo(
     () =>
       transactions
-        .filter((transaction) => transaction.type === "deposit" || transaction.type === "withdrawal" || transaction.type === "adjustment")
+        .filter((transaction) =>
+          transaction.type === "deposit" ||
+          transaction.type === "withdrawal" ||
+          transaction.type === "adjustment" ||
+          transaction.type === "lucky_draw_prize"
+        )
         .slice(0, 8),
     [transactions]
   );

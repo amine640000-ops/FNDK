@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { ImagePlus, Plus, Trash2 } from "lucide-react";
-import type { AdCarouselSlide, AdminPlatformSettings, AssetRouteSetting, LuckyDrawPrize, MissionTaskSetting } from "@nevo/shared-types";
+import { Ban, CheckCircle2, ImagePlus, Plus, Trash2, XCircle } from "lucide-react";
+import type {
+  AdCarouselSlide,
+  AdminPlatformSettings,
+  AssetRouteSetting,
+  LuckyDrawAnalytics,
+  LuckyDrawPrize,
+  MissionTaskSetting
+} from "@nevo/shared-types";
 import { DEFAULT_ASSET_ROUTE_SETTINGS, SUPPORTED_ASSETS } from "@nevo/shared-utils";
 import { useNavigate } from "react-router-dom";
 import { adminApi, getApiErrorMessage, isApiAuthError, uploadBaseUrls } from "@/api/client";
@@ -131,6 +138,11 @@ const defaultLuckyDraw: AdminPlatformSettings["luckyDraw"] = {
   referralSpinReward: 1,
   depositOneSpinAmount: 200,
   depositTwoSpinAmount: 300,
+  maxTotalRewardAmount: 500,
+  maxRewardPerUserAmount: 50,
+  instantRewardMaxAmount: 10,
+  requireKycAboveAmount: 10,
+  showPrizeChancesToUsers: false,
   rules: [
     "Invite a direct referral who makes their first deposit of 100 USDT or more to receive 1 spin.",
     "Deposit 200 USDT or more in one transaction to receive 1 spin.",
@@ -175,6 +187,9 @@ const toggleRowClass = "flex min-w-0 items-center justify-between gap-4 rounded-
 const primaryButtonClass = "w-full rounded-2xl bg-cyan-400 px-4 py-3 font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:opacity-70";
 const secondaryButtonClass = "inline-flex items-center justify-center gap-2 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-300/15 disabled:opacity-60";
 
+const formatAdminReward = (amount: number, asset: LuckyDrawPrize["rewardAsset"]) =>
+  `${amount.toFixed(2)} ${asset.startsWith("USDT") ? "USDT" : asset}`;
+
 const createAdSlide = (): AdCarouselSlide => ({
   id: `ad-slide-${Date.now()}`,
   enabled: true,
@@ -202,7 +217,10 @@ const createLuckyDrawPrize = (): LuckyDrawPrize => ({
   label: "New prize",
   chance: 10,
   rewardAmount: 0,
-  rewardAsset: "USDT_TRC20"
+  rewardAsset: "USDT_TRC20",
+  maxWinners: null,
+  maxTotalRewardAmount: null,
+  reviewRequired: false
 });
 
 const createLuckyDrawPrizesFromLabels = (labels: string[] | undefined): LuckyDrawPrize[] => {
@@ -236,8 +254,29 @@ export function AdminSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingSlideId, setUploadingSlideId] = useState<string | null>(null);
+  const [luckyDrawAnalytics, setLuckyDrawAnalytics] = useState<LuckyDrawAnalytics | null>(null);
+  const [luckyDrawActionId, setLuckyDrawActionId] = useState<string | null>(null);
+  const [luckyDrawGrant, setLuckyDrawGrant] = useState({
+    userId: "",
+    spinCount: 1,
+    note: "",
+    expiresAt: ""
+  });
   const [adminApiOffline, setAdminApiOffline] = useState(false);
   const loadedRef = useRef(false);
+
+  const loadLuckyDrawAnalytics = async () => {
+    try {
+      const response = await adminApi.get<LuckyDrawAnalytics>("/admin/lucky-draw/analytics");
+      setLuckyDrawAnalytics(response.data);
+    } catch (error) {
+      if (isApiAuthError(error)) {
+        clearAuthSession();
+        toast.error("Your admin session expired. Sign in again.");
+        navigate("/login", { replace: true });
+      }
+    }
+  };
 
   useEffect(() => {
     if (loadedRef.current) {
@@ -277,6 +316,7 @@ export function AdminSettingsPage() {
             ? response.data.assetSettings
             : DEFAULT_ASSET_ROUTE_SETTINGS
         });
+        void loadLuckyDrawAnalytics();
       })
       .catch((error) => {
         if (isApiAuthError(error)) {
@@ -480,11 +520,69 @@ export function AdminSettingsPage() {
     try {
       const response = await adminApi.patch<AdminPlatformSettings>("/admin/settings", settings);
       setSettings(response.data);
+      void loadLuckyDrawAnalytics();
       toast.success("Settings saved");
     } catch (error) {
       toast.error(getApiErrorMessage(error, "Saving settings failed."));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const grantLuckyDrawSpins = async () => {
+    if (!luckyDrawGrant.userId.trim()) {
+      toast.error("User id is required.");
+      return;
+    }
+
+    setLuckyDrawActionId("grant");
+    try {
+      await adminApi.post("/admin/lucky-draw/spins/grant", {
+        userId: luckyDrawGrant.userId.trim(),
+        spinCount: luckyDrawGrant.spinCount,
+        note: luckyDrawGrant.note.trim() || undefined,
+        expiresAt: luckyDrawGrant.expiresAt ? new Date(luckyDrawGrant.expiresAt).toISOString() : null
+      });
+      setLuckyDrawGrant({ userId: "", spinCount: 1, note: "", expiresAt: "" });
+      await loadLuckyDrawAnalytics();
+      toast.success("Lucky Draw spins granted");
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Could not grant spins."));
+    } finally {
+      setLuckyDrawActionId(null);
+    }
+  };
+
+  const reviewLuckyDrawPrize = async (transactionId: string, decision: "approve" | "reject") => {
+    const actionId = `${decision}-${transactionId}`;
+    setLuckyDrawActionId(actionId);
+    try {
+      await adminApi.patch(
+        `/admin/transactions/${transactionId}/${decision}`,
+        decision === "reject" ? { adminNote: "Rejected from Lucky Draw review" } : undefined
+      );
+      await loadLuckyDrawAnalytics();
+      toast.success(decision === "approve" ? "Prize approved" : "Prize rejected");
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Prize review failed."));
+    } finally {
+      setLuckyDrawActionId(null);
+    }
+  };
+
+  const revokeLuckyDrawAward = async (ledgerId: string) => {
+    const actionId = `revoke-${ledgerId}`;
+    setLuckyDrawActionId(actionId);
+    try {
+      await adminApi.patch(`/admin/lucky-draw/spins/${ledgerId}/revoke`, {
+        note: "Revoked from Lucky Draw admin"
+      });
+      await loadLuckyDrawAnalytics();
+      toast.success("Unused spins revoked");
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Could not revoke spins."));
+    } finally {
+      setLuckyDrawActionId(null);
     }
   };
 
@@ -869,6 +967,66 @@ export function AdminSettingsPage() {
               />
             </label>
           </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <label className="grid gap-2 text-sm text-slate-300">
+              Event reward budget
+              <input
+                className={fieldClass}
+                disabled={loading}
+                min={0}
+                step="0.01"
+                type="number"
+                value={settings.luckyDraw.maxTotalRewardAmount}
+                onChange={(event) => updateLuckyDrawField("maxTotalRewardAmount", Number(event.target.value))}
+              />
+            </label>
+            <label className="grid gap-2 text-sm text-slate-300">
+              Per-user reward cap
+              <input
+                className={fieldClass}
+                disabled={loading}
+                min={0}
+                step="0.01"
+                type="number"
+                value={settings.luckyDraw.maxRewardPerUserAmount}
+                onChange={(event) => updateLuckyDrawField("maxRewardPerUserAmount", Number(event.target.value))}
+              />
+            </label>
+            <label className="grid gap-2 text-sm text-slate-300">
+              Instant credit max
+              <input
+                className={fieldClass}
+                disabled={loading}
+                min={0}
+                step="0.01"
+                type="number"
+                value={settings.luckyDraw.instantRewardMaxAmount}
+                onChange={(event) => updateLuckyDrawField("instantRewardMaxAmount", Number(event.target.value))}
+              />
+            </label>
+            <label className="grid gap-2 text-sm text-slate-300">
+              KYC review threshold
+              <input
+                className={fieldClass}
+                disabled={loading}
+                min={0}
+                step="0.01"
+                type="number"
+                value={settings.luckyDraw.requireKycAboveAmount}
+                onChange={(event) => updateLuckyDrawField("requireKycAboveAmount", Number(event.target.value))}
+              />
+            </label>
+          </div>
+          <label className={toggleRowClass}>
+            <span className="min-w-0">Show exact prize chances to users</span>
+            <input
+              className="h-4 w-4 shrink-0"
+              checked={settings.luckyDraw.showPrizeChancesToUsers}
+              disabled={loading}
+              onChange={(event) => updateLuckyDrawField("showPrizeChancesToUsers", event.target.checked)}
+              type="checkbox"
+            />
+          </label>
           <label className="grid gap-2 text-sm text-slate-300">
             Event rules
             <textarea
@@ -950,9 +1108,208 @@ export function AdminSettingsPage() {
                     </select>
                   </label>
                 </div>
+                <div className="grid gap-3 lg:grid-cols-[minmax(120px,0.6fr)_minmax(150px,0.7fr)_minmax(180px,0.8fr)]">
+                  <label className="grid gap-2 text-sm text-slate-300">
+                    Max winners
+                    <input
+                      className={fieldClass}
+                      disabled={loading}
+                      min={1}
+                      type="number"
+                      value={prize.maxWinners ?? ""}
+                      onChange={(event) =>
+                        updateLuckyDrawPrize(prize.id, "maxWinners", event.target.value ? Number(event.target.value) : null)
+                      }
+                    />
+                  </label>
+                  <label className="grid gap-2 text-sm text-slate-300">
+                    Max payout
+                    <input
+                      className={fieldClass}
+                      disabled={loading}
+                      min={0}
+                      step="0.01"
+                      type="number"
+                      value={prize.maxTotalRewardAmount ?? ""}
+                      onChange={(event) =>
+                        updateLuckyDrawPrize(
+                          prize.id,
+                          "maxTotalRewardAmount",
+                          event.target.value ? Number(event.target.value) : null
+                        )
+                      }
+                    />
+                  </label>
+                  <label className={toggleRowClass}>
+                    <span className="min-w-0 text-sm text-slate-300">Require manual review</span>
+                    <input
+                      className="h-4 w-4 shrink-0"
+                      checked={prize.reviewRequired === true}
+                      disabled={loading}
+                      onChange={(event) => updateLuckyDrawPrize(prize.id, "reviewRequired", event.target.checked)}
+                      type="checkbox"
+                    />
+                  </label>
+                </div>
               </div>
             ))}
           </div>
+          {luckyDrawAnalytics ? (
+            <div className="grid gap-4 rounded-lg border border-white/10 bg-slate-950/40 p-4">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {[
+                  ["Available spins", luckyDrawAnalytics.availableSpins],
+                  ["Used spins", luckyDrawAnalytics.usedSpins],
+                  ["Spin results", luckyDrawAnalytics.resultCount],
+                  [
+                    "Budget left",
+                    luckyDrawAnalytics.eventBudgetRemaining === null
+                      ? "Unlimited"
+                      : `${luckyDrawAnalytics.eventBudgetRemaining.toFixed(2)} USDT`
+                  ]
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-lg border border-white/10 bg-white/5 px-4 py-3">
+                    <div className="text-xs uppercase tracking-[0.2em] text-slate-500">{label}</div>
+                    <div className="mt-2 text-2xl font-bold text-white">{value}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="text-xs uppercase tracking-[0.18em] text-slate-500">
+                    <tr>
+                      <th className="py-2 pr-4">Prize</th>
+                      <th className="py-2 pr-4">Wins</th>
+                      <th className="py-2 pr-4">Credited</th>
+                      <th className="py-2 pr-4">Pending</th>
+                      <th className="py-2 pr-4">Limits</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/10 text-slate-200">
+                    {luckyDrawAnalytics.prizes.map((prize) => (
+                      <tr key={prize.id}>
+                        <td className="py-3 pr-4 font-medium text-white">{prize.label}</td>
+                        <td className="py-3 pr-4">{prize.wins}</td>
+                        <td className="py-3 pr-4">{formatAdminReward(prize.creditedAmount, prize.rewardAsset)}</td>
+                        <td className="py-3 pr-4">{formatAdminReward(prize.pendingAmount, prize.rewardAsset)}</td>
+                        <td className="py-3 pr-4 text-slate-400">
+                          {prize.maxWinners ? `${prize.maxWinners} winners` : "No winner cap"}
+                          {" / "}
+                          {prize.maxTotalRewardAmount ? `${prize.maxTotalRewardAmount.toFixed(2)} max` : "No payout cap"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+          <div className="grid gap-3 rounded-lg border border-white/10 bg-white/5 p-4">
+            <div className="text-sm font-semibold text-white">Grant spins</div>
+            <div className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_120px_minmax(180px,0.8fr)_minmax(220px,1fr)]">
+              <input
+                className={fieldClass}
+                disabled={loading || luckyDrawActionId === "grant"}
+                placeholder="User UUID"
+                value={luckyDrawGrant.userId}
+                onChange={(event) => setLuckyDrawGrant((current) => ({ ...current, userId: event.target.value }))}
+              />
+              <input
+                className={fieldClass}
+                disabled={loading || luckyDrawActionId === "grant"}
+                min={1}
+                max={100}
+                type="number"
+                value={luckyDrawGrant.spinCount}
+                onChange={(event) => setLuckyDrawGrant((current) => ({ ...current, spinCount: Number(event.target.value) }))}
+              />
+              <input
+                className={fieldClass}
+                disabled={loading || luckyDrawActionId === "grant"}
+                type="datetime-local"
+                value={luckyDrawGrant.expiresAt}
+                onChange={(event) => setLuckyDrawGrant((current) => ({ ...current, expiresAt: event.target.value }))}
+              />
+              <input
+                className={fieldClass}
+                disabled={loading || luckyDrawActionId === "grant"}
+                placeholder="Internal note"
+                value={luckyDrawGrant.note}
+                onChange={(event) => setLuckyDrawGrant((current) => ({ ...current, note: event.target.value }))}
+              />
+            </div>
+            <button
+              className={secondaryButtonClass}
+              disabled={loading || luckyDrawActionId === "grant"}
+              onClick={grantLuckyDrawSpins}
+              type="button"
+            >
+              <Plus className="h-4 w-4" />
+              {luckyDrawActionId === "grant" ? "Granting..." : "Grant spins"}
+            </button>
+          </div>
+          {luckyDrawAnalytics?.pendingReviews.length ? (
+            <div className="grid gap-3 rounded-lg border border-amber-300/20 bg-amber-300/10 p-4">
+              <div className="text-sm font-semibold text-amber-100">Pending prize reviews</div>
+              {luckyDrawAnalytics.pendingReviews.map((review) => (
+                <div key={review.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-slate-950/40 px-4 py-3">
+                  <div className="min-w-0">
+                    <div className="font-semibold text-white">{review.userName}</div>
+                    <div className="text-sm text-slate-300">
+                      {review.label} · {formatAdminReward(review.rewardAmount, review.rewardAsset)}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      className="inline-flex items-center gap-2 rounded-lg border border-emerald-300/20 bg-emerald-300/10 px-3 py-2 text-sm font-semibold text-emerald-100 disabled:opacity-60"
+                      disabled={luckyDrawActionId !== null}
+                      onClick={() => reviewLuckyDrawPrize(review.transactionId, "approve")}
+                      type="button"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      Approve
+                    </button>
+                    <button
+                      className="inline-flex items-center gap-2 rounded-lg border border-rose-300/20 bg-rose-300/10 px-3 py-2 text-sm font-semibold text-rose-100 disabled:opacity-60"
+                      disabled={luckyDrawActionId !== null}
+                      onClick={() => reviewLuckyDrawPrize(review.transactionId, "reject")}
+                      type="button"
+                    >
+                      <XCircle className="h-4 w-4" />
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          {luckyDrawAnalytics?.recentAwards.length ? (
+            <div className="grid gap-3 rounded-lg border border-white/10 bg-white/5 p-4">
+              <div className="text-sm font-semibold text-white">Recent spin awards</div>
+              {luckyDrawAnalytics.recentAwards.slice(0, 6).map((award) => {
+                const canRevoke = !award.revokedAt && award.spinsUsed < award.spinCount;
+                return (
+                  <div key={award.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-slate-950/40 px-4 py-3">
+                    <div className="min-w-0">
+                      <div className="font-semibold text-white">{award.userName}</div>
+                      <div className="text-sm text-slate-300">
+                        {award.spinCount} spins · {award.sourceType.replace(/_/g, " ")} · used {award.spinsUsed}
+                      </div>
+                    </div>
+                    <button
+                      className="inline-flex items-center gap-2 rounded-lg border border-rose-300/20 bg-rose-300/10 px-3 py-2 text-sm font-semibold text-rose-100 disabled:opacity-40"
+                      disabled={!canRevoke || luckyDrawActionId !== null}
+                      onClick={() => revokeLuckyDrawAward(award.id)}
+                      type="button"
+                    >
+                      <Ban className="h-4 w-4" />
+                      {award.revokedAt ? "Revoked" : "Revoke unused"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
           <button
             className={primaryButtonClass}
             disabled={loading || saving}
