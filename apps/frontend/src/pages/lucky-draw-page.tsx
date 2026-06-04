@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { Gift, RotateCw, Ticket, Trophy } from "lucide-react";
-import type { LuckyDrawSummary, LuckyDrawSpinResult } from "@nevo/shared-types";
+import type { LuckyDrawPrize, LuckyDrawSummary, LuckyDrawSpinResult } from "@nevo/shared-types";
 import { walletApi, getApiErrorMessage } from "@/api/client";
 import { MobilePageHeader } from "@/components/mobile-page-header";
 import { getAccessToken } from "@/lib/auth";
@@ -13,7 +13,8 @@ const emptySummary: LuckyDrawSummary = {
     startsAt: "2026-06-03T22:00:00.000Z",
     endsAt: "2026-06-08T21:59:00.000Z",
     isActive: false,
-    rules: []
+    rules: [],
+    prizes: []
   },
   totalSpins: 0,
   availableSpins: 0,
@@ -21,6 +22,88 @@ const emptySummary: LuckyDrawSummary = {
   awards: [],
   results: []
 };
+
+const spinDurationMs = 4600;
+const wheelColors = ["#0ea5e9", "#f97316", "#22c55e", "#a855f7", "#facc15", "#ef4444", "#14b8a6", "#f472b6"];
+
+const defaultPrizes: LuckyDrawPrize[] = [
+  {
+    id: "bonus-draw-ticket",
+    label: "Bonus draw ticket recorded",
+    chance: 35,
+    rewardAmount: 0,
+    rewardAsset: "USDT_TRC20"
+  },
+  {
+    id: "vip-reward-entry",
+    label: "VIP reward pool entry",
+    chance: 30,
+    rewardAmount: 0,
+    rewardAsset: "USDT_TRC20"
+  },
+  {
+    id: "campaign-review-entry",
+    label: "Campaign prize review entry",
+    chance: 20,
+    rewardAmount: 0,
+    rewardAsset: "USDT_TRC20"
+  },
+  {
+    id: "five-usdt-bonus",
+    label: "5 USDT bonus",
+    chance: 10,
+    rewardAmount: 5,
+    rewardAsset: "USDT_TRC20"
+  },
+  {
+    id: "twenty-usdt-bonus",
+    label: "20 USDT bonus",
+    chance: 5,
+    rewardAmount: 20,
+    rewardAsset: "USDT_TRC20"
+  }
+];
+
+type WheelSegment = LuckyDrawPrize & {
+  actualChance: number;
+  centerDeg: number;
+  color: string;
+  endDeg: number;
+  startDeg: number;
+};
+
+const buildWheelSegments = (prizes: LuckyDrawPrize[]): WheelSegment[] => {
+  const positivePrizes = (prizes.length ? prizes : defaultPrizes).filter((prize) => prize.chance > 0);
+  const safePrizes = positivePrizes.length ? positivePrizes : defaultPrizes;
+  const totalChance = safePrizes.reduce((sum, prize) => sum + prize.chance, 0) || 1;
+  let cursor = 0;
+
+  return safePrizes.map((prize, index) => {
+    const sweep = (prize.chance / totalChance) * 360;
+    const startDeg = cursor;
+    const endDeg = index === safePrizes.length - 1 ? 360 : cursor + sweep;
+    cursor = endDeg;
+
+    return {
+      ...prize,
+      actualChance: (prize.chance / totalChance) * 100,
+      centerDeg: startDeg + (endDeg - startDeg) / 2,
+      color: wheelColors[index % wheelColors.length],
+      endDeg,
+      startDeg
+    };
+  });
+};
+
+const formatReward = (prize: { rewardAmount?: number; rewardAsset?: LuckyDrawPrize["rewardAsset"] }) => {
+  if (!prize.rewardAmount || prize.rewardAmount <= 0 || !prize.rewardAsset) {
+    return "";
+  }
+
+  return `${prize.rewardAmount.toFixed(2)} ${prize.rewardAsset.startsWith("USDT") ? "USDT" : prize.rewardAsset}`;
+};
+
+const shortPrizeLabel = (label: string) => (label.length > 22 ? `${label.slice(0, 20)}...` : label);
 
 const formatEventDate = (value: string) =>
   new Date(value).toLocaleString("en-GB", {
@@ -39,10 +122,25 @@ export function LuckyDrawPage() {
   const [loading, setLoading] = useState(true);
   const [spinning, setSpinning] = useState(false);
   const [lastResult, setLastResult] = useState<LuckyDrawSpinResult | null>(null);
+  const [wheelRotation, setWheelRotation] = useState(0);
+  const spinTimeoutRef = useRef<number | null>(null);
 
   const eventRange = useMemo(
     () => `${formatEventDate(summary.event.startsAt)} - ${formatEventDate(summary.event.endsAt)}`,
     [summary.event.endsAt, summary.event.startsAt]
+  );
+
+  const wheelSegments = useMemo(
+    () => buildWheelSegments(summary.event.prizes?.length ? summary.event.prizes : defaultPrizes),
+    [summary.event.prizes]
+  );
+
+  const wheelGradient = useMemo(
+    () =>
+      `conic-gradient(${wheelSegments
+        .map((segment) => `${segment.color} ${segment.startDeg.toFixed(2)}deg ${segment.endDeg.toFixed(2)}deg`)
+        .join(", ")})`,
+    [wheelSegments]
   );
 
   const loadSummary = async () => {
@@ -66,26 +164,59 @@ export function LuckyDrawPage() {
     void loadSummary();
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (spinTimeoutRef.current) {
+        window.clearTimeout(spinTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const useSpin = async () => {
     if (summary.availableSpins <= 0) {
       toast.error(tt("No Lucky Draw spins available."));
       return;
     }
 
+    if (spinTimeoutRef.current) {
+      window.clearTimeout(spinTimeoutRef.current);
+    }
+
     setSpinning(true);
+    setLastResult(null);
+
     try {
       const response = await walletApi.post<LuckyDrawSpinResult & { availableSpins: number }>("/wallet/lucky-draw/spin");
-      setLastResult(response.data);
-      setSummary((current) => ({
-        ...current,
-        availableSpins: response.data.availableSpins,
-        usedSpins: current.usedSpins + 1,
-        results: [response.data, ...current.results].slice(0, 20)
-      }));
-      toast.success(tt("Lucky Draw spin recorded."));
+      const byIndex =
+        typeof response.data.prizeIndex === "number" && response.data.prizeIndex >= 0
+          ? response.data.prizeIndex
+          : -1;
+      const byPrizeId = response.data.prizeId
+        ? wheelSegments.findIndex((segment) => segment.id === response.data.prizeId)
+        : -1;
+      const byLabel = wheelSegments.findIndex((segment) => segment.label === response.data.resultLabel);
+      const selectedSegment = wheelSegments[byIndex] ?? wheelSegments[byPrizeId] ?? wheelSegments[byLabel] ?? wheelSegments[0];
+      const segmentSpan = Math.max(selectedSegment.endDeg - selectedSegment.startDeg, 1);
+      const landingDeg = selectedSegment.startDeg + segmentSpan * (0.35 + Math.random() * 0.3);
+      const currentRotation = ((wheelRotation % 360) + 360) % 360;
+      const desiredRotation = (360 - landingDeg) % 360;
+      const delta = (desiredRotation - currentRotation + 360) % 360;
+      const targetRotation = wheelRotation + 360 * 6 + delta;
+
+      setWheelRotation(targetRotation);
+      spinTimeoutRef.current = window.setTimeout(() => {
+        setLastResult(response.data);
+        setSummary((current) => ({
+          ...current,
+          availableSpins: response.data.availableSpins,
+          usedSpins: current.usedSpins + 1,
+          results: [response.data, ...current.results].slice(0, 20)
+        }));
+        setSpinning(false);
+        toast.success(tt("Lucky Draw spin recorded."));
+      }, spinDurationMs);
     } catch (error) {
       toast.error(getApiErrorMessage(error, tt("Could not use Lucky Draw spin.")));
-    } finally {
       setSpinning(false);
     }
   };
@@ -131,21 +262,110 @@ export function LuckyDrawPage() {
         </section>
 
         <section className="mt-5 grid place-items-center">
-          <button
-            className={`relative grid h-56 w-56 place-items-center rounded-full border-[10px] border-cyan-300/50 bg-[conic-gradient(from_0deg,#22d3ee,#f4b83f,#7c3aed,#22c55e,#22d3ee)] shadow-[0_0_45px_rgba(34,211,238,0.32)] transition disabled:opacity-60 ${spinning ? "animate-spin" : ""}`}
-            disabled={loading || spinning || !summary.event.isActive || summary.availableSpins <= 0}
-            onClick={() => void useSpin()}
-            type="button"
-          >
-            <span className="grid h-28 w-28 place-items-center rounded-full border border-white/20 bg-[#050849] text-center text-sm font-extrabold uppercase tracking-[0.16em] text-white shadow-[0_10px_30px_rgba(0,0,0,0.35)]">
-              {spinning ? <RotateCw className="h-8 w-8" /> : tt("Spin")}
-            </span>
-          </button>
+          <div className="relative h-72 w-72 sm:h-80 sm:w-80">
+            <div
+              className="absolute left-1/2 top-0 z-30 h-9 w-7 -translate-x-1/2 -translate-y-2 bg-white shadow-[0_8px_24px_rgba(0,0,0,0.35)]"
+              style={{ clipPath: "polygon(50% 100%, 0 0, 100% 0)" }}
+            />
+            <div
+              className="absolute inset-0 overflow-hidden rounded-full border-[10px] border-white/20 shadow-[0_0_55px_rgba(34,211,238,0.34)]"
+              style={{
+                background: wheelGradient,
+                transform: `rotate(${wheelRotation}deg)`,
+                transition: spinning ? `transform ${spinDurationMs}ms cubic-bezier(0.12, 0.72, 0.12, 1)` : "none"
+              }}
+            >
+              <div className="absolute inset-4 rounded-full border border-white/25" />
+              {wheelSegments.map((segment) => (
+                <div
+                  key={segment.id}
+                  className="absolute left-1/2 top-1/2 origin-center"
+                  style={{
+                    transform: `translate(-50%, -50%) rotate(${segment.centerDeg}deg) translateY(-6.1rem)`
+                  }}
+                >
+                  <span
+                    className="block w-20 rounded-full border border-white/20 bg-black/35 px-2 py-1 text-center text-[10px] font-extrabold uppercase leading-tight text-white shadow-[0_6px_18px_rgba(0,0,0,0.26)] sm:w-24 sm:text-[11px]"
+                    style={{
+                      transform: segment.centerDeg > 90 && segment.centerDeg < 270 ? "rotate(180deg)" : "none"
+                    }}
+                  >
+                    {tt(shortPrizeLabel(segment.label))}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <button
+              className="absolute left-1/2 top-1/2 z-20 grid h-28 w-28 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-white/25 bg-[#050849] text-center text-sm font-extrabold uppercase tracking-[0.16em] text-white shadow-[0_18px_40px_rgba(0,0,0,0.45)] transition hover:border-cyan-200/60 disabled:opacity-60"
+              disabled={loading || spinning || !summary.event.isActive || summary.availableSpins <= 0}
+              onClick={() => void useSpin()}
+              type="button"
+            >
+              {spinning ? <RotateCw className="h-8 w-8 animate-spin" /> : tt("Spin")}
+            </button>
+          </div>
           {lastResult ? (
-            <div className="mt-4 rounded-[20px] border border-emerald-300/25 bg-emerald-300/10 px-4 py-3 text-center text-sm font-semibold text-emerald-100">
-              {tt(lastResult.resultLabel)}
+            <div className="mt-5 w-full rounded-[22px] border border-emerald-300/25 bg-emerald-300/10 px-4 py-4 text-center text-sm font-semibold text-emerald-100">
+              <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-100/70">{tt("Prize result")}</div>
+              <div className="mt-1 text-lg font-extrabold text-white">{tt(lastResult.resultLabel)}</div>
+              {formatReward(lastResult) ? (
+                <div className="mt-2 text-sm text-emerald-100">{formatReward(lastResult)}</div>
+              ) : null}
             </div>
           ) : null}
+        </section>
+
+        <section className="neon-soft-panel mt-6 rounded-[26px] p-4">
+          <div className="mb-3 flex items-center gap-2 text-[1rem] font-extrabold text-white">
+            <Trophy className="h-5 w-5 text-cyan-200" />
+            {tt("Prize pool")}
+          </div>
+          <div className="grid gap-3">
+            {wheelSegments.map((segment) => (
+              <div key={segment.id} className="flex items-center justify-between gap-3 rounded-[18px] border border-white/10 bg-white/[0.04] px-4 py-3">
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold text-white">{tt(segment.label)}</div>
+                  {formatReward(segment) ? (
+                    <div className="mt-1 text-[12px] text-emerald-100">{formatReward(segment)}</div>
+                  ) : null}
+                </div>
+                <div className="shrink-0 rounded-full border border-white/10 px-3 py-1 text-xs font-extrabold text-cyan-100">
+                  {segment.actualChance.toFixed(2)}%
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="mt-6">
+          <div className="mb-3 flex items-center gap-2 text-[1rem] font-extrabold text-white">
+            <Ticket className="h-5 w-5 text-cyan-200" />
+            {tt("Recent results")}
+          </div>
+          <div className="space-y-3">
+            {summary.results.length ? (
+              summary.results.map((result) => (
+                <article key={result.id} className="neon-panel rounded-[22px] px-4 py-3">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-white">{tt(result.resultLabel)}</div>
+                      {formatReward(result) ? (
+                        <div className="mt-1 text-[12px] font-semibold text-emerald-100">{formatReward(result)}</div>
+                      ) : null}
+                      <div className="mt-1 text-[12px] text-white/35">{new Date(result.createdAt).toLocaleString("en-GB")}</div>
+                    </div>
+                    <div className="shrink-0 rounded-full border border-white/10 px-3 py-1 text-xs font-extrabold text-cyan-100">
+                      {tt("Prize")}
+                    </div>
+                  </div>
+                </article>
+              ))
+            ) : (
+              <div className="rounded-[22px] border border-dashed border-white/10 bg-white/5 px-4 py-8 text-center text-sm text-white/45">
+                {loading ? tt("Loading Lucky Draw...") : tt("No spin results yet.")}
+              </div>
+            )}
+          </div>
         </section>
 
         <section className="neon-soft-panel mt-6 rounded-[26px] p-4">

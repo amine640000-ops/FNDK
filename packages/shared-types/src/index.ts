@@ -73,6 +73,7 @@ export interface LuckyDrawEventInfo {
   endsAt: string;
   isActive: boolean;
   rules: string[];
+  prizes: LuckyDrawPrize[];
 }
 
 export interface LuckyDrawSpinAward {
@@ -88,6 +89,10 @@ export interface LuckyDrawSpinResult {
   id: string;
   resultLabel: string;
   createdAt: string;
+  prizeId?: string;
+  prizeIndex?: number;
+  rewardAmount?: number;
+  rewardAsset?: AssetType;
 }
 
 export interface LuckyDrawSummary {
@@ -143,6 +148,14 @@ export interface MissionTaskProgress extends MissionTaskSetting {
   rewardClaimed: boolean;
 }
 
+export interface LuckyDrawPrize {
+  id: string;
+  label: string;
+  chance: number;
+  rewardAmount: number;
+  rewardAsset: AssetType;
+}
+
 export interface LuckyDrawEventConfig {
   enabled: boolean;
   title: string;
@@ -154,6 +167,7 @@ export interface LuckyDrawEventConfig {
   depositTwoSpinAmount: number;
   rules: string[];
   prizeLabels: string[];
+  prizes: LuckyDrawPrize[];
 }
 
 export interface AdminPlatformSettings {

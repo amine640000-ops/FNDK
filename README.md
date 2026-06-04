@@ -72,6 +72,8 @@ psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/019_public_user_id
 psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/020_vip_direct_member_requirements.sql
 psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/021_vip_daily_profit_cap.sql
 psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/022_ensure_vip_runtime_columns.sql
+psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/023_lucky_draw_event.sql
+psql postgresql://nevo:nevo@localhost:5432/nevo -f migrations/024_lucky_draw_weighted_prizes.sql
 ```
 
 Initial admin login after running migrations:

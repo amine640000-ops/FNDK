@@ -23,6 +23,7 @@ import type {
   DepositAddressMap,
   DashboardTransaction,
   LuckyDrawEventConfig,
+  LuckyDrawPrize,
   LuckyDrawSummary,
   LuckyDrawSpinResult,
   ProfitDistributionEvent,
@@ -67,6 +68,9 @@ type LuckyDrawAwardRow = {
 type LuckyDrawResultRow = {
   id: string;
   result_label: string;
+  prize_id: string | null;
+  reward_amount: number;
+  reward_asset: AssetType | null;
   created_at: string;
 };
 
@@ -111,6 +115,44 @@ type AdminSettingRow = {
 };
 
 const WITHDRAWAL_FEE_RATE = 0.05;
+const defaultLuckyDrawPrizes: LuckyDrawPrize[] = [
+  {
+    id: "bonus-draw-ticket",
+    label: "Bonus draw ticket recorded",
+    chance: 35,
+    rewardAmount: 0,
+    rewardAsset: "USDT_TRC20"
+  },
+  {
+    id: "vip-reward-entry",
+    label: "VIP reward pool entry",
+    chance: 30,
+    rewardAmount: 0,
+    rewardAsset: "USDT_TRC20"
+  },
+  {
+    id: "campaign-review-entry",
+    label: "Campaign prize review entry",
+    chance: 20,
+    rewardAmount: 0,
+    rewardAsset: "USDT_TRC20"
+  },
+  {
+    id: "five-usdt-bonus",
+    label: "5 USDT bonus",
+    chance: 10,
+    rewardAmount: 5,
+    rewardAsset: "USDT_TRC20"
+  },
+  {
+    id: "twenty-usdt-bonus",
+    label: "20 USDT bonus",
+    chance: 5,
+    rewardAmount: 20,
+    rewardAsset: "USDT_TRC20"
+  }
+];
+
 const defaultLuckyDrawConfig: LuckyDrawEventConfig = {
   enabled: true,
   title: "Lucky Draw Event",
@@ -126,12 +168,8 @@ const defaultLuckyDrawConfig: LuckyDrawEventConfig = {
     "Deposit 300 USDT or more in one transaction to receive 2 spins.",
     "Event period: June 4, 2026 00:00 to June 8, 2026 23:59."
   ],
-  prizeLabels: [
-    "Lucky draw entry confirmed",
-    "Bonus draw ticket recorded",
-    "Campaign prize review entry",
-    "VIP reward pool entry"
-  ]
+  prizeLabels: defaultLuckyDrawPrizes.map((prize) => prize.label),
+  prizes: defaultLuckyDrawPrizes
 };
 
 const isUsdtAsset = (asset: AssetType) => asset.startsWith("USDT");
@@ -295,7 +333,13 @@ export class WalletService implements OnModuleInit {
       ),
       dbQuery<LuckyDrawResultRow>(
         `
-          SELECT id, result_label, created_at
+          SELECT
+            id,
+            result_label,
+            prize_id,
+            reward_amount::float8 AS reward_amount,
+            reward_asset,
+            created_at
           FROM lucky_draw_spin_results
           WHERE user_id = $1
           ORDER BY created_at DESC
@@ -321,7 +365,10 @@ export class WalletService implements OnModuleInit {
       results: results.rows.map((result) => ({
         id: result.id,
         resultLabel: result.result_label,
-        createdAt: result.created_at
+        createdAt: result.created_at,
+        prizeId: result.prize_id ?? undefined,
+        rewardAmount: result.reward_amount,
+        rewardAsset: result.reward_asset ?? undefined
       }))
     };
   }
@@ -360,16 +407,35 @@ export class WalletService implements OnModuleInit {
         [ledgerId]
       );
 
-      const prizeLabels = config.prizeLabels.length ? config.prizeLabels : defaultLuckyDrawConfig.prizeLabels;
-      const resultLabel = prizeLabels[Math.floor(Math.random() * prizeLabels.length)];
+      const prize = this.selectLuckyDrawPrize(config.prizes);
+      const prizeIndex = config.prizes.findIndex((entry) => entry.id === prize.id);
+
       const result = await client.query<LuckyDrawResultRow>(
         `
-          INSERT INTO lucky_draw_spin_results (id, user_id, ledger_id, result_label)
-          VALUES (gen_random_uuid(), $1, $2, $3)
-          RETURNING id, result_label, created_at
+          INSERT INTO lucky_draw_spin_results (
+            id,
+            user_id,
+            ledger_id,
+            result_label,
+            prize_id,
+            reward_amount,
+            reward_asset
+          )
+          VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6)
+          RETURNING
+            id,
+            result_label,
+            prize_id,
+            reward_amount::float8 AS reward_amount,
+            reward_asset,
+            created_at
         `,
-        [userId, ledgerId, resultLabel]
+        [userId, ledgerId, prize.label, prize.id, prize.rewardAmount, prize.rewardAsset]
       );
+
+      if (prize.rewardAmount > 0) {
+        await this.creditLuckyDrawPrize(client, userId, prize);
+      }
 
       const balance = await client.query<{ available_spins: number }>(
         `
@@ -384,6 +450,10 @@ export class WalletService implements OnModuleInit {
         id: result.rows[0].id,
         resultLabel: result.rows[0].result_label,
         createdAt: result.rows[0].created_at,
+        prizeId: result.rows[0].prize_id ?? undefined,
+        prizeIndex: prizeIndex >= 0 ? prizeIndex : undefined,
+        rewardAmount: result.rows[0].reward_amount,
+        rewardAsset: result.rows[0].reward_asset ?? undefined,
         availableSpins: balance.rows[0]?.available_spins ?? 0
       };
     });
@@ -886,7 +956,8 @@ export class WalletService implements OnModuleInit {
       "platform.luckyDraw.depositOneSpinAmount",
       "platform.luckyDraw.depositTwoSpinAmount",
       "platform.luckyDraw.rules",
-      "platform.luckyDraw.prizeLabels"
+      "platform.luckyDraw.prizeLabels",
+      "platform.luckyDraw.prizes"
     ];
     const query = `
       SELECT key, value
@@ -905,6 +976,13 @@ export class WalletService implements OnModuleInit {
       settings.get("platform.luckyDraw.depositTwoSpinAmount"),
       defaultLuckyDrawConfig.depositTwoSpinAmount
     );
+    const legacyPrizeLabels = this.cleanTextList(
+      settings.get("platform.luckyDraw.prizeLabels"),
+      defaultLuckyDrawConfig.prizeLabels,
+      12,
+      120
+    );
+    const prizes = this.normalizeLuckyDrawPrizes(settings.get("platform.luckyDraw.prizes"), legacyPrizeLabels);
 
     return {
       enabled: typeof settings.get("platform.luckyDraw.enabled") === "boolean"
@@ -924,7 +1002,8 @@ export class WalletService implements OnModuleInit {
       depositOneSpinAmount,
       depositTwoSpinAmount: Math.max(depositTwoSpinAmount, depositOneSpinAmount),
       rules: this.cleanTextList(settings.get("platform.luckyDraw.rules"), defaultLuckyDrawConfig.rules, 8, 220),
-      prizeLabels: this.cleanTextList(settings.get("platform.luckyDraw.prizeLabels"), defaultLuckyDrawConfig.prizeLabels, 12, 120)
+      prizeLabels: prizes.map((prize) => prize.label),
+      prizes
     };
   }
 
@@ -938,8 +1017,61 @@ export class WalletService implements OnModuleInit {
       startsAt: startsAt.toISOString(),
       endsAt: endsAt.toISOString(),
       isActive: this.isLuckyDrawActive(config),
-      rules: config.rules
+      rules: config.rules,
+      prizes: config.prizes
     };
+  }
+
+  private selectLuckyDrawPrize(prizes: LuckyDrawPrize[]) {
+    const eligiblePrizes = (prizes.length ? prizes : defaultLuckyDrawPrizes).filter((prize) => prize.chance > 0);
+    const safePrizes = eligiblePrizes.length ? eligiblePrizes : defaultLuckyDrawPrizes;
+    const totalChance = safePrizes.reduce((sum, prize) => sum + prize.chance, 0);
+    let ticket = Math.random() * totalChance;
+
+    for (const prize of safePrizes) {
+      ticket -= prize.chance;
+      if (ticket <= 0) {
+        return prize;
+      }
+    }
+
+    return safePrizes[safePrizes.length - 1];
+  }
+
+  private async creditLuckyDrawPrize(client: PoolClient, userId: string, prize: LuckyDrawPrize) {
+    await this.ensureWalletsWithClient(client, userId);
+
+    await client.query(
+      `
+        UPDATE wallets
+        SET
+          balance = balance + $3,
+          total_earned = total_earned + $3
+        WHERE user_id = $1
+          AND asset_type = $2
+      `,
+      [userId, prize.rewardAsset, prize.rewardAmount]
+    );
+
+    await client.query(
+      `
+        INSERT INTO transactions (id, user_id, type, asset, amount, fee_amount, status, admin_note)
+        VALUES (gen_random_uuid(), $1, 'adjustment', $2, $3, 0, 'approved', $4)
+      `,
+      [userId, prize.rewardAsset, prize.rewardAmount, `Lucky Draw prize: ${prize.label}`]
+    );
+
+    await client.query(
+      `
+        INSERT INTO notifications (id, user_id, title, message, is_read, created_at)
+        VALUES (gen_random_uuid(), $1, $2, $3, FALSE, NOW())
+      `,
+      [
+        userId,
+        "Lucky Draw prize won",
+        `You won ${prize.rewardAmount.toFixed(2)} ${prize.rewardAsset.startsWith("USDT") ? "USDT" : prize.rewardAsset} from Lucky Draw.`
+      ]
+    );
   }
 
   private isLuckyDrawActive(config: LuckyDrawEventConfig) {
@@ -1220,6 +1352,55 @@ export class WalletService implements OnModuleInit {
   private cleanPositiveInteger(value: unknown, fallback: number) {
     const numeric = Number(value);
     return Number.isInteger(numeric) && numeric >= 0 ? numeric : fallback;
+  }
+
+  private normalizeLuckyDrawPrizes(value: unknown, labelFallback: string[]): LuckyDrawPrize[] {
+    if (!Array.isArray(value)) {
+      const labels = labelFallback.length ? labelFallback : defaultLuckyDrawConfig.prizeLabels;
+      const chance = Number((100 / labels.length).toFixed(2));
+      return labels.slice(0, 12).map((label, index) => ({
+        id: `legacy-prize-${index + 1}`,
+        label,
+        chance,
+        rewardAmount: 0,
+        rewardAsset: "USDT_TRC20"
+      }));
+    }
+
+    const prizes = value.slice(0, 12).flatMap((entry, index): LuckyDrawPrize[] => {
+      if (!entry || typeof entry !== "object") {
+        return [];
+      }
+
+      const prize = entry as Partial<LuckyDrawPrize>;
+      const fallback = defaultLuckyDrawPrizes[index % defaultLuckyDrawPrizes.length];
+      const label = this.cleanSettingText(prize.label, fallback.label, 120);
+      const chance = Number(prize.chance);
+      const rewardAmount = Number(prize.rewardAmount ?? 0);
+      const rewardAsset = SUPPORTED_ASSETS.includes(prize.rewardAsset as AssetType)
+        ? prize.rewardAsset as AssetType
+        : "USDT_TRC20";
+      const id =
+        typeof prize.id === "string" && prize.id.trim()
+          ? prize.id.trim().replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 80)
+          : `lucky-prize-${index + 1}`;
+
+      if (!label || !Number.isFinite(chance) || chance <= 0) {
+        return [];
+      }
+
+      return [
+        {
+          id,
+          label,
+          chance: Number(chance.toFixed(4)),
+          rewardAmount: Number.isFinite(rewardAmount) && rewardAmount > 0 ? Number(rewardAmount.toFixed(2)) : 0,
+          rewardAsset
+        }
+      ];
+    });
+
+    return prizes.length ? prizes : defaultLuckyDrawPrizes;
   }
 
   private cleanTextList(value: unknown, fallback: string[], maxItems: number, maxLength: number) {

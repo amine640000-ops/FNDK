@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { ImagePlus, Plus, Trash2 } from "lucide-react";
-import type { AdCarouselSlide, AdminPlatformSettings, AssetRouteSetting, MissionTaskSetting } from "@nevo/shared-types";
+import type { AdCarouselSlide, AdminPlatformSettings, AssetRouteSetting, LuckyDrawPrize, MissionTaskSetting } from "@nevo/shared-types";
 import { DEFAULT_ASSET_ROUTE_SETTINGS, SUPPORTED_ASSETS } from "@nevo/shared-utils";
 import { useNavigate } from "react-router-dom";
 import { adminApi, getApiErrorMessage, isApiAuthError, uploadBaseUrls } from "@/api/client";
@@ -84,7 +84,45 @@ const defaultMissionTasks: MissionTaskSetting[] = [
   }
 ];
 
-const defaultLuckyDraw = {
+const defaultLuckyDrawPrizes: LuckyDrawPrize[] = [
+  {
+    id: "bonus-draw-ticket",
+    label: "Bonus draw ticket recorded",
+    chance: 35,
+    rewardAmount: 0,
+    rewardAsset: "USDT_TRC20"
+  },
+  {
+    id: "vip-reward-entry",
+    label: "VIP reward pool entry",
+    chance: 30,
+    rewardAmount: 0,
+    rewardAsset: "USDT_TRC20"
+  },
+  {
+    id: "campaign-review-entry",
+    label: "Campaign prize review entry",
+    chance: 20,
+    rewardAmount: 0,
+    rewardAsset: "USDT_TRC20"
+  },
+  {
+    id: "five-usdt-bonus",
+    label: "5 USDT bonus",
+    chance: 10,
+    rewardAmount: 5,
+    rewardAsset: "USDT_TRC20"
+  },
+  {
+    id: "twenty-usdt-bonus",
+    label: "20 USDT bonus",
+    chance: 5,
+    rewardAmount: 20,
+    rewardAsset: "USDT_TRC20"
+  }
+];
+
+const defaultLuckyDraw: AdminPlatformSettings["luckyDraw"] = {
   enabled: true,
   title: "Lucky Draw Event",
   startsAt: "2026-06-03T22:00:00.000Z",
@@ -99,12 +137,8 @@ const defaultLuckyDraw = {
     "Deposit 300 USDT or more in one transaction to receive 2 spins.",
     "Event period: June 4, 2026 00:00 to June 8, 2026 23:59."
   ],
-  prizeLabels: [
-    "Lucky draw entry confirmed",
-    "Bonus draw ticket recorded",
-    "Campaign prize review entry",
-    "VIP reward pool entry"
-  ]
+  prizeLabels: defaultLuckyDrawPrizes.map((prize) => prize.label),
+  prizes: defaultLuckyDrawPrizes
 };
 
 const defaultSettings: AdminPlatformSettings = {
@@ -163,6 +197,27 @@ const createMissionTask = (): MissionTaskSetting => ({
   rewardAsset: "USDT_TRC20"
 });
 
+const createLuckyDrawPrize = (): LuckyDrawPrize => ({
+  id: `lucky-prize-${Date.now()}`,
+  label: "New prize",
+  chance: 10,
+  rewardAmount: 0,
+  rewardAsset: "USDT_TRC20"
+});
+
+const createLuckyDrawPrizesFromLabels = (labels: string[] | undefined): LuckyDrawPrize[] => {
+  const cleanLabels = (labels?.length ? labels : defaultLuckyDraw.prizeLabels).map((label) => label.trim()).filter(Boolean);
+  const chance = Number((100 / cleanLabels.length).toFixed(2));
+
+  return cleanLabels.map((label, index) => ({
+    id: `legacy-prize-${index + 1}`,
+    label,
+    chance,
+    rewardAmount: 0,
+    rewardAsset: "USDT_TRC20"
+  }));
+};
+
 const resolveAdminAssetUrl = (url: string) => {
   if (!url) {
     return "";
@@ -200,6 +255,9 @@ export function AdminSettingsPage() {
       .get<AdminPlatformSettings>("/admin/settings")
       .then((response) => {
         setAdminApiOffline(false);
+        const luckyDrawPrizes = response.data.luckyDraw.prizes?.length
+          ? response.data.luckyDraw.prizes
+          : createLuckyDrawPrizesFromLabels(response.data.luckyDraw.prizeLabels);
         setSettings({
           ...defaultSettings,
           ...response.data,
@@ -211,7 +269,9 @@ export function AdminSettingsPage() {
             : defaultMissionTasks,
           luckyDraw: {
             ...defaultLuckyDraw,
-            ...response.data.luckyDraw
+            ...response.data.luckyDraw,
+            prizes: luckyDrawPrizes,
+            prizeLabels: luckyDrawPrizes.map((prize) => prize.label)
           },
           assetSettings: response.data.assetSettings?.length
             ? response.data.assetSettings
@@ -250,7 +310,7 @@ export function AdminSettingsPage() {
     }));
   };
 
-  const updateLuckyDrawList = (key: "rules" | "prizeLabels", value: string) => {
+  const updateLuckyDrawList = (key: "rules", value: string) => {
     updateLuckyDrawField(
       key,
       value
@@ -258,6 +318,56 @@ export function AdminSettingsPage() {
         .map((line) => line.trim())
         .filter(Boolean)
     );
+  };
+
+  const updateLuckyDrawPrize = <Key extends keyof LuckyDrawPrize,>(
+    prizeId: string,
+    key: Key,
+    value: LuckyDrawPrize[Key]
+  ) => {
+    setSettings((current) => {
+      const prizes = current.luckyDraw.prizes.map((prize) =>
+        prize.id === prizeId ? { ...prize, [key]: value } : prize
+      );
+
+      return {
+        ...current,
+        luckyDraw: {
+          ...current.luckyDraw,
+          prizes,
+          prizeLabels: prizes.map((prize) => prize.label)
+        }
+      };
+    });
+  };
+
+  const addLuckyDrawPrize = () => {
+    setSettings((current) => {
+      const prizes = [...current.luckyDraw.prizes, createLuckyDrawPrize()];
+      return {
+        ...current,
+        luckyDraw: {
+          ...current.luckyDraw,
+          prizes,
+          prizeLabels: prizes.map((prize) => prize.label)
+        }
+      };
+    });
+  };
+
+  const removeLuckyDrawPrize = (prizeId: string) => {
+    setSettings((current) => {
+      const prizes = current.luckyDraw.prizes.filter((prize) => prize.id !== prizeId);
+      const nextPrizes = prizes.length ? prizes : [createLuckyDrawPrize()];
+      return {
+        ...current,
+        luckyDraw: {
+          ...current.luckyDraw,
+          prizes: nextPrizes,
+          prizeLabels: nextPrizes.map((prize) => prize.label)
+        }
+      };
+    });
   };
 
   const updateAdSlide = <Key extends keyof AdCarouselSlide,>(
@@ -377,6 +487,9 @@ export function AdminSettingsPage() {
       setSaving(false);
     }
   };
+
+  const luckyDrawChanceTotal = settings.luckyDraw.prizes.reduce((sum, prize) => sum + Number(prize.chance || 0), 0);
+  const luckyDrawChanceTotalIsBalanced = Math.abs(luckyDrawChanceTotal - 100) < 0.01;
 
   return (
     <div className="grid min-w-0 items-start gap-6 xl:grid-cols-2">
@@ -659,7 +772,17 @@ export function AdminSettingsPage() {
         </div>
       </SectionCard>
 
-      <SectionCard title="Lucky Draw Event" subtitle="Activate, deactivate, and edit spin event rules.">
+      <SectionCard
+        action={
+          <button className={secondaryButtonClass} disabled={loading} onClick={addLuckyDrawPrize} type="button">
+            <Plus className="h-4 w-4" />
+            Add prize
+          </button>
+        }
+        className="xl:col-span-2"
+        title="Lucky Draw Event"
+        subtitle="Activate, deactivate, and edit spin event rules."
+      >
         <div className="grid gap-3">
           <label className={toggleRowClass}>
             <span className="min-w-0">Enable Lucky Draw</span>
@@ -755,15 +878,81 @@ export function AdminSettingsPage() {
               onChange={(event) => updateLuckyDrawList("rules", event.target.value)}
             />
           </label>
-          <label className="grid gap-2 text-sm text-slate-300">
-            Spin result labels
-            <textarea
-              className={`${fieldClass} min-h-28 resize-y`}
-              disabled={loading}
-              value={settings.luckyDraw.prizeLabels.join("\n")}
-              onChange={(event) => updateLuckyDrawList("prizeLabels", event.target.value)}
-            />
-          </label>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-cyan-300/15 bg-cyan-300/10 px-4 py-3 text-sm text-cyan-100">
+            <span className="font-semibold">Prize chance total</span>
+            <span className={luckyDrawChanceTotalIsBalanced ? "font-extrabold text-emerald-100" : "font-extrabold text-amber-100"}>
+              {luckyDrawChanceTotal.toFixed(2)}%
+            </span>
+          </div>
+          <div className="grid gap-4">
+            {settings.luckyDraw.prizes.map((prize, index) => (
+              <div key={prize.id} className="grid gap-3 rounded-lg border border-white/10 bg-white/5 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="text-sm font-semibold text-white">Prize {index + 1}</div>
+                  <button
+                    aria-label={`Remove Lucky Draw prize ${index + 1}`}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-rose-300/20 bg-rose-400/10 text-rose-100 transition hover:bg-rose-400/15"
+                    disabled={loading || settings.luckyDraw.prizes.length <= 1}
+                    onClick={() => removeLuckyDrawPrize(prize.id)}
+                    type="button"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <div className="grid gap-3 lg:grid-cols-[minmax(220px,1.4fr)_minmax(120px,0.5fr)_minmax(140px,0.6fr)_minmax(150px,0.6fr)]">
+                  <label className="grid gap-2 text-sm text-slate-300">
+                    Prize label
+                    <input
+                      className={fieldClass}
+                      disabled={loading}
+                      value={prize.label}
+                      onChange={(event) => updateLuckyDrawPrize(prize.id, "label", event.target.value)}
+                    />
+                  </label>
+                  <label className="grid gap-2 text-sm text-slate-300">
+                    Chance %
+                    <input
+                      className={fieldClass}
+                      disabled={loading}
+                      min={0.01}
+                      step="0.01"
+                      type="number"
+                      value={prize.chance}
+                      onChange={(event) => updateLuckyDrawPrize(prize.id, "chance", Number(event.target.value))}
+                    />
+                  </label>
+                  <label className="grid gap-2 text-sm text-slate-300">
+                    Reward amount
+                    <input
+                      className={fieldClass}
+                      disabled={loading}
+                      min={0}
+                      step="0.01"
+                      type="number"
+                      value={prize.rewardAmount}
+                      onChange={(event) => updateLuckyDrawPrize(prize.id, "rewardAmount", Number(event.target.value))}
+                    />
+                  </label>
+                  <label className="grid gap-2 text-sm text-slate-300">
+                    Reward asset
+                    <select
+                      className={fieldClass}
+                      disabled={loading}
+                      value={prize.rewardAsset}
+                      onChange={(event) => updateLuckyDrawPrize(prize.id, "rewardAsset", event.target.value as LuckyDrawPrize["rewardAsset"])}
+                    >
+                      {SUPPORTED_ASSETS.map((asset) => (
+                        <option key={asset} value={asset}>
+                          {asset}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              </div>
+            ))}
+          </div>
           <button
             className={primaryButtonClass}
             disabled={loading || saving}

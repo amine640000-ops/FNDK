@@ -7,6 +7,7 @@ import type {
   AssetRouteSetting,
   AssetType,
   LuckyDrawEventConfig,
+  LuckyDrawPrize,
   MissionTaskSetting,
   TransactionType,
   VipTier
@@ -23,6 +24,7 @@ type AdminSettingValue =
   | string[]
   | AdCarouselSlide[]
   | AssetRouteSetting[]
+  | LuckyDrawPrize[]
   | MissionTaskSetting[];
 
 const maxAdCarouselSlides = 8;
@@ -103,6 +105,44 @@ const defaultMissionTasks: MissionTaskSetting[] = [
   }
 ];
 
+const defaultLuckyDrawPrizes: LuckyDrawPrize[] = [
+  {
+    id: "bonus-draw-ticket",
+    label: "Bonus draw ticket recorded",
+    chance: 35,
+    rewardAmount: 0,
+    rewardAsset: "USDT_TRC20"
+  },
+  {
+    id: "vip-reward-entry",
+    label: "VIP reward pool entry",
+    chance: 30,
+    rewardAmount: 0,
+    rewardAsset: "USDT_TRC20"
+  },
+  {
+    id: "campaign-review-entry",
+    label: "Campaign prize review entry",
+    chance: 20,
+    rewardAmount: 0,
+    rewardAsset: "USDT_TRC20"
+  },
+  {
+    id: "five-usdt-bonus",
+    label: "5 USDT bonus",
+    chance: 10,
+    rewardAmount: 5,
+    rewardAsset: "USDT_TRC20"
+  },
+  {
+    id: "twenty-usdt-bonus",
+    label: "20 USDT bonus",
+    chance: 5,
+    rewardAmount: 20,
+    rewardAsset: "USDT_TRC20"
+  }
+];
+
 const defaultLuckyDrawConfig: LuckyDrawEventConfig = {
   enabled: true,
   title: "Lucky Draw Event",
@@ -118,12 +158,8 @@ const defaultLuckyDrawConfig: LuckyDrawEventConfig = {
     "Deposit 300 USDT or more in one transaction to receive 2 spins.",
     "Event period: June 4, 2026 00:00 to June 8, 2026 23:59."
   ],
-  prizeLabels: [
-    "Lucky draw entry confirmed",
-    "Bonus draw ticket recorded",
-    "Campaign prize review entry",
-    "VIP reward pool entry"
-  ]
+  prizeLabels: defaultLuckyDrawPrizes.map((prize) => prize.label),
+  prizes: defaultLuckyDrawPrizes
 };
 
 type UserRow = {
@@ -1094,6 +1130,7 @@ export class AdminService implements OnModuleInit {
     "platform.luckyDraw.depositTwoSpinAmount",
     "platform.luckyDraw.rules",
     "platform.luckyDraw.prizeLabels",
+    "platform.luckyDraw.prizes",
     "platform.adCarouselSlides",
     "platform.missionTasks",
     ...SUPPORTED_ASSETS.flatMap((asset) => [
@@ -1259,6 +1296,7 @@ export class AdminService implements OnModuleInit {
       entries.push(["platform.luckyDraw.depositTwoSpinAmount", luckyDraw.depositTwoSpinAmount]);
       entries.push(["platform.luckyDraw.rules", luckyDraw.rules]);
       entries.push(["platform.luckyDraw.prizeLabels", luckyDraw.prizeLabels]);
+      entries.push(["platform.luckyDraw.prizes", luckyDraw.prizes]);
     }
 
     if (input.adCarouselSlides !== undefined) {
@@ -1411,13 +1449,16 @@ export class AdminService implements OnModuleInit {
       depositOneSpinAmount: settings.get("platform.luckyDraw.depositOneSpinAmount"),
       depositTwoSpinAmount: settings.get("platform.luckyDraw.depositTwoSpinAmount"),
       rules: settings.get("platform.luckyDraw.rules"),
-      prizeLabels: settings.get("platform.luckyDraw.prizeLabels")
+      prizeLabels: settings.get("platform.luckyDraw.prizeLabels"),
+      prizes: settings.get("platform.luckyDraw.prizes")
     });
   }
 
   private normalizeLuckyDrawConfigFromInput(value: Partial<LuckyDrawEventConfig> | Record<string, unknown>): LuckyDrawEventConfig {
     const depositOneSpinAmount = this.cleanPositiveNumber(value.depositOneSpinAmount, defaultLuckyDrawConfig.depositOneSpinAmount);
     const depositTwoSpinAmount = this.cleanPositiveNumber(value.depositTwoSpinAmount, defaultLuckyDrawConfig.depositTwoSpinAmount);
+    const legacyPrizeLabels = this.cleanTextList(value.prizeLabels, defaultLuckyDrawConfig.prizeLabels, 12, 120);
+    const prizes = this.normalizeLuckyDrawPrizes(value.prizes, legacyPrizeLabels);
 
     return {
       enabled: typeof value.enabled === "boolean" ? value.enabled : defaultLuckyDrawConfig.enabled,
@@ -1432,8 +1473,58 @@ export class AdminService implements OnModuleInit {
       depositOneSpinAmount,
       depositTwoSpinAmount: Math.max(depositTwoSpinAmount, depositOneSpinAmount),
       rules: this.cleanTextList(value.rules, defaultLuckyDrawConfig.rules, 8, 220),
-      prizeLabels: this.cleanTextList(value.prizeLabels, defaultLuckyDrawConfig.prizeLabels, 12, 120)
+      prizeLabels: prizes.map((prize) => prize.label),
+      prizes
     };
+  }
+
+  private normalizeLuckyDrawPrizes(value: unknown, labelFallback: string[]): LuckyDrawPrize[] {
+    if (!Array.isArray(value)) {
+      const labels = labelFallback.length ? labelFallback : defaultLuckyDrawConfig.prizeLabels;
+      const chance = Number((100 / labels.length).toFixed(2));
+      return labels.slice(0, 12).map((label, index) => ({
+        id: `legacy-prize-${index + 1}`,
+        label,
+        chance,
+        rewardAmount: 0,
+        rewardAsset: "USDT_TRC20"
+      }));
+    }
+
+    const prizes = value.slice(0, 12).flatMap((entry, index): LuckyDrawPrize[] => {
+      if (!entry || typeof entry !== "object") {
+        return [];
+      }
+
+      const prize = entry as Partial<LuckyDrawPrize>;
+      const fallback = defaultLuckyDrawPrizes[index % defaultLuckyDrawPrizes.length];
+      const label = this.cleanSettingText(prize.label, fallback.label, 120);
+      const chance = Number(prize.chance);
+      const rewardAmount = Number(prize.rewardAmount ?? 0);
+      const rewardAsset = SUPPORTED_ASSETS.includes(prize.rewardAsset as AssetType)
+        ? prize.rewardAsset as AssetType
+        : "USDT_TRC20";
+      const id =
+        typeof prize.id === "string" && prize.id.trim()
+          ? prize.id.trim().replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 80)
+          : `lucky-prize-${index + 1}`;
+
+      if (!label || !Number.isFinite(chance) || chance <= 0) {
+        return [];
+      }
+
+      return [
+        {
+          id,
+          label,
+          chance: Number(chance.toFixed(4)),
+          rewardAmount: Number.isFinite(rewardAmount) && rewardAmount > 0 ? Number(rewardAmount.toFixed(2)) : 0,
+          rewardAsset
+        }
+      ];
+    });
+
+    return prizes.length ? prizes : defaultLuckyDrawPrizes;
   }
 
   private normalizeAssetRouteSettings(value: unknown): AssetRouteSetting[] {
