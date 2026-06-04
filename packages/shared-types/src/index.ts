@@ -64,6 +64,39 @@ export interface DashboardTransaction {
   amount: number;
   status: TransactionStatus;
   createdAt: string;
+  adminNote?: string | null;
+}
+
+export interface LuckyDrawEventInfo {
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  isActive: boolean;
+  rules: string[];
+}
+
+export interface LuckyDrawSpinAward {
+  id: string;
+  sourceType: string;
+  spinCount: number;
+  spinsUsed: number;
+  note: string;
+  createdAt: string;
+}
+
+export interface LuckyDrawSpinResult {
+  id: string;
+  resultLabel: string;
+  createdAt: string;
+}
+
+export interface LuckyDrawSummary {
+  event: LuckyDrawEventInfo;
+  totalSpins: number;
+  availableSpins: number;
+  usedSpins: number;
+  awards: LuckyDrawSpinAward[];
+  results: LuckyDrawSpinResult[];
 }
 
 export interface ReferralLeaderboardEntry {
@@ -110,6 +143,19 @@ export interface MissionTaskProgress extends MissionTaskSetting {
   rewardClaimed: boolean;
 }
 
+export interface LuckyDrawEventConfig {
+  enabled: boolean;
+  title: string;
+  startsAt: string;
+  endsAt: string;
+  referralFirstDepositAmount: number;
+  referralSpinReward: number;
+  depositOneSpinAmount: number;
+  depositTwoSpinAmount: number;
+  rules: string[];
+  prizeLabels: string[];
+}
+
 export interface AdminPlatformSettings {
   platformName: string;
   maintenanceMode: boolean;
@@ -125,6 +171,7 @@ export interface AdminPlatformSettings {
   giveawayPrize: string;
   giveawayWinners: number;
   giveawayEndsAt: string | null;
+  luckyDraw: LuckyDrawEventConfig;
   adCarouselSlides: AdCarouselSlide[];
   missionTasks: MissionTaskSetting[];
   assetSettings: AssetRouteSetting[];

@@ -34,7 +34,29 @@ const typeLabel: Record<DashboardTransaction["type"], string> = {
   adjustment: "Balance adjustment"
 };
 
+const statusLabel: Record<DashboardTransaction["status"], string> = {
+  approved: "Completed",
+  pending: "Pending",
+  rejected: "Rejected"
+};
+
 const maskAmount = (value: string, visible: boolean) => (visible ? value : "••••••");
+const getAssetDisplayLabel = (asset: DashboardTransaction["asset"]) => (asset.startsWith("USDT") ? "USDT" : asset);
+const formatTransactionAmount = (transaction: DashboardTransaction) => {
+  const amount = Math.abs(transaction.amount);
+  const formattedAmount = Number.isInteger(amount) ? amount.toFixed(0) : amount.toFixed(2);
+  const prefix = transaction.amount < 0 ? "-" : "";
+
+  return `${prefix}${formattedAmount} ${getAssetDisplayLabel(transaction.asset)}`;
+};
+
+const getTransactionTypeLabel = (transaction: DashboardTransaction) => {
+  if (transaction.type === "adjustment" && transaction.amount > 0) {
+    return "System recharge";
+  }
+
+  return typeLabel[transaction.type];
+};
 
 export function WalletPage() {
   const navigate = useNavigate();
@@ -313,21 +335,20 @@ export function WalletPage() {
           <div className="mt-4 space-y-3">
             {visibleTransactions.length ? (
               visibleTransactions.map((transaction) => (
-                <article key={transaction.id} className="neon-panel rounded-[24px] p-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <div className="text-[15px] font-semibold text-white">{tt(typeLabel[transaction.type])}</div>
-                      <div className="mt-1 text-[13px] text-slate-400">{transaction.asset}</div>
-                      <div className="mt-1 text-[12px] text-white/35">
-                        {new Date(transaction.createdAt).toLocaleString("en-GB")}
-                      </div>
+                <article key={transaction.id} className="neon-panel rounded-[24px] p-5">
+                  <div className="grid grid-cols-[0.8fr_1.2fr] gap-y-5 text-[15px]">
+                    <div className="text-white/45">{tt("Time")}</div>
+                    <div className="text-right font-semibold text-white">
+                      {new Date(transaction.createdAt).toLocaleString("en-GB")}
                     </div>
-                    <div className="text-right">
-                      <div className="text-[1rem] font-semibold text-white">
-                        {maskAmount(transaction.amount.toFixed(2), amountsVisible)}
-                      </div>
-                      <div className="mt-1 text-[12px] uppercase tracking-[0.18em] text-cyan-200">{transaction.status}</div>
+                    <div className="text-white/45">{tt("Type")}</div>
+                    <div className="text-right font-semibold text-white">{tt(getTransactionTypeLabel(transaction))}</div>
+                    <div className="text-white/45">{tt("Amount")}</div>
+                    <div className="text-right text-[1rem] font-semibold text-cyan-200">
+                      {maskAmount(formatTransactionAmount(transaction), amountsVisible)}
                     </div>
+                    <div className="text-white/45">{tt("Status")}</div>
+                    <div className="text-right text-[1rem] font-semibold text-white">{statusLabel[transaction.status]}</div>
                   </div>
                 </article>
               ))

@@ -36,6 +36,16 @@ export class WalletController {
     return this.walletService.getTransactions(user.sub);
   }
 
+  @Get("lucky-draw")
+  luckyDraw(@CurrentUser() user: AccessTokenPayload) {
+    return this.walletService.getLuckyDrawSummary(user.sub);
+  }
+
+  @Post("lucky-draw/spin")
+  useLuckyDrawSpin(@CurrentUser() user: AccessTokenPayload) {
+    return this.walletService.useLuckyDrawSpin(user.sub);
+  }
+
   @Get("deposit-addresses")
   depositAddresses() {
     return this.walletService.getDepositAddresses();

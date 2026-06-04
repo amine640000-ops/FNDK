@@ -6,6 +6,7 @@ import type {
   AdminPlatformSettings,
   AssetRouteSetting,
   AssetType,
+  LuckyDrawEventConfig,
   MissionTaskSetting,
   TransactionType,
   VipTier
@@ -14,7 +15,15 @@ import { DEFAULT_ASSET_LABELS, DEFAULT_ASSET_ROUTE_SETTINGS, SUPPORTED_ASSETS } 
 import type { PoolClient } from "pg";
 import type { AdjustUserBalanceDto, UpdateAdminSettingsDto, UpdateVipTierDto } from "./admin.dto";
 
-type AdminSettingValue = string | number | boolean | null | AdCarouselSlide[] | AssetRouteSetting[] | MissionTaskSetting[];
+type AdminSettingValue =
+  | string
+  | number
+  | boolean
+  | null
+  | string[]
+  | AdCarouselSlide[]
+  | AssetRouteSetting[]
+  | MissionTaskSetting[];
 
 const maxAdCarouselSlides = 8;
 
@@ -93,6 +102,29 @@ const defaultMissionTasks: MissionTaskSetting[] = [
     rewardAsset: "USDT_TRC20"
   }
 ];
+
+const defaultLuckyDrawConfig: LuckyDrawEventConfig = {
+  enabled: true,
+  title: "Lucky Draw Event",
+  startsAt: "2026-06-03T22:00:00.000Z",
+  endsAt: "2026-06-08T21:59:00.000Z",
+  referralFirstDepositAmount: 100,
+  referralSpinReward: 1,
+  depositOneSpinAmount: 200,
+  depositTwoSpinAmount: 300,
+  rules: [
+    "Invite a direct referral who makes their first deposit of 100 USDT or more to receive 1 spin.",
+    "Deposit 200 USDT or more in one transaction to receive 1 spin.",
+    "Deposit 300 USDT or more in one transaction to receive 2 spins.",
+    "Event period: June 4, 2026 00:00 to June 8, 2026 23:59."
+  ],
+  prizeLabels: [
+    "Lucky draw entry confirmed",
+    "Bonus draw ticket recorded",
+    "Campaign prize review entry",
+    "VIP reward pool entry"
+  ]
+};
 
 type UserRow = {
   id: string;
@@ -362,14 +394,12 @@ export class AdminService implements OnModuleInit {
           userId,
           input.asset,
           delta,
-          [
-            `Admin balance ${input.operation}`,
-            `Previous: ${previousBalance}`,
-            `Current: ${nextBalance}`,
-            note ? `Note: ${note}` : null
-          ]
-            .filter(Boolean)
-            .join(" | ")
+          note ??
+            [
+              `Admin balance ${input.operation}`,
+              `Previous: ${previousBalance}`,
+              `Current: ${nextBalance}`
+            ].join(" | ")
         ]
       );
 
@@ -380,8 +410,10 @@ export class AdminService implements OnModuleInit {
         `,
         [
           userId,
-          "Balance adjusted",
-          `Your ${input.asset} balance was updated from ${previousBalance} to ${nextBalance}.${note ? ` Note: ${note}` : ""}`
+          input.operation === "add" && delta > 0 ? "System recharge" : "Balance adjusted",
+          input.operation === "add" && delta > 0
+            ? `${Math.abs(delta).toFixed(2)} ${input.asset.startsWith("USDT") ? "USDT" : input.asset} was added to your account.`
+            : `Your ${input.asset} balance was updated from ${previousBalance} to ${nextBalance}.`
         ]
       );
 
@@ -436,6 +468,7 @@ export class AdminService implements OnModuleInit {
         typeof settings.get("platform.giveawayEndsAt") === "string"
           ? String(settings.get("platform.giveawayEndsAt"))
           : null,
+      luckyDraw: this.normalizeLuckyDrawConfig(settings),
       adCarouselSlides,
       missionTasks,
       assetSettings,
@@ -1051,6 +1084,16 @@ export class AdminService implements OnModuleInit {
     "platform.giveawayPrize",
     "platform.giveawayWinners",
     "platform.giveawayEndsAt",
+    "platform.luckyDraw.enabled",
+    "platform.luckyDraw.title",
+    "platform.luckyDraw.startsAt",
+    "platform.luckyDraw.endsAt",
+    "platform.luckyDraw.referralFirstDepositAmount",
+    "platform.luckyDraw.referralSpinReward",
+    "platform.luckyDraw.depositOneSpinAmount",
+    "platform.luckyDraw.depositTwoSpinAmount",
+    "platform.luckyDraw.rules",
+    "platform.luckyDraw.prizeLabels",
     "platform.adCarouselSlides",
     "platform.missionTasks",
     ...SUPPORTED_ASSETS.flatMap((asset) => [
@@ -1204,6 +1247,20 @@ export class AdminService implements OnModuleInit {
       entries.push(["platform.giveawayEndsAt", input.giveawayEndsAt ? input.giveawayEndsAt : null]);
     }
 
+    if (input.luckyDraw !== undefined) {
+      const luckyDraw = this.normalizeLuckyDrawConfigFromInput(input.luckyDraw);
+      entries.push(["platform.luckyDraw.enabled", luckyDraw.enabled]);
+      entries.push(["platform.luckyDraw.title", luckyDraw.title]);
+      entries.push(["platform.luckyDraw.startsAt", luckyDraw.startsAt]);
+      entries.push(["platform.luckyDraw.endsAt", luckyDraw.endsAt]);
+      entries.push(["platform.luckyDraw.referralFirstDepositAmount", luckyDraw.referralFirstDepositAmount]);
+      entries.push(["platform.luckyDraw.referralSpinReward", luckyDraw.referralSpinReward]);
+      entries.push(["platform.luckyDraw.depositOneSpinAmount", luckyDraw.depositOneSpinAmount]);
+      entries.push(["platform.luckyDraw.depositTwoSpinAmount", luckyDraw.depositTwoSpinAmount]);
+      entries.push(["platform.luckyDraw.rules", luckyDraw.rules]);
+      entries.push(["platform.luckyDraw.prizeLabels", luckyDraw.prizeLabels]);
+    }
+
     if (input.adCarouselSlides !== undefined) {
       entries.push(["platform.adCarouselSlides", this.normalizeAdCarouselSlides(input.adCarouselSlides)]);
     }
@@ -1343,6 +1400,42 @@ export class AdminService implements OnModuleInit {
     });
   }
 
+  private normalizeLuckyDrawConfig(settings: Map<string, unknown>): LuckyDrawEventConfig {
+    return this.normalizeLuckyDrawConfigFromInput({
+      enabled: settings.get("platform.luckyDraw.enabled"),
+      title: settings.get("platform.luckyDraw.title"),
+      startsAt: settings.get("platform.luckyDraw.startsAt"),
+      endsAt: settings.get("platform.luckyDraw.endsAt"),
+      referralFirstDepositAmount: settings.get("platform.luckyDraw.referralFirstDepositAmount"),
+      referralSpinReward: settings.get("platform.luckyDraw.referralSpinReward"),
+      depositOneSpinAmount: settings.get("platform.luckyDraw.depositOneSpinAmount"),
+      depositTwoSpinAmount: settings.get("platform.luckyDraw.depositTwoSpinAmount"),
+      rules: settings.get("platform.luckyDraw.rules"),
+      prizeLabels: settings.get("platform.luckyDraw.prizeLabels")
+    });
+  }
+
+  private normalizeLuckyDrawConfigFromInput(value: Partial<LuckyDrawEventConfig> | Record<string, unknown>): LuckyDrawEventConfig {
+    const depositOneSpinAmount = this.cleanPositiveNumber(value.depositOneSpinAmount, defaultLuckyDrawConfig.depositOneSpinAmount);
+    const depositTwoSpinAmount = this.cleanPositiveNumber(value.depositTwoSpinAmount, defaultLuckyDrawConfig.depositTwoSpinAmount);
+
+    return {
+      enabled: typeof value.enabled === "boolean" ? value.enabled : defaultLuckyDrawConfig.enabled,
+      title: this.cleanSettingText(value.title, defaultLuckyDrawConfig.title, 120),
+      startsAt: this.cleanIsoDate(value.startsAt, defaultLuckyDrawConfig.startsAt),
+      endsAt: this.cleanIsoDate(value.endsAt, defaultLuckyDrawConfig.endsAt),
+      referralFirstDepositAmount: this.cleanPositiveNumber(
+        value.referralFirstDepositAmount,
+        defaultLuckyDrawConfig.referralFirstDepositAmount
+      ),
+      referralSpinReward: this.cleanPositiveInteger(value.referralSpinReward, defaultLuckyDrawConfig.referralSpinReward),
+      depositOneSpinAmount,
+      depositTwoSpinAmount: Math.max(depositTwoSpinAmount, depositOneSpinAmount),
+      rules: this.cleanTextList(value.rules, defaultLuckyDrawConfig.rules, 8, 220),
+      prizeLabels: this.cleanTextList(value.prizeLabels, defaultLuckyDrawConfig.prizeLabels, 12, 120)
+    };
+  }
+
   private normalizeAssetRouteSettings(value: unknown): AssetRouteSetting[] {
     if (!Array.isArray(value)) {
       return DEFAULT_ASSET_ROUTE_SETTINGS;
@@ -1382,5 +1475,41 @@ export class AdminService implements OnModuleInit {
     }
 
     return value.trim().slice(0, maxLength);
+  }
+
+  private cleanIsoDate(value: unknown, fallback: string) {
+    if (typeof value !== "string") {
+      return fallback;
+    }
+
+    const timestamp = new Date(value).getTime();
+    return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : fallback;
+  }
+
+  private cleanPositiveNumber(value: unknown, fallback: number) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) && numeric >= 0 ? numeric : fallback;
+  }
+
+  private cleanPositiveInteger(value: unknown, fallback: number) {
+    const numeric = Number(value);
+    return Number.isInteger(numeric) && numeric >= 0 ? numeric : fallback;
+  }
+
+  private cleanTextList(value: unknown, fallback: string[], maxItems: number, maxLength: number) {
+    if (!Array.isArray(value)) {
+      return fallback;
+    }
+
+    const items = value.slice(0, maxItems).flatMap((item) => {
+      if (typeof item !== "string") {
+        return [];
+      }
+
+      const text = item.trim().slice(0, maxLength);
+      return text ? [text] : [];
+    });
+
+    return items.length ? items : fallback;
   }
 }

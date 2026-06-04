@@ -370,7 +370,7 @@ export function AdminUsersPage() {
               Admin note
               <textarea
                 className="min-h-24 rounded-2xl border border-white/10 bg-[#03062f] px-4 py-3 text-white outline-none focus:border-cyan-300/70"
-                placeholder="Optional reason shown in the audit note."
+                placeholder="Optional internal audit note."
                 value={balanceForm.note}
                 onChange={(event) =>
                   setBalanceForm((current) => (current ? { ...current, note: event.target.value } : current))

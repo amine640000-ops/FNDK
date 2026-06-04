@@ -84,6 +84,29 @@ const defaultMissionTasks: MissionTaskSetting[] = [
   }
 ];
 
+const defaultLuckyDraw = {
+  enabled: true,
+  title: "Lucky Draw Event",
+  startsAt: "2026-06-03T22:00:00.000Z",
+  endsAt: "2026-06-08T21:59:00.000Z",
+  referralFirstDepositAmount: 100,
+  referralSpinReward: 1,
+  depositOneSpinAmount: 200,
+  depositTwoSpinAmount: 300,
+  rules: [
+    "Invite a direct referral who makes their first deposit of 100 USDT or more to receive 1 spin.",
+    "Deposit 200 USDT or more in one transaction to receive 1 spin.",
+    "Deposit 300 USDT or more in one transaction to receive 2 spins.",
+    "Event period: June 4, 2026 00:00 to June 8, 2026 23:59."
+  ],
+  prizeLabels: [
+    "Lucky draw entry confirmed",
+    "Bonus draw ticket recorded",
+    "Campaign prize review entry",
+    "VIP reward pool entry"
+  ]
+};
+
 const defaultSettings: AdminPlatformSettings = {
   platformName: "FNDK",
   maintenanceMode: false,
@@ -99,6 +122,7 @@ const defaultSettings: AdminPlatformSettings = {
   giveawayPrize: "$1,000 trading credit",
   giveawayWinners: 3,
   giveawayEndsAt: null,
+  luckyDraw: defaultLuckyDraw,
   adCarouselSlides: defaultAdCarouselSlides,
   missionTasks: defaultMissionTasks,
   assetSettings: DEFAULT_ASSET_ROUTE_SETTINGS,
@@ -185,6 +209,10 @@ export function AdminSettingsPage() {
           missionTasks: response.data.missionTasks?.length
             ? response.data.missionTasks
             : defaultMissionTasks,
+          luckyDraw: {
+            ...defaultLuckyDraw,
+            ...response.data.luckyDraw
+          },
           assetSettings: response.data.assetSettings?.length
             ? response.data.assetSettings
             : DEFAULT_ASSET_ROUTE_SETTINGS
@@ -207,6 +235,29 @@ export function AdminSettingsPage() {
 
   const updateField = <Key extends keyof AdminPlatformSettings,>(key: Key, value: AdminPlatformSettings[Key]) => {
     setSettings((current) => ({ ...current, [key]: value }));
+  };
+
+  const updateLuckyDrawField = <Key extends keyof AdminPlatformSettings["luckyDraw"],>(
+    key: Key,
+    value: AdminPlatformSettings["luckyDraw"][Key]
+  ) => {
+    setSettings((current) => ({
+      ...current,
+      luckyDraw: {
+        ...current.luckyDraw,
+        [key]: value
+      }
+    }));
+  };
+
+  const updateLuckyDrawList = (key: "rules" | "prizeLabels", value: string) => {
+    updateLuckyDrawField(
+      key,
+      value
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+    );
   };
 
   const updateAdSlide = <Key extends keyof AdCarouselSlide,>(
@@ -604,6 +655,122 @@ export function AdminSettingsPage() {
             type="button"
           >
             {saving ? "Saving..." : "Save giveaway"}
+          </button>
+        </div>
+      </SectionCard>
+
+      <SectionCard title="Lucky Draw Event" subtitle="Activate, deactivate, and edit spin event rules.">
+        <div className="grid gap-3">
+          <label className={toggleRowClass}>
+            <span className="min-w-0">Enable Lucky Draw</span>
+            <input
+              className="h-4 w-4 shrink-0"
+              checked={settings.luckyDraw.enabled}
+              disabled={loading}
+              onChange={(event) => updateLuckyDrawField("enabled", event.target.checked)}
+              type="checkbox"
+            />
+          </label>
+          <input
+            className={fieldClass}
+            disabled={loading}
+            placeholder="Event title"
+            value={settings.luckyDraw.title}
+            onChange={(event) => updateLuckyDrawField("title", event.target.value)}
+          />
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="grid gap-2 text-sm text-slate-300">
+              Start
+              <input
+                className={fieldClass}
+                disabled={loading}
+                type="datetime-local"
+                value={settings.luckyDraw.startsAt.slice(0, 16)}
+                onChange={(event) => updateLuckyDrawField("startsAt", event.target.value ? new Date(event.target.value).toISOString() : defaultLuckyDraw.startsAt)}
+              />
+            </label>
+            <label className="grid gap-2 text-sm text-slate-300">
+              End
+              <input
+                className={fieldClass}
+                disabled={loading}
+                type="datetime-local"
+                value={settings.luckyDraw.endsAt.slice(0, 16)}
+                onChange={(event) => updateLuckyDrawField("endsAt", event.target.value ? new Date(event.target.value).toISOString() : defaultLuckyDraw.endsAt)}
+              />
+            </label>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="grid gap-2 text-sm text-slate-300">
+              Referral first deposit USDT
+              <input
+                className={fieldClass}
+                disabled={loading}
+                min={0}
+                type="number"
+                value={settings.luckyDraw.referralFirstDepositAmount}
+                onChange={(event) => updateLuckyDrawField("referralFirstDepositAmount", Number(event.target.value))}
+              />
+            </label>
+            <label className="grid gap-2 text-sm text-slate-300">
+              Referral spins
+              <input
+                className={fieldClass}
+                disabled={loading}
+                min={0}
+                type="number"
+                value={settings.luckyDraw.referralSpinReward}
+                onChange={(event) => updateLuckyDrawField("referralSpinReward", Number(event.target.value))}
+              />
+            </label>
+            <label className="grid gap-2 text-sm text-slate-300">
+              1-spin deposit USDT
+              <input
+                className={fieldClass}
+                disabled={loading}
+                min={0}
+                type="number"
+                value={settings.luckyDraw.depositOneSpinAmount}
+                onChange={(event) => updateLuckyDrawField("depositOneSpinAmount", Number(event.target.value))}
+              />
+            </label>
+            <label className="grid gap-2 text-sm text-slate-300">
+              2-spin deposit USDT
+              <input
+                className={fieldClass}
+                disabled={loading}
+                min={0}
+                type="number"
+                value={settings.luckyDraw.depositTwoSpinAmount}
+                onChange={(event) => updateLuckyDrawField("depositTwoSpinAmount", Number(event.target.value))}
+              />
+            </label>
+          </div>
+          <label className="grid gap-2 text-sm text-slate-300">
+            Event rules
+            <textarea
+              className={`${fieldClass} min-h-32 resize-y`}
+              disabled={loading}
+              value={settings.luckyDraw.rules.join("\n")}
+              onChange={(event) => updateLuckyDrawList("rules", event.target.value)}
+            />
+          </label>
+          <label className="grid gap-2 text-sm text-slate-300">
+            Spin result labels
+            <textarea
+              className={`${fieldClass} min-h-28 resize-y`}
+              disabled={loading}
+              value={settings.luckyDraw.prizeLabels.join("\n")}
+              onChange={(event) => updateLuckyDrawList("prizeLabels", event.target.value)}
+            />
+          </label>
+          <button
+            className={primaryButtonClass}
+            disabled={loading || saving}
+            onClick={saveSettings}
+            type="button"
+          >
+            {saving ? "Saving..." : "Save Lucky Draw"}
           </button>
         </div>
       </SectionCard>

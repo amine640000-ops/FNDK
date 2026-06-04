@@ -16,6 +16,7 @@ const AdminUsersPage = lazy(() => import("@/pages/admin-users-page").then(({ Adm
 const DepositPage = lazy(() => import("@/pages/deposit-page").then(({ DepositPage }) => ({ default: DepositPage })));
 const ForgotPasswordPage = lazy(() => import("@/pages/forgot-password-page").then(({ ForgotPasswordPage }) => ({ default: ForgotPasswordPage })));
 const LoginPage = lazy(() => import("@/pages/login-page").then(({ LoginPage }) => ({ default: LoginPage })));
+const LuckyDrawPage = lazy(() => import("@/pages/lucky-draw-page").then(({ LuckyDrawPage }) => ({ default: LuckyDrawPage })));
 const OverviewPage = lazy(() => import("@/pages/overview-page").then(({ OverviewPage }) => ({ default: OverviewPage })));
 const ProfilePage = lazy(() => import("@/pages/profile-page").then(({ ProfilePage }) => ({ default: ProfilePage })));
 const RegisterPage = lazy(() => import("@/pages/register-page").then(({ RegisterPage }) => ({ default: RegisterPage })));
@@ -79,6 +80,7 @@ export const router = createBrowserRouter([
           { path: "wallet", element: withSuspense(<WalletPage />) },
           { path: "wallet/deposit", element: withSuspense(<DepositPage />) },
           { path: "wallet/withdraw", element: withSuspense(<WithdrawPage />) },
+          { path: "lucky-draw", element: withSuspense(<LuckyDrawPage />) },
           { path: "mission", element: withSuspense(<VipPage />) },
           { path: "strategy", element: withSuspense(<VipPage />) },
           { path: "vip", element: withSuspense(<VipPage />) },

@@ -1,6 +1,6 @@
 import { Type } from "class-transformer";
 import { IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, Min } from "class-validator";
-import type { AdCarouselSlide, AssetRouteSetting, AssetType, MissionTaskSetting } from "@nevo/shared-types";
+import type { AdCarouselSlide, AssetRouteSetting, AssetType, LuckyDrawEventConfig, MissionTaskSetting } from "@nevo/shared-types";
 import { SUPPORTED_ASSETS } from "@nevo/shared-utils";
 
 export class UpdateAdminSettingsDto {
@@ -64,6 +64,9 @@ export class UpdateAdminSettingsDto {
   @IsOptional()
   @IsString()
   giveawayEndsAt?: string | null;
+
+  @IsOptional()
+  luckyDraw?: LuckyDrawEventConfig;
 
   @IsOptional()
   @IsArray()

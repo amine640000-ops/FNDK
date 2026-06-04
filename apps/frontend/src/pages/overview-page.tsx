@@ -5,6 +5,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Globe,
+  Gift,
   Handshake,
   Headset,
   Landmark,
@@ -70,9 +71,9 @@ const shortcutItems = [
     featured: true
   },
   {
-    title: "Help\nCenter",
-    icon: Headset,
-    to: "/app/profile"
+    title: "Lucky\nDraw",
+    icon: Gift,
+    to: "/app/lucky-draw"
   }
 ];
 
