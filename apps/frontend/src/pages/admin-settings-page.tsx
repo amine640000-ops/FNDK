@@ -48,6 +48,8 @@ const defaultAdCarouselSlides: AdCarouselSlide[] = [
   }
 ];
 
+const defaultMissionQualifyingDepositAmount = 107;
+
 const defaultMissionTasks: MissionTaskSetting[] = [
   {
     id: "direct-invites-2",
@@ -56,6 +58,7 @@ const defaultMissionTasks: MissionTaskSetting[] = [
     title: "Invite 2 first-line members",
     description: "Complete direct invitation task phase 1.",
     target: 2,
+    qualifyingDepositAmount: defaultMissionQualifyingDepositAmount,
     rewardAmount: 20,
     rewardAsset: "USDT_TRC20"
   },
@@ -66,6 +69,7 @@ const defaultMissionTasks: MissionTaskSetting[] = [
     title: "Invite 3 first-line members",
     description: "Complete direct invitation task phase 2.",
     target: 3,
+    qualifyingDepositAmount: defaultMissionQualifyingDepositAmount,
     rewardAmount: 60,
     rewardAsset: "USDT_TRC20"
   },
@@ -76,6 +80,7 @@ const defaultMissionTasks: MissionTaskSetting[] = [
     title: "Invite 10 first-line members",
     description: "Complete direct invitation task phase 3.",
     target: 10,
+    qualifyingDepositAmount: defaultMissionQualifyingDepositAmount,
     rewardAmount: 150,
     rewardAsset: "USDT_TRC20"
   },
@@ -86,6 +91,7 @@ const defaultMissionTasks: MissionTaskSetting[] = [
     title: "Invite 20 first-line members",
     description: "Complete direct invitation task phase 4.",
     target: 20,
+    qualifyingDepositAmount: defaultMissionQualifyingDepositAmount,
     rewardAmount: 300,
     rewardAsset: "USDT_TRC20"
   }
@@ -208,6 +214,7 @@ const createMissionTask = (): MissionTaskSetting => ({
   title: "New mission task",
   description: "Describe the task target and reward.",
   target: 1,
+  qualifyingDepositAmount: defaultMissionQualifyingDepositAmount,
   rewardAmount: 20,
   rewardAsset: "USDT_TRC20"
 });
@@ -686,7 +693,7 @@ export function AdminSettingsPage() {
       <SectionCard
         className="xl:col-span-2"
         title="Mission Tasks"
-        subtitle="Tasks shown in the user Mission Center. Progress currently tracks direct invited members against each target."
+        subtitle="Tasks shown in the user Mission Center. Progress tracks direct invited members whose approved deposits meet the mission condition."
         action={
           <button className={secondaryButtonClass} disabled={loading} onClick={addMissionTask} type="button">
             <Plus className="h-4 w-4" />
@@ -765,6 +772,20 @@ export function AdminSettingsPage() {
 
               <div className="grid gap-3 md:grid-cols-2">
                 <label className="grid gap-2">
+                  <span className="text-sm text-slate-300">Qualified member deposit total</span>
+                  <input
+                    className={fieldClass}
+                    disabled={loading}
+                    min={0}
+                    step="0.01"
+                    type="number"
+                    value={task.qualifyingDepositAmount}
+                    onChange={(event) =>
+                      updateMissionTask(task.id, "qualifyingDepositAmount", Number(event.target.value))
+                    }
+                  />
+                </label>
+                <label className="grid gap-2">
                   <span className="text-sm text-slate-300">Reward amount</span>
                   <input
                     className={fieldClass}
@@ -794,6 +815,9 @@ export function AdminSettingsPage() {
                   </select>
                 </label>
               </div>
+              <p className="text-xs font-medium text-slate-400">
+                A member qualifies once their approved deposits total this amount. Example: 50 + 57 counts for 107.
+              </p>
             </div>
           ))}
         </div>

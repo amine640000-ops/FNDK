@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Inject,
   Param,
@@ -143,6 +144,16 @@ export class AdminController {
   @Patch("vip-tiers/:tierId")
   updateVipTier(@Param("tierId") tierId: string, @Body() body: UpdateVipTierDto) {
     return this.adminService.updateVipTier(Number(tierId), body);
+  }
+
+  @Post("vip-tiers")
+  createVipTier(@Body() body: UpdateVipTierDto) {
+    return this.adminService.createVipTier(body);
+  }
+
+  @Delete("vip-tiers/:tierId")
+  deleteVipTier(@Param("tierId") tierId: string) {
+    return this.adminService.deleteVipTier(Number(tierId));
   }
 
   @Patch("profit-settings")

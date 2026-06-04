@@ -29,6 +29,7 @@ type AdminSettingValue =
   | MissionTaskSetting[];
 
 const maxAdCarouselSlides = 8;
+const defaultMissionQualifyingDepositAmount = 107;
 
 const defaultAdCarouselSlides: AdCarouselSlide[] = [
   {
@@ -71,6 +72,7 @@ const defaultMissionTasks: MissionTaskSetting[] = [
     title: "Invite 2 first-line members",
     description: "Complete direct invitation task phase 1.",
     target: 2,
+    qualifyingDepositAmount: defaultMissionQualifyingDepositAmount,
     rewardAmount: 20,
     rewardAsset: "USDT_TRC20"
   },
@@ -81,6 +83,7 @@ const defaultMissionTasks: MissionTaskSetting[] = [
     title: "Invite 3 first-line members",
     description: "Complete direct invitation task phase 2.",
     target: 3,
+    qualifyingDepositAmount: defaultMissionQualifyingDepositAmount,
     rewardAmount: 60,
     rewardAsset: "USDT_TRC20"
   },
@@ -91,6 +94,7 @@ const defaultMissionTasks: MissionTaskSetting[] = [
     title: "Invite 10 first-line members",
     description: "Complete direct invitation task phase 3.",
     target: 10,
+    qualifyingDepositAmount: defaultMissionQualifyingDepositAmount,
     rewardAmount: 150,
     rewardAsset: "USDT_TRC20"
   },
@@ -101,6 +105,7 @@ const defaultMissionTasks: MissionTaskSetting[] = [
     title: "Invite 20 first-line members",
     description: "Complete direct invitation task phase 4.",
     target: 20,
+    qualifyingDepositAmount: defaultMissionQualifyingDepositAmount,
     rewardAmount: 300,
     rewardAsset: "USDT_TRC20"
   }
@@ -1302,6 +1307,168 @@ export class AdminService implements OnModuleInit {
     return this.mapVipTier(updated!);
   }
 
+  async createVipTier(input: UpdateVipTierDto): Promise<VipTier> {
+    const maxTierId = await getOne<{ max_id: number }>("SELECT COALESCE(MAX(id), 0)::int AS max_id FROM vip_tiers");
+    const highestTier = await getOne<VipTierRow>(
+      `
+        SELECT
+          id,
+          name,
+          min_deposit::float8 AS min_deposit,
+          daily_roi_min::float8 AS daily_roi_min,
+          daily_roi_max::float8 AS daily_roi_max,
+          daily_profit_cap::float8 AS daily_profit_cap,
+          required_direct_members,
+          activation_limit_per_day,
+          activation_duration_minutes,
+          activation_assets,
+          features
+        FROM vip_tiers
+        ORDER BY min_deposit DESC, id DESC
+        LIMIT 1
+      `
+    );
+
+    const nextId = (maxTierId?.max_id ?? 0) + 1;
+    const minDeposit = input.minDeposit ?? Number(Math.max((highestTier?.min_deposit ?? 0) + 50, (highestTier?.min_deposit ?? 25) * 2).toFixed(2));
+    const dailyRoiMin = input.dailyRoiMin ?? highestTier?.daily_roi_min ?? 0.005;
+    const dailyRoiMax = input.dailyRoiMax ?? Math.max(dailyRoiMin, highestTier?.daily_roi_max ?? dailyRoiMin);
+    const dailyProfitCapProvided = Object.prototype.hasOwnProperty.call(input, "dailyProfitCap");
+    const dailyProfitCap = dailyProfitCapProvided ? input.dailyProfitCap ?? null : highestTier?.daily_profit_cap ?? null;
+    const requiredDirectMembers = input.requiredDirectMembers ?? highestTier?.required_direct_members ?? 0;
+    const activationLimitPerDay = input.activationLimitPerDay ?? highestTier?.activation_limit_per_day ?? 3;
+    const activationDurationMinutes = input.activationDurationMinutes ?? highestTier?.activation_duration_minutes ?? 2;
+
+    if (!Number.isFinite(minDeposit) || minDeposit < 0) {
+      throw new BadRequestException("Minimum deposit must be zero or greater");
+    }
+
+    if (highestTier && minDeposit <= highestTier.min_deposit) {
+      throw new BadRequestException("New VIP minimum deposit must be above the current highest VIP tier");
+    }
+
+    if (!Number.isFinite(dailyRoiMin) || dailyRoiMin < 0 || !Number.isFinite(dailyRoiMax) || dailyRoiMax < 0) {
+      throw new BadRequestException("Daily ROI values must be zero or greater");
+    }
+
+    if (dailyRoiMin > dailyRoiMax) {
+      throw new BadRequestException("Minimum ROI must be less than or equal to maximum ROI");
+    }
+
+    if (dailyProfitCap !== null && (!Number.isFinite(dailyProfitCap) || dailyProfitCap < 0)) {
+      throw new BadRequestException("Daily profit cap must be zero or greater");
+    }
+
+    if (!Number.isInteger(requiredDirectMembers) || requiredDirectMembers < 0) {
+      throw new BadRequestException("Valid direct members must be zero or greater");
+    }
+
+    if (!Number.isInteger(activationLimitPerDay) || activationLimitPerDay < 1) {
+      throw new BadRequestException("Daily reservations must be at least 1");
+    }
+
+    if (!Number.isInteger(activationDurationMinutes) || activationDurationMinutes < 1) {
+      throw new BadRequestException("Reservation duration must be at least 1 minute");
+    }
+
+    const created = await getOne<VipTierRow>(
+      `
+        INSERT INTO vip_tiers (
+          id,
+          name,
+          min_deposit,
+          daily_roi,
+          daily_roi_min,
+          daily_roi_max,
+          daily_profit_cap,
+          required_direct_members,
+          activation_limit_per_day,
+          activation_duration_minutes,
+          activation_assets,
+          features
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          $4,
+          $5,
+          $6,
+          $7,
+          $8,
+          $9,
+          $10,
+          $11::jsonb,
+          $12::jsonb
+        )
+        RETURNING
+          id,
+          name,
+          min_deposit::float8 AS min_deposit,
+          daily_roi_min::float8 AS daily_roi_min,
+          daily_roi_max::float8 AS daily_roi_max,
+          daily_profit_cap::float8 AS daily_profit_cap,
+          required_direct_members,
+          activation_limit_per_day,
+          activation_duration_minutes,
+          activation_assets,
+          features
+      `,
+      [
+        nextId,
+        input.name?.trim() || `VIP ${nextId}`,
+        minDeposit,
+        dailyRoiMax,
+        dailyRoiMin,
+        dailyRoiMax,
+        dailyProfitCap,
+        requiredDirectMembers,
+        activationLimitPerDay,
+        activationDurationMinutes,
+        JSON.stringify(highestTier?.activation_assets?.length ? highestTier.activation_assets : ["USDT_TRC20", "BTC", "USD"]),
+        JSON.stringify(highestTier?.features?.length ? highestTier.features : ["AI trading access"])
+      ]
+    );
+
+    return this.mapVipTier(created!);
+  }
+
+  async deleteVipTier(tierId: number) {
+    if (!Number.isInteger(tierId) || tierId < 1) {
+      throw new BadRequestException("Tier id is invalid");
+    }
+
+    const existing = await getOne<{ id: number }>("SELECT id FROM vip_tiers WHERE id = $1", [tierId]);
+    if (!existing) {
+      throw new NotFoundException("VIP tier not found");
+    }
+
+    const tierCount = await getOne<{ count: number }>("SELECT COUNT(*)::int AS count FROM vip_tiers");
+    if ((tierCount?.count ?? 0) <= 1) {
+      throw new BadRequestException("At least one VIP tier must remain");
+    }
+
+    const usage = await getOne<{ user_assignments: number; activations: number }>(
+      `
+        SELECT
+          (SELECT COUNT(*)::int FROM user_vip WHERE tier_id = $1) AS user_assignments,
+          (SELECT COUNT(*)::int FROM ai_trading_activations WHERE tier_id = $1) AS activations
+      `,
+      [tierId]
+    );
+
+    if ((usage?.user_assignments ?? 0) > 0 || (usage?.activations ?? 0) > 0) {
+      throw new BadRequestException("VIP tier is still used by users or activation history");
+    }
+
+    await dbQuery("DELETE FROM vip_tiers WHERE id = $1", [tierId]);
+
+    return {
+      tierId,
+      deleted: true
+    };
+  }
+
   async updateProfitSettings(autoProfitDistribution: boolean) {
     await dbQuery(
       `
@@ -1837,13 +2004,21 @@ export class AdminService implements OnModuleInit {
       const task = entry as Partial<MissionTaskSetting>;
       const id = typeof task.id === "string" && task.id.trim() ? task.id.trim() : `mission-${Date.now()}`;
       const target = Number(task.target);
+      const qualifyingDepositAmount = Number(task.qualifyingDepositAmount ?? defaultMissionQualifyingDepositAmount);
       const rewardAmount = Number(task.rewardAmount);
       const category = task.category === "daily" || task.category === "long-term" ? task.category : "limited";
       const rewardAsset = SUPPORTED_ASSETS.includes(task.rewardAsset as AssetType)
         ? task.rewardAsset as AssetType
         : "USDT_TRC20";
 
-      if (!Number.isFinite(target) || target < 1 || !Number.isFinite(rewardAmount) || rewardAmount < 0) {
+      if (
+        !Number.isFinite(target) ||
+        target < 1 ||
+        !Number.isFinite(qualifyingDepositAmount) ||
+        qualifyingDepositAmount < 0 ||
+        !Number.isFinite(rewardAmount) ||
+        rewardAmount < 0
+      ) {
         return [];
       }
 
@@ -1855,6 +2030,7 @@ export class AdminService implements OnModuleInit {
           title: typeof task.title === "string" && task.title.trim() ? task.title.trim() : "Mission task",
           description: typeof task.description === "string" ? task.description.trim() : "",
           target,
+          qualifyingDepositAmount,
           rewardAmount,
           rewardAsset
         }

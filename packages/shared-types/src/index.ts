@@ -146,6 +146,7 @@ export interface MissionTaskSetting {
   title: string;
   description: string;
   target: number;
+  qualifyingDepositAmount: number;
   rewardAmount: number;
   rewardAsset: AssetType;
 }

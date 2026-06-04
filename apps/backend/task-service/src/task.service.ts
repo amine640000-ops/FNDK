@@ -100,6 +100,12 @@ type MissionClaimRow = {
   reward_amount: number;
 };
 
+type MissionDirectMemberFundingRow = {
+  approved_deposit: number;
+};
+
+const DEFAULT_MISSION_QUALIFYING_DEPOSIT_AMOUNT = 107;
+
 const defaultMissionTasks: MissionTaskSetting[] = [
   {
     id: "direct-invites-2",
@@ -108,6 +114,7 @@ const defaultMissionTasks: MissionTaskSetting[] = [
     title: "Invite 2 first-line members",
     description: "Complete direct invitation task phase 1.",
     target: 2,
+    qualifyingDepositAmount: DEFAULT_MISSION_QUALIFYING_DEPOSIT_AMOUNT,
     rewardAmount: 20,
     rewardAsset: "USDT_TRC20"
   },
@@ -118,6 +125,7 @@ const defaultMissionTasks: MissionTaskSetting[] = [
     title: "Invite 3 first-line members",
     description: "Complete direct invitation task phase 2.",
     target: 3,
+    qualifyingDepositAmount: DEFAULT_MISSION_QUALIFYING_DEPOSIT_AMOUNT,
     rewardAmount: 60,
     rewardAsset: "USDT_TRC20"
   },
@@ -128,6 +136,7 @@ const defaultMissionTasks: MissionTaskSetting[] = [
     title: "Invite 10 first-line members",
     description: "Complete direct invitation task phase 3.",
     target: 10,
+    qualifyingDepositAmount: DEFAULT_MISSION_QUALIFYING_DEPOSIT_AMOUNT,
     rewardAmount: 150,
     rewardAsset: "USDT_TRC20"
   },
@@ -138,6 +147,7 @@ const defaultMissionTasks: MissionTaskSetting[] = [
     title: "Invite 20 first-line members",
     description: "Complete direct invitation task phase 4.",
     target: 20,
+    qualifyingDepositAmount: DEFAULT_MISSION_QUALIFYING_DEPOSIT_AMOUNT,
     rewardAmount: 300,
     rewardAsset: "USDT_TRC20"
   }
@@ -267,59 +277,40 @@ export class TaskService implements OnModuleInit {
     const tasks = await this.getMissionTaskSettings();
     const missionEligibility = await this.getReservationEligibility(userId);
     const missionsActive = missionEligibility.kyc_status === "verified" && missionEligibility.has_activation_deposit;
-    const referralCount = missionsActive
-      ? await getOne<{ count: number }>(
+    const directMemberFunding = missionsActive
+      ? await dbQuery<MissionDirectMemberFundingRow>(
           `
-            WITH deposit_totals AS (
-              SELECT
-                user_id,
-                COALESCE(SUM(amount), 0)::float8 AS total_deposited
-              FROM transactions
-              WHERE type = 'deposit'
-                AND status = 'approved'
-              GROUP BY user_id
-            ),
-            admin_activation_totals AS (
-              SELECT
-                user_id,
-                COALESCE(SUM(amount), 0)::float8 AS total_admin_activated
-              FROM transactions
-              WHERE type = 'adjustment'
-                AND status = 'approved'
-                AND amount > 0
-              GROUP BY user_id
-            ),
-            active_accounts AS (
-              SELECT users.id AS user_id
-              FROM users
-              LEFT JOIN deposit_totals
-                ON deposit_totals.user_id = users.id
-              LEFT JOIN admin_activation_totals
-                ON admin_activation_totals.user_id = users.id
-              WHERE users.kyc_status = 'verified'
-                AND COALESCE(deposit_totals.total_deposited, 0)
-                  + COALESCE(admin_activation_totals.total_admin_activated, 0) >= $2
-            )
-            SELECT COUNT(*)::int AS count
-            FROM users
-            INNER JOIN active_accounts
-              ON active_accounts.user_id = users.id
-            WHERE users.referred_by = $1
-              AND users.role = 'USER'
+            SELECT COALESCE(SUM(transactions.amount), 0)::float8 AS approved_deposit
+            FROM users direct_users
+            LEFT JOIN transactions
+              ON transactions.user_id = direct_users.id
+             AND transactions.type = 'deposit'
+             AND transactions.status = 'approved'
+            WHERE direct_users.referred_by = $1
+              AND direct_users.role = 'USER'
+              AND direct_users.is_active = TRUE
+              AND direct_users.kyc_status = 'verified'
+            GROUP BY direct_users.id
           `,
-          [userId, MINIMUM_ACCOUNT_ACTIVATION_DEPOSIT]
+          [userId]
         )
       : null;
 
-    const progress = referralCount?.count ?? 0;
+    const getQualifiedDirectMemberCount = (threshold: number) =>
+      directMemberFunding?.rows.filter((member) => member.approved_deposit >= threshold).length ?? 0;
+
     const missionTasks: MissionTaskProgress[] = tasks
       .filter((task) => task.enabled)
-      .map((task) => ({
-        ...task,
-        progress: Math.min(progress, task.target),
-        completed: missionsActive && progress >= task.target,
-        rewardClaimed: false
-      }));
+      .map((task) => {
+        const progress = missionsActive ? getQualifiedDirectMemberCount(task.qualifyingDepositAmount) : 0;
+
+        return {
+          ...task,
+          progress: Math.min(progress, task.target),
+          completed: missionsActive && progress >= task.target,
+          rewardClaimed: false
+        };
+      });
 
     if (missionsActive) {
       await this.creditCompletedMissionRewards(userId, missionTasks.filter((task) => task.completed));
@@ -1291,9 +1282,18 @@ export class TaskService implements OnModuleInit {
       const id = typeof task.id === "string" && task.id.trim() ? task.id.trim() : "";
       const category = task.category === "daily" || task.category === "long-term" ? task.category : "limited";
       const target = Number(task.target);
+      const qualifyingDepositAmount = Number(task.qualifyingDepositAmount ?? DEFAULT_MISSION_QUALIFYING_DEPOSIT_AMOUNT);
       const rewardAmount = Number(task.rewardAmount);
 
-      if (!id || !Number.isFinite(target) || target < 1 || !Number.isFinite(rewardAmount) || rewardAmount < 0) {
+      if (
+        !id ||
+        !Number.isFinite(target) ||
+        target < 1 ||
+        !Number.isFinite(qualifyingDepositAmount) ||
+        qualifyingDepositAmount < 0 ||
+        !Number.isFinite(rewardAmount) ||
+        rewardAmount < 0
+      ) {
         return [];
       }
 
@@ -1305,6 +1305,7 @@ export class TaskService implements OnModuleInit {
           title: typeof task.title === "string" && task.title.trim() ? task.title.trim() : "Mission task",
           description: typeof task.description === "string" ? task.description.trim() : "",
           target,
+          qualifyingDepositAmount,
           rewardAmount,
           rewardAsset: task.rewardAsset ?? "USDT_TRC20"
         }

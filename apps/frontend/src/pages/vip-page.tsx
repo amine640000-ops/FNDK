@@ -1248,6 +1248,11 @@ export function VipPage() {
                               <span className="text-slate-400">Reward:</span>{" "}
                               <span className="text-cyan-100">{task.rewardAmount} {rewardAssetLabel}</span>
                             </div>
+                            {task.qualifyingDepositAmount > 0 ? (
+                              <div className="mt-2 text-[12px] font-semibold text-amber-100/85">
+                                {tt("Qualified member deposit")}: {formatCurrency(task.qualifyingDepositAmount)}
+                              </div>
+                            ) : null}
                           </div>
                           <div className="shrink-0 text-[1rem] font-extrabold text-white">
                             {Math.min(task.progress, task.target)}/{task.target}

@@ -460,6 +460,377 @@ body {
   border-color: rgba(103, 121, 255, 0.2);
 }
 
+.lucky-draw-page {
+  position: relative;
+  isolation: isolate;
+  min-height: 100%;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 12% 27%, rgba(28, 199, 255, 0.32), transparent 11rem),
+    radial-gradient(circle at 88% 35%, rgba(117, 47, 255, 0.36), transparent 12rem),
+    radial-gradient(circle at 51% 59%, rgba(7, 189, 255, 0.2), transparent 12rem),
+    linear-gradient(180deg, #2024d8 0%, #3200a4 42%, #140058 100%);
+  color: #ffffff;
+}
+
+.lucky-draw-page::before,
+.lucky-draw-page::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.lucky-draw-page::before {
+  background:
+    linear-gradient(102deg, transparent 0 23%, rgba(114, 229, 255, 0.22) 23% 40%, transparent 40%),
+    linear-gradient(78deg, transparent 0 58%, rgba(118, 231, 255, 0.2) 58% 76%, transparent 76%),
+    linear-gradient(rgba(113, 120, 255, 0.09) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(113, 120, 255, 0.08) 1px, transparent 1px);
+  background-size: auto, auto, 2.4rem 2.4rem, 2.4rem 2.4rem;
+  opacity: 0.82;
+}
+
+.lucky-draw-page::after {
+  background:
+    radial-gradient(circle at 21% 22%, rgba(40, 218, 255, 0.52) 0 0.34rem, transparent 0.36rem),
+    radial-gradient(circle at 87% 23%, rgba(255, 214, 76, 0.62) 0 0.24rem, transparent 0.26rem),
+    radial-gradient(circle at 73% 67%, rgba(139, 255, 147, 0.42) 0 0.26rem, transparent 0.28rem),
+    radial-gradient(circle at 9% 72%, rgba(255, 101, 217, 0.38) 0 0.22rem, transparent 0.24rem);
+  opacity: 0.85;
+}
+
+.lucky-draw-content {
+  position: relative;
+  z-index: 1;
+  padding: 0.85rem 1rem 1.5rem;
+}
+
+.lucky-draw-top-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.lucky-draw-nav-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.35rem;
+  max-width: 48%;
+  border-radius: 8px;
+  border: 1px solid rgba(181, 226, 255, 0.34);
+  background: rgba(8, 26, 157, 0.46);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    0 0 20px rgba(38, 156, 255, 0.2);
+  color: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.05;
+  padding: 0.55rem 0.7rem;
+  text-align: center;
+  text-decoration: none;
+}
+
+.lucky-draw-hero {
+  --wheel-size: clamp(17.7rem, 86vw, 22rem);
+  position: relative;
+  min-height: calc(var(--wheel-size) + 6.7rem);
+  padding-top: 3.65rem;
+}
+
+.lucky-draw-confetti {
+  position: absolute;
+  z-index: 5;
+  border-radius: 0.12rem;
+  box-shadow: 0 0 0.55rem rgba(255, 255, 255, 0.22);
+}
+
+.lucky-draw-medal {
+  position: absolute;
+  top: 0.65rem;
+  left: 50%;
+  z-index: 8;
+  display: grid;
+  width: 2.35rem;
+  height: 2.35rem;
+  place-items: center;
+  border: 0.18rem solid rgba(255, 255, 255, 0.72);
+  border-radius: 50%;
+  background: linear-gradient(180deg, #ffe668 0%, #ffb72f 100%);
+  box-shadow:
+    inset 0 0.1rem 0 rgba(255, 255, 255, 0.55),
+    0 0.4rem 1.1rem rgba(0, 0, 0, 0.28),
+    0 0 1rem rgba(255, 230, 92, 0.5);
+  color: #ffffff;
+  font-size: 1.1rem;
+  font-weight: 900;
+  transform: translateX(-50%);
+}
+
+.lucky-draw-medal::before,
+.lucky-draw-medal::after {
+  content: "";
+  position: absolute;
+  top: 2.1rem;
+  left: 50%;
+  width: 0.34rem;
+  height: 0.34rem;
+  border-radius: 50%;
+  background: #41f2ff;
+  box-shadow:
+    0 0.72rem 0 #28dfed,
+    0 1.44rem 0 #19cbe3;
+  transform: translateX(-50%);
+}
+
+.lucky-draw-medal::after {
+  width: 0.18rem;
+  height: 3rem;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(122, 245, 255, 0.95), rgba(122, 245, 255, 0));
+  box-shadow: none;
+}
+
+.lucky-draw-spotlight {
+  position: absolute;
+  top: 2.2rem;
+  z-index: 0;
+  width: 8.2rem;
+  height: calc(var(--wheel-size) * 0.76);
+  background: linear-gradient(180deg, rgba(98, 232, 255, 0.34), rgba(98, 232, 255, 0));
+  clip-path: polygon(34% 0, 66% 0, 100% 100%, 0 100%);
+  opacity: 0.8;
+  mix-blend-mode: screen;
+}
+
+.lucky-draw-spotlight-left {
+  left: 15%;
+  transform: skewX(-8deg);
+}
+
+.lucky-draw-spotlight-right {
+  right: 15%;
+  transform: skewX(8deg);
+}
+
+.lucky-draw-wheel-wrap {
+  position: relative;
+  z-index: 2;
+  width: var(--wheel-size);
+  height: var(--wheel-size);
+  margin: 0 auto;
+}
+
+.lucky-draw-wheel {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
+  border-radius: 50%;
+  background: #07a8ff;
+  box-shadow:
+    0 1.35rem 2.6rem rgba(0, 0, 0, 0.34),
+    0 0 3.2rem rgba(0, 209, 255, 0.44);
+  will-change: transform;
+}
+
+.lucky-draw-segment-disc {
+  position: absolute;
+  inset: 12.5%;
+  border-radius: 50%;
+  box-shadow:
+    inset 0 0 0 0.1rem rgba(255, 255, 255, 0.2),
+    inset 0 0 1rem rgba(7, 25, 150, 0.25);
+}
+
+.lucky-draw-segment-gloss {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 50%, transparent 0 28%, rgba(0, 104, 255, 0.2) 29% 37%, transparent 38%),
+    radial-gradient(circle at 38% 20%, rgba(255, 255, 255, 0.24), transparent 31%),
+    linear-gradient(115deg, rgba(255, 255, 255, 0.18) 0 16%, transparent 16% 100%);
+}
+
+.lucky-draw-rim {
+  position: absolute;
+  inset: 1.4%;
+  border: 0.92rem solid #0ba5ff;
+  border-radius: 50%;
+  box-shadow:
+    inset 0 0 0 0.12rem rgba(116, 233, 255, 0.5),
+    inset 0 0 1.25rem rgba(3, 82, 255, 0.44),
+    0 0 0 0.22rem rgba(48, 222, 255, 0.5);
+}
+
+.lucky-draw-rim-dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 6;
+  width: calc(var(--wheel-size) * 0.032);
+  height: calc(var(--wheel-size) * 0.032);
+  border-radius: 50%;
+  background: #ffdf50;
+  box-shadow:
+    inset 0 0.08rem 0 rgba(255, 255, 255, 0.55),
+    0 0 0.48rem rgba(255, 218, 73, 0.75);
+}
+
+.lucky-draw-slice-label-wrap {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  transform-origin: center;
+}
+
+.lucky-draw-slice-label {
+  display: grid;
+  width: calc(var(--wheel-size) * 0.205);
+  min-height: 2.05rem;
+  place-items: center;
+  color: #ffffff;
+  font-size: clamp(0.58rem, 2.5vw, 0.76rem);
+  font-weight: 900;
+  line-height: 1.05;
+  text-align: center;
+  text-shadow: 0 0.1rem 0.35rem rgba(7, 18, 112, 0.62);
+  transform-origin: center;
+  word-break: normal;
+}
+
+.lucky-draw-button {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 10;
+  display: grid;
+  width: calc(var(--wheel-size) * 0.34);
+  height: calc(var(--wheel-size) * 0.34);
+  place-items: center;
+  border: 0.24rem solid rgba(4, 137, 211, 0.95);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 42% 24%, rgba(255, 255, 255, 0.46), transparent 22%),
+    linear-gradient(180deg, #2eeeff 0%, #00a9ff 48%, #0085e2 100%);
+  box-shadow:
+    inset 0 -0.45rem 0 rgba(7, 60, 174, 0.28),
+    inset 0 0 1.1rem rgba(255, 255, 255, 0.22),
+    0 0.5rem 1.25rem rgba(2, 21, 114, 0.48);
+  color: #ffffff;
+  cursor: pointer;
+  font-size: clamp(1rem, 4.3vw, 1.35rem);
+  font-weight: 900;
+  line-height: 1.08;
+  padding: 0.25rem;
+  text-align: center;
+  transform: translate(-50%, -50%);
+  transition: filter 160ms ease, transform 160ms ease;
+}
+
+.lucky-draw-button:hover:not(:disabled) {
+  filter: brightness(1.06);
+  transform: translate(-50%, -50%) scale(1.025);
+}
+
+.lucky-draw-button:disabled {
+  cursor: not-allowed;
+  filter: grayscale(0.18) brightness(0.86);
+  opacity: 0.72;
+}
+
+.lucky-draw-pointer {
+  position: absolute;
+  top: -0.4rem;
+  left: 50%;
+  z-index: 12;
+  width: calc(var(--wheel-size) * 0.13);
+  height: calc(var(--wheel-size) * 0.18);
+  background: linear-gradient(180deg, #dcfbff 0%, #96edff 100%);
+  clip-path: polygon(50% 100%, 0 0, 100% 0);
+  filter: drop-shadow(0 0.25rem 0.55rem rgba(0, 0, 0, 0.35));
+  transform: translateX(-50%);
+}
+
+.lucky-draw-side-arrow {
+  position: absolute;
+  left: -1.85rem;
+  top: 58%;
+  z-index: 9;
+  width: 3.05rem;
+  height: 0.72rem;
+  border-radius: 999px;
+  background: #ff302d;
+  box-shadow: 0 0.3rem 0.8rem rgba(31, 0, 65, 0.28);
+  transform: translateY(-50%);
+}
+
+.lucky-draw-side-arrow::after {
+  content: "";
+  position: absolute;
+  right: -0.86rem;
+  top: 50%;
+  width: 1.25rem;
+  height: 1.25rem;
+  background: #ff302d;
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
+  transform: translateY(-50%);
+}
+
+.lucky-draw-ribbon {
+  position: absolute;
+  bottom: -0.65rem;
+  z-index: 1;
+  width: calc(var(--wheel-size) * 0.18);
+  height: calc(var(--wheel-size) * 0.32);
+  background: linear-gradient(180deg, #ff9b3e 0%, #ce5d2d 100%);
+  clip-path: polygon(20% 0, 100% 0, 68% 100%, 36% 72%, 0 100%);
+  filter: drop-shadow(0 0.35rem 0.6rem rgba(0, 0, 0, 0.28));
+}
+
+.lucky-draw-ribbon-left {
+  left: 7%;
+  transform: rotate(24deg);
+}
+
+.lucky-draw-ribbon-right {
+  right: 7%;
+  transform: scaleX(-1) rotate(24deg);
+}
+
+.lucky-draw-spin-count {
+  position: relative;
+  z-index: 3;
+  margin-top: 0.72rem;
+  color: rgba(214, 219, 255, 0.72);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+@media (max-width: 360px) {
+  .lucky-draw-content {
+    padding-inline: 0.7rem;
+  }
+
+  .lucky-draw-hero {
+    --wheel-size: clamp(16.5rem, 87vw, 18rem);
+  }
+
+  .lucky-draw-side-arrow {
+    left: -1.25rem;
+    width: 2.15rem;
+  }
+}
+
 .app-bottom-nav {
   position: sticky;
   bottom: 0;
