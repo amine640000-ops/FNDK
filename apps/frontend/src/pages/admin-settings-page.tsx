@@ -764,8 +764,8 @@ export function AdminSettingsPage() {
             />
           </label>
           <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-100">
-            Every withdrawal request enters a fixed 72-hour holding period before admin approval is allowed. Reservation failures
-            let you force the first N reservation attempts per user per day to return a failed outcome.
+            Withdrawal requests are shown to users with a 48-72h processing window. Admin approval is not blocked by the timer.
+            Reservation failures let you force the first N reservation attempts per user per day to return a failed outcome.
           </div>
           <button
             className={primaryButtonClass}

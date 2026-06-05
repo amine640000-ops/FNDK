@@ -197,7 +197,7 @@ export function AdminFinancePage() {
               </div>
               {transaction.releaseAt ? (
                 <div className="flex items-center justify-between gap-4">
-                  <span>Hold release</span>
+                  <span>Processing deadline</span>
                   <span className={holdPending ? "text-amber-300" : "text-white"}>
                     {new Date(transaction.releaseAt).toLocaleString("en-GB")}
                   </span>
@@ -221,7 +221,7 @@ export function AdminFinancePage() {
               onClick={() => void reviewTransaction(transaction.id, "approve")}
               type="button"
             >
-              {actionId === transaction.id ? "Working..." : holdPending ? "Approve now" : "Approve"}
+              {actionId === transaction.id ? "Working..." : "Approve"}
             </button>
             <button
               className="rounded-full border border-rose-400/30 bg-rose-400/10 px-4 py-2 text-sm font-semibold text-rose-200 disabled:opacity-60"

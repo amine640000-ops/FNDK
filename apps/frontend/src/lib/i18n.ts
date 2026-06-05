@@ -454,7 +454,8 @@ const arabicLabels: Record<string, string> = {
   "Verification code sent.": "تم إرسال رمز التحقق.",
   "Verification code sent to your email.": "تم إرسال رمز التحقق إلى بريدك الإلكتروني.",
   "Withdrawal address saved.": "تم حفظ عنوان السحب.",
-  "Withdrawals carry a fixed 5% fee and enter a 72-hour hold before admin approval is allowed.": "تتضمن عمليات السحب رسما ثابتا 5% وتدخل فترة انتظار 72 ساعة قبل السماح بموافقة الإدارة.",
+  "Withdrawal requests are processed within 48-72h after submission.": "تتم معالجة طلبات السحب خلال 48-72 ساعة بعد الإرسال.",
+  "Withdrawals carry a fixed 5% fee and are processed within 48-72h.": "تتضمن عمليات السحب رسما ثابتا 5% وتتم معالجتها خلال 48-72 ساعة.",
   "English": "الإنجليزية",
   "Francais": "Français",
   "العربية": "العربية"

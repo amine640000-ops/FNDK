@@ -706,7 +706,7 @@ export function SupportPage() {
       <section className="neon-soft-panel mt-5 grid gap-3 p-5">
         {[
           ["Reservation did not continue", "Open Strategy and wait for the active countdown to finish, then launch the next reservation."],
-          ["Withdrawal review", "Withdrawal requests enter the 72-hour review window before admin approval."],
+          ["Withdrawal review", "Withdrawal requests are processed within 48-72h after submission."],
           ["Real-name verification", "Upload a clear document photo and holding document photo in Security Center."]
         ].map(([title, description]) => (
           <div key={title} className="rounded-[18px] border border-white/10 bg-white/[0.04] px-4 py-3">

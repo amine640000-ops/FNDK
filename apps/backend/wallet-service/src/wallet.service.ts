@@ -659,7 +659,8 @@ export class WalletService implements OnModuleInit {
       releaseAt: result!.release_at,
       monthlyLimit: rules?.withdrawals_per_month_limit ?? 3,
       monthlyUsed: (rules?.withdrawals_this_month ?? 0) + 1,
-      message: "Withdrawal request queued. A 5% fee applies and admin approval is available after the 72-hour holding period."
+      processingWindow: "48-72h",
+      message: "Withdrawal request submitted. A 5% fee applies and processing takes 48-72h."
     };
   }
 

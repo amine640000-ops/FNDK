@@ -1192,6 +1192,48 @@ body {
   color: #ffb8c4;
 }
 
+.withdraw-processing-card {
+  display: flex;
+  align-items: center;
+  gap: 0.78rem;
+  margin-top: 1rem;
+  border: 1px solid rgba(81, 255, 246, 0.28);
+  border-radius: 1rem;
+  background: rgba(6, 18, 82, 0.74);
+  box-shadow: inset 0 0 1rem rgba(67, 97, 255, 0.18);
+  padding: 0.92rem 1rem;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.withdraw-processing-card svg {
+  flex: 0 0 auto;
+  width: 1.2rem;
+  height: 1.2rem;
+  color: #51fff6;
+}
+
+.withdraw-processing-card div {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.withdraw-processing-card span {
+  color: rgba(255, 255, 255, 0.66);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.withdraw-processing-card strong {
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
 .withdraw-address-section {
   display: grid;
   gap: 0.72rem;
@@ -1327,6 +1369,35 @@ body {
 .withdraw-result-title svg {
   width: 1rem;
   height: 1rem;
+}
+
+.withdraw-result-window {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-radius: 0.8rem;
+  background: rgba(81, 255, 246, 0.1);
+  padding: 0.75rem 0.85rem;
+}
+
+.withdraw-result-window span {
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.withdraw-result-window strong {
+  color: #51fff6;
+  font-size: 1.04rem;
+  font-weight: 900;
+}
+
+.withdraw-result-card p {
+  margin: 0.1rem 0 0;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 0.82rem;
+  line-height: 1.45;
 }
 
 .withdraw-instructions {
@@ -1498,6 +1569,28 @@ body {
   margin-top: 0.22rem;
   color: #ffffff;
   font-size: 0.9rem;
+}
+
+.withdraw-processing-note {
+  display: flex;
+  align-items: center;
+  gap: 0.62rem;
+  margin-top: 1rem;
+  border: 1px solid rgba(81, 255, 246, 0.26);
+  border-radius: 0.9rem;
+  background: rgba(81, 255, 246, 0.09);
+  padding: 0.8rem 0.9rem;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.84rem;
+  font-weight: 800;
+  line-height: 1.38;
+}
+
+.withdraw-processing-note svg {
+  flex: 0 0 auto;
+  width: 1.05rem;
+  height: 1.05rem;
+  color: #51fff6;
 }
 
 .withdraw-verification-label {

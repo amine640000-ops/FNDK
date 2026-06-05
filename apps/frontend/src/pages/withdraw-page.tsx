@@ -61,6 +61,8 @@ const networkIconUrls: Partial<Record<AssetType, string>> = {
   USDT_ERC20: "/crypto/eth.svg"
 };
 
+const withdrawalProcessingWindow = "48-72h";
+
 type WithdrawalResponse = {
   id: string;
   type: "withdrawal";
@@ -73,6 +75,7 @@ type WithdrawalResponse = {
   releaseAt: string;
   monthlyLimit: number;
   monthlyUsed: number;
+  processingWindow?: string;
   message: string;
 };
 
@@ -430,6 +433,14 @@ export function WithdrawPage() {
           </p>
         </section>
 
+        <section className="withdraw-processing-card">
+          <Clock3 />
+          <div>
+            <span>Durée de traitement</span>
+            <strong>{withdrawalProcessingWindow}</strong>
+          </div>
+        </section>
+
         <section className="withdraw-amount-section">
           <label className="withdraw-label withdraw-amount-label" htmlFor="withdraw-amount">
             Montant D'arrivée
@@ -487,13 +498,18 @@ export function WithdrawPage() {
           <section className="withdraw-result-card">
             <div className="withdraw-result-title">
               <Clock3 />
-              <span>Retrait en attente</span>
+              <span>Retrait demandé</span>
             </div>
-            <div>ID: {withdrawalResponse.id}</div>
+            <div className="withdraw-result-window">
+              <span>Durée de traitement</span>
+              <strong>{withdrawalResponse.processingWindow ?? withdrawalProcessingWindow}</strong>
+            </div>
             <div>Montant net: {formatCurrency(withdrawalResponse.netAmount)}</div>
             <div>
-              Libération: {new Date(withdrawalResponse.releaseAt).toLocaleString(language === "ar" ? "ar-TN" : "fr-FR")}
+              Date limite estimée: {new Date(withdrawalResponse.releaseAt).toLocaleString(language === "ar" ? "ar-TN" : "fr-FR")}
             </div>
+            <div>ID: {withdrawalResponse.id}</div>
+            <p>{withdrawalResponse.message}</p>
           </section>
         ) : null}
 
@@ -591,6 +607,11 @@ export function WithdrawPage() {
                 <span>Net</span>
                 <strong>{formatCurrency(netAmount > 0 ? netAmount : 0)}</strong>
               </div>
+            </div>
+
+            <div className="withdraw-processing-note">
+              <Clock3 />
+              <span>Après validation, le traitement du retrait prend {withdrawalProcessingWindow}.</span>
             </div>
 
             <label className="withdraw-verification-label">
