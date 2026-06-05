@@ -368,13 +368,15 @@ export function ProfilePage() {
   }, []);
 
   const latestSubmission = submissions[0];
+  const isKycVerified = latestSubmission?.status === "verified" || storedUser.kycStatus === "verified";
+  const isKycPending = latestSubmission?.status === "pending";
 
   const realNameStatus = useMemo(() => {
-    if (latestSubmission?.status === "verified" || storedUser.kycStatus === "verified") {
+    if (isKycVerified) {
       return "Verified";
     }
 
-    if (latestSubmission?.status === "pending") {
+    if (isKycPending) {
       return "Under Review";
     }
 
@@ -383,7 +385,7 @@ export function ProfilePage() {
     }
 
     return "Go To Verify";
-  }, [latestSubmission?.status, storedUser.kycStatus]);
+  }, [isKycPending, isKycVerified, latestSubmission?.status, storedUser.kycStatus]);
 
   const displayName = storedUser.fullName?.trim() || "FNDK User";
   const displayEmail = storedUser.email?.trim() || "email not set";
@@ -435,6 +437,12 @@ export function ProfilePage() {
     const token = getAccessToken();
     if (!token) {
       toast.error(tt("Sign in first."));
+      return;
+    }
+
+    if (isKycVerified) {
+      toast.error(tt("KYC is already approved. You cannot submit verification again."));
+      setScreen("security");
       return;
     }
 
@@ -660,13 +668,27 @@ export function ProfilePage() {
     </div>
   );
 
+  const renderApprovedKycState = () => (
+    <div className="px-5 pt-6">
+      <section className="rounded-[14px] border border-emerald-300/25 bg-emerald-300/10 p-5 text-center shadow-[0_0_24px_rgba(52,211,153,0.18)]">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-emerald-300/35 bg-emerald-300/15 text-emerald-100">
+          <ShieldCheck className="h-8 w-8" />
+        </div>
+        <div className="mt-4 text-[1.18rem] font-extrabold text-white">{tt("KYC approved")}</div>
+        <div className="mt-2 text-sm font-medium leading-6 text-emerald-100/85">
+          {tt("Your real-name verification is approved. You cannot submit it again.")}
+        </div>
+      </section>
+    </div>
+  );
+
   const renderRealNameDetails = () => (
     <div className="pb-6">
       <ScreenHeader title="Real-Name Verification" onBack={() => setScreen("security")} />
+      {isKycVerified ? renderApprovedKycState() : (
       <div className="px-5 pt-6">
         <VerificationProgress step={1} />
         <VerificationNotice />
-
         <form
           className="mt-6 space-y-4"
           onSubmit={(event) => {
@@ -734,12 +756,14 @@ export function ProfilePage() {
 
         <ReminderPanel />
       </div>
+      )}
     </div>
   );
 
   const renderRealNameUpload = () => (
     <div className="pb-6">
       <ScreenHeader title="Real-Name Verification" onBack={() => setScreen("real-name-details")} />
+      {isKycVerified ? renderApprovedKycState() : (
       <div className="px-5 pt-6">
         <VerificationProgress step={2} />
         <VerificationNotice />
@@ -771,6 +795,7 @@ export function ProfilePage() {
 
         <ReminderPanel />
       </div>
+      )}
     </div>
   );
 

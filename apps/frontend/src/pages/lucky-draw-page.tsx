@@ -8,6 +8,7 @@ import { translateText, useAppLanguage } from "@/lib/i18n";
 
 const emptySummary: LuckyDrawSummary = {
   event: {
+    enabled: false,
     title: "Lucky Draw Event",
     startsAt: "2026-06-03T22:00:00.000Z",
     endsAt: "2026-06-08T21:59:00.000Z",
@@ -175,8 +176,11 @@ export function LuckyDrawPage() {
   const [loading, setLoading] = useState(true);
   const [spinning, setSpinning] = useState(false);
   const [lastResult, setLastResult] = useState<LuckyDrawSpinResult | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [wheelRotation, setWheelRotation] = useState(0);
   const spinTimeoutRef = useRef<number | null>(null);
+
+  const luckyDrawEnabled = summary.event.enabled !== false;
 
   const eventRange = useMemo(
     () => `${formatEventDate(summary.event.startsAt)} - ${formatEventDate(summary.event.endsAt)}`,
@@ -205,6 +209,7 @@ export function LuckyDrawPage() {
 
     try {
       const response = await walletApi.get<LuckyDrawSummary>("/wallet/lucky-draw");
+      setLoadFailed(false);
       setSummary({
         ...response.data,
         event: {
@@ -213,7 +218,9 @@ export function LuckyDrawPage() {
         }
       });
     } catch (error) {
-      toast.error(getApiErrorMessage(error, tt("Could not load Lucky Draw.")));
+      setLoadFailed(true);
+      const message = getApiErrorMessage(error, tt("Could not load Lucky Draw."));
+      toast.error(message === "Internal server error" ? tt("Lucky Draw is unavailable right now.") : message);
     } finally {
       setLoading(false);
     }
@@ -279,6 +286,26 @@ export function LuckyDrawPage() {
       setSpinning(false);
     }
   };
+
+  if (!loading && (!luckyDrawEnabled || loadFailed)) {
+    return (
+      <div className="lucky-draw-page pb-6">
+        <div className="lucky-draw-content">
+          <section className="neon-panel mt-6 rounded-[26px] p-5 text-center">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-cyan-300/25 bg-cyan-300/10 text-cyan-100">
+              <Gift className="h-8 w-8" />
+            </div>
+            <div className="mt-4 text-[1.25rem] font-extrabold text-white">
+              {tt(loadFailed ? "Lucky Draw is unavailable right now." : "Lucky Draw is closed.")}
+            </div>
+            <div className="mt-2 text-sm leading-6 text-slate-300">
+              {tt(loadFailed ? "Please try again later." : "This event is currently disabled.")}
+            </div>
+          </section>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="lucky-draw-page pb-6">
@@ -347,7 +374,7 @@ export function LuckyDrawPage() {
             </div>
             <button
               className="lucky-draw-button"
-              disabled={loading || spinning || !summary.event.isActive || summary.availableSpins <= 0}
+              disabled={loading || spinning || !luckyDrawEnabled || !summary.event.isActive || summary.availableSpins <= 0}
               onClick={() => void useSpin()}
               type="button"
             >

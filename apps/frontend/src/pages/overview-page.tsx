@@ -18,7 +18,7 @@ import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { Link, useNavigate } from "react-router-dom";
 import { formatCurrency } from "@nevo/shared-utils";
-import type { AdCarouselSlide, WalletSummary } from "@nevo/shared-types";
+import type { AdCarouselSlide, LuckyDrawSummary, WalletSummary } from "@nevo/shared-types";
 import { adminApi, isApiAuthError, notificationApi, uploadBaseUrls, walletApi } from "@/api/client";
 import { BrandMark } from "@/components/brand-mark";
 import { clearAuthSession, getAccessToken } from "@/lib/auth";
@@ -237,6 +237,7 @@ export function OverviewPage() {
   const [failedLogos, setFailedLogos] = useState<Record<string, boolean>>({});
   const [adSlides, setAdSlides] = useState<AdCarouselSlide[]>(defaultAdCarouselSlides);
   const [activeAdIndex, setActiveAdIndex] = useState(0);
+  const [showLuckyDrawShortcut, setShowLuckyDrawShortcut] = useState(true);
   const [language, setLanguage] = useState<LanguageCode>(() => {
     const stored = localStorage.getItem("nevo.language");
     return stored === "fr" || stored === "ar" ? stored : "en";
@@ -345,6 +346,32 @@ export function OverviewPage() {
       window.clearInterval(intervalId);
     };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    walletApi
+      .get<LuckyDrawSummary>("/wallet/lucky-draw")
+      .then((response) => {
+        if (active) {
+          setShowLuckyDrawShortcut(response.data.event.enabled !== false);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setShowLuckyDrawShortcut(true);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const visibleShortcutItems = useMemo(
+    () => shortcutItems.filter((item) => item.to !== "/app/lucky-draw" || showLuckyDrawShortcut),
+    [showLuckyDrawShortcut]
+  );
 
   useEffect(() => {
     let active = true;
@@ -642,7 +669,7 @@ export function OverviewPage() {
       </section>
 
       <section className="mt-5 grid grid-cols-4 gap-3">
-        {shortcutItems.map(({ title, icon: Icon, to, featured }) => (
+        {visibleShortcutItems.map(({ title, icon: Icon, to, featured }) => (
           <Link key={title} className="group text-center" to={to}>
             <div
               className={`mx-auto flex h-[68px] w-[68px] items-center justify-center rounded-full border ${

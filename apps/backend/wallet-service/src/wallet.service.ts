@@ -326,8 +326,20 @@ export class WalletService implements OnModuleInit {
   }
 
   async getLuckyDrawSummary(userId: string): Promise<LuckyDrawSummary> {
-    const [event, balance, awards, results] = await Promise.all([
-      this.getLuckyDrawEventInfo(),
+    const event = await this.getLuckyDrawEventInfo();
+
+    if (!event.enabled) {
+      return {
+        event,
+        totalSpins: 0,
+        availableSpins: 0,
+        usedSpins: 0,
+        awards: [],
+        results: []
+      };
+    }
+
+    const [balance, awards, results] = await Promise.all([
       getOne<LuckyDrawSpinBalanceRow>(
         `
           SELECT
@@ -1122,6 +1134,7 @@ export class WalletService implements OnModuleInit {
     const endsAt = new Date(config.endsAt);
 
     return {
+      enabled: config.enabled,
       title: config.title,
       startsAt: startsAt.toISOString(),
       endsAt: endsAt.toISOString(),

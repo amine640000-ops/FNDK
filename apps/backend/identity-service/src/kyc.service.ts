@@ -43,6 +43,19 @@ export class KycService {
       selfie_file?: UploadedKycFile[];
     } = {}
   ) {
+    const user = await dbQuery<{ kyc_status: string }>(
+      `
+        SELECT kyc_status
+        FROM users
+        WHERE id = $1
+      `,
+      [userId]
+    );
+
+    if (user.rows[0]?.kyc_status === "verified") {
+      throw new BadRequestException("KYC is already approved. You cannot submit verification again.");
+    }
+
     const documentFile = files.idDocument?.[0] ?? files.document?.[0] ?? files.id_document?.[0] ?? files.documentFile?.[0];
     const selfieFile = files.selfie?.[0] ?? files.selfieFile?.[0] ?? files.selfie_file?.[0];
 

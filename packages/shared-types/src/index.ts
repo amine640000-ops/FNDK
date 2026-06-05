@@ -68,6 +68,7 @@ export interface DashboardTransaction {
 }
 
 export interface LuckyDrawEventInfo {
+  enabled: boolean;
   title: string;
   startsAt: string;
   endsAt: string;

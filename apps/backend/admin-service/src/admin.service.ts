@@ -1598,13 +1598,14 @@ export class AdminService implements OnModuleInit {
           UPDATE kyc_submissions
           SET status = $2, admin_note = $3, reviewed_at = NOW()
           WHERE id = $1
+            AND status = 'pending'
           RETURNING id, user_id
         `,
         [submissionId, status, adminNote ?? null]
       );
 
       if (!submission.rowCount) {
-        throw new NotFoundException("KYC submission not found");
+        throw new NotFoundException("Pending KYC submission not found");
       }
 
       await client.query("UPDATE users SET kyc_status = $2 WHERE id = $1", [submission.rows[0].user_id, status]);
