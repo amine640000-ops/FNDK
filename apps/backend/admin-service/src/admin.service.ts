@@ -30,6 +30,7 @@ type AdminSettingValue =
 
 const maxAdCarouselSlides = 8;
 const defaultMissionQualifyingDepositAmount = 107;
+const aggregateBalanceAdjustmentAsset: AssetType = "USD";
 
 const defaultAdCarouselSlides: AdCarouselSlide[] = [
   {
@@ -234,6 +235,12 @@ type AdminSettingRow = {
 
 type WalletBalanceRow = {
   balance: number;
+};
+
+type AggregateWalletBalanceRow = {
+  asset_type: AssetType;
+  balance: number;
+  active_investment: number;
 };
 
 type VipTierRow = {
@@ -447,6 +454,13 @@ export class AdminService implements OnModuleInit {
 
     const note = input.note?.trim();
     const result = await withTransaction(async (client: PoolClient) => {
+      const resolveDelta = (previousBalance: number) =>
+        input.operation === "add"
+          ? adjustmentAmount
+          : input.operation === "subtract"
+            ? -adjustmentAmount
+            : Number((adjustmentAmount - previousBalance).toFixed(2));
+
       const user = await client.query<{ id: string; full_name: string }>(
         `
           SELECT id, full_name
@@ -460,6 +474,135 @@ export class AdminService implements OnModuleInit {
 
       if (!user.rowCount) {
         throw new NotFoundException("User account not found");
+      }
+
+      if (!input.asset) {
+        for (const asset of SUPPORTED_ASSETS) {
+          await client.query(
+            `
+              INSERT INTO wallets (id, user_id, asset_type, balance, active_investment, total_earned)
+              VALUES (gen_random_uuid(), $1, $2, 0, 0, 0)
+              ON CONFLICT (user_id, asset_type) DO NOTHING
+            `,
+            [userId, asset]
+          );
+        }
+
+        const wallets = await client.query<AggregateWalletBalanceRow>(
+          `
+            SELECT
+              asset_type,
+              balance::float8 AS balance,
+              active_investment::float8 AS active_investment
+            FROM wallets
+            WHERE user_id = $1
+            FOR UPDATE
+          `,
+          [userId]
+        );
+        const previousBalance = Number(wallets.rows.reduce((total, wallet) => total + wallet.balance, 0).toFixed(2));
+        const delta = resolveDelta(previousBalance);
+        const nextBalance = Number((previousBalance + delta).toFixed(2));
+
+        if (delta === 0) {
+          throw new BadRequestException("Balance is already set to that amount");
+        }
+
+        if (nextBalance < 0) {
+          throw new BadRequestException("Balance adjustment cannot make the account negative");
+        }
+
+        if (delta > 0) {
+          await client.query(
+            `
+              UPDATE wallets
+              SET balance = balance + $3
+              WHERE user_id = $1
+                AND asset_type = $2
+            `,
+            [userId, aggregateBalanceAdjustmentAsset, delta]
+          );
+        } else {
+          let remainingReduction = Number(Math.abs(delta).toFixed(2));
+          const reductionPriority = new Map<AssetType, number>(
+            ["USD", "USDT_TRC20", "USDT_ERC20", "EUR", "GBP", "STOCKS", "BTC", "ETH"].map((asset, index) => [
+              asset as AssetType,
+              index
+            ])
+          );
+          const fundedWallets = wallets.rows
+            .filter((wallet) => wallet.balance > 0)
+            .sort(
+              (left, right) =>
+                (reductionPriority.get(left.asset_type) ?? 99) - (reductionPriority.get(right.asset_type) ?? 99)
+            );
+
+          for (const wallet of fundedWallets) {
+            if (remainingReduction <= 0) {
+              break;
+            }
+
+            const reduction = Number(Math.min(wallet.balance, remainingReduction).toFixed(2));
+            await client.query(
+              `
+                UPDATE wallets
+                SET
+                  balance = GREATEST(balance - $3, 0),
+                  active_investment = LEAST(active_investment, GREATEST(balance - $3, 0))
+                WHERE user_id = $1
+                  AND asset_type = $2
+              `,
+              [userId, wallet.asset_type, reduction]
+            );
+            remainingReduction = Number((remainingReduction - reduction).toFixed(2));
+          }
+
+          if (remainingReduction > 0) {
+            throw new BadRequestException("Balance adjustment cannot make the account negative");
+          }
+        }
+
+        await client.query(
+          `
+            INSERT INTO transactions (id, user_id, type, asset, amount, fee_amount, status, admin_note)
+            VALUES (gen_random_uuid(), $1, 'adjustment', $2, $3, 0, 'approved', $4)
+          `,
+          [
+            userId,
+            aggregateBalanceAdjustmentAsset,
+            delta,
+            note ??
+              [
+                `Admin total balance ${input.operation}`,
+                `Previous total: ${previousBalance}`,
+                `Current total: ${nextBalance}`
+              ].join(" | ")
+          ]
+        );
+
+        await client.query(
+          `
+            INSERT INTO notifications (id, user_id, title, message, is_read, created_at)
+            VALUES (gen_random_uuid(), $1, $2, $3, FALSE, NOW())
+          `,
+          [
+            userId,
+            input.operation === "add" && delta > 0 ? "System recharge" : "Balance adjusted",
+            input.operation === "add" && delta > 0
+              ? `${Math.abs(delta).toFixed(2)} USD was added to your account.`
+              : `Your total wallet balance was updated from ${previousBalance} to ${nextBalance}.`
+          ]
+        );
+
+        return {
+          userId,
+          fullName: user.rows[0].full_name,
+          asset: null,
+          operation: input.operation,
+          previousBalance,
+          balance: nextBalance,
+          delta
+        };
       }
 
       await client.query(
@@ -482,12 +625,7 @@ export class AdminService implements OnModuleInit {
         [userId, input.asset]
       );
       const previousBalance = wallet.rows[0]?.balance ?? 0;
-      const delta =
-        input.operation === "add"
-          ? adjustmentAmount
-          : input.operation === "subtract"
-            ? -adjustmentAmount
-            : Number((adjustmentAmount - previousBalance).toFixed(2));
+      const delta = resolveDelta(previousBalance);
       const nextBalance = Number((previousBalance + delta).toFixed(2));
 
       if (delta === 0) {

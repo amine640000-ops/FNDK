@@ -3,7 +3,7 @@ import toast from "react-hot-toast";
 import { Ban, CheckCircle2, ExternalLink, RefreshCcw, WalletCards, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { AssetType } from "@nevo/shared-types";
-import { SUPPORTED_ASSETS, formatCurrency } from "@nevo/shared-utils";
+import { formatCurrency } from "@nevo/shared-utils";
 import { adminApi, getApiErrorMessage, isApiAuthError, uploadBaseUrls } from "@/api/client";
 import { SectionCard } from "@/components/section-card";
 import { clearAuthSession, getAccessToken } from "@/lib/auth";
@@ -77,7 +77,6 @@ export function AdminUsersPage() {
   const [statusActionId, setStatusActionId] = useState<string | null>(null);
   const [balanceForm, setBalanceForm] = useState<{
     user: AdminUser;
-    asset: AssetType;
     operation: BalanceOperation;
     amount: string;
     note: string;
@@ -93,7 +92,7 @@ export function AdminUsersPage() {
       return 0;
     }
 
-    return balanceForm.user.wallets.find((wallet) => wallet.asset === balanceForm.asset)?.balance ?? 0;
+    return balanceForm.user.walletBalance ?? balanceForm.user.balance ?? 0;
   }, [balanceForm]);
 
   const loadAdminUsersState = async () => {
@@ -171,11 +170,8 @@ export function AdminUsersPage() {
   };
 
   const openBalanceManager = (user: AdminUser) => {
-    const preferredWallet = user.wallets.find((wallet) => wallet.asset === "USDT_TRC20") ?? user.wallets[0];
-
     setBalanceForm({
       user,
-      asset: preferredWallet?.asset ?? "USDT_TRC20",
       operation: "add",
       amount: "",
       note: ""
@@ -202,7 +198,6 @@ export function AdminUsersPage() {
     setBalanceActionId(balanceForm.user.id);
     try {
       await adminApi.patch(`/admin/users/${balanceForm.user.id}/balance`, {
-        asset: balanceForm.asset,
         operation: balanceForm.operation,
         amount,
         note: balanceForm.note.trim() || undefined
@@ -383,26 +378,7 @@ export function AdminUsersPage() {
               </button>
             </div>
 
-            <div className="mt-5 grid gap-4 sm:grid-cols-2">
-              <label className="grid gap-2 text-sm font-medium text-slate-300">
-                Asset
-                <select
-                  className="rounded-2xl border border-white/10 bg-[#03062f] px-4 py-3 text-white outline-none focus:border-cyan-300/70"
-                  value={balanceForm.asset}
-                  onChange={(event) =>
-                    setBalanceForm((current) =>
-                      current ? { ...current, asset: event.target.value as AssetType } : current
-                    )
-                  }
-                >
-                  {SUPPORTED_ASSETS.map((asset) => (
-                    <option key={asset} value={asset}>
-                      {asset}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
+            <div className="mt-5">
               <label className="grid gap-2 text-sm font-medium text-slate-300">
                 Operation
                 <select
@@ -424,7 +400,7 @@ export function AdminUsersPage() {
             </div>
 
             <div className="mt-4 rounded-2xl border border-cyan-300/15 bg-cyan-300/[0.08] px-4 py-3">
-              <div className="text-xs uppercase tracking-[0.18em] text-cyan-200/75">Current selected balance</div>
+              <div className="text-xs uppercase tracking-[0.18em] text-cyan-200/75">Current total wallet balance</div>
               <div className="mt-2 text-2xl font-semibold text-white">{formatCurrency(selectedBalance)}</div>
             </div>
 

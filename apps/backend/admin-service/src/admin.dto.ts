@@ -155,8 +155,9 @@ export class UpdateVipTierDto {
 }
 
 export class AdjustUserBalanceDto {
+  @IsOptional()
   @IsIn(SUPPORTED_ASSETS)
-  asset!: AssetType;
+  asset?: AssetType;
 
   @IsIn(["add", "subtract", "set"])
   operation!: "add" | "subtract" | "set";
