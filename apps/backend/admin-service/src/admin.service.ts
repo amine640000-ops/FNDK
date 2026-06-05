@@ -353,14 +353,7 @@ export class AdminService implements OnModuleInit {
         transaction_totals AS (
           SELECT
             user_id,
-            COALESCE(SUM(amount) FILTER (WHERE type = 'deposit' AND status = 'approved'), 0)::float8 AS total_deposited,
-            COALESCE(
-              SUM(amount) FILTER (
-                WHERE type IN ('profit', 'referral', 'lucky_draw_prize')
-                  AND status = 'approved'
-              ),
-              0
-            )::float8 AS total_gained
+            COALESCE(SUM(amount) FILTER (WHERE type = 'deposit' AND status = 'approved'), 0)::float8 AS total_deposited
           FROM transactions
           GROUP BY user_id
         )
@@ -373,11 +366,11 @@ export class AdminService implements OnModuleInit {
           u.is_active,
           u.created_at,
           lv.vip_tier,
-          (COALESCE(wt.wallet_balance, 0) + COALESCE(wt.active_investment, 0))::float8 AS balance,
+          COALESCE(wt.wallet_balance, 0)::float8 AS balance,
           COALESCE(wt.wallet_balance, 0)::float8 AS wallet_balance,
           COALESCE(wt.active_investment, 0)::float8 AS active_investment,
           COALESCE(tt.total_deposited, 0)::float8 AS total_deposited,
-          GREATEST(COALESCE(wt.total_earned, 0), COALESCE(tt.total_gained, 0))::float8 AS total_gained,
+          COALESCE(wt.total_earned, 0)::float8 AS total_gained,
           COALESCE(wr.wallets, '[]'::jsonb) AS wallets
         FROM users u
         LEFT JOIN latest_vip lv ON lv.user_id = u.id
