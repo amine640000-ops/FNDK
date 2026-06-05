@@ -2,17 +2,18 @@ import type { PropsWithChildren, ReactNode } from "react";
 import { translateText, useAppLanguage } from "@/lib/i18n";
 
 type SectionCardProps = PropsWithChildren<{
+  id?: string;
   title: string;
   subtitle?: string;
   action?: ReactNode;
   className?: string;
 }>;
 
-export function SectionCard({ title, subtitle, action, className = "", children }: SectionCardProps) {
+export function SectionCard({ id, title, subtitle, action, className = "", children }: SectionCardProps) {
   const language = useAppLanguage();
 
   return (
-    <section className={`glass-panel min-w-0 p-6 ${className}`}>
+    <section id={id} className={`glass-panel min-w-0 scroll-mt-6 p-6 ${className}`}>
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="text-xl font-semibold text-white">{translateText(language, title)}</h2>

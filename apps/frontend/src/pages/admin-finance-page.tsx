@@ -136,12 +136,15 @@ export function AdminFinancePage() {
 
   const renderTransactionCard = (transaction: FinanceTransaction) => {
     const proofLink = resolveProofUrl(transaction.proofUrl);
-    const holdActive = transaction.type === "withdrawal" && transaction.releaseAt && !transaction.canApprove;
+    const holdPending =
+      transaction.type === "withdrawal" &&
+      transaction.releaseAt &&
+      new Date(transaction.releaseAt) > new Date();
 
     return (
-      <div key={transaction.id} className="rounded-3xl border border-white/10 bg-white/5 p-4">
+      <div key={transaction.id} className="overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-4">
         <div className="flex items-start justify-between gap-4">
-          <div>
+          <div className="min-w-0">
             <div className="font-medium text-white">{transaction.fullName}</div>
             <div className="mt-1 text-sm text-slate-400">
               {transaction.asset} · {new Date(transaction.createdAt).toLocaleString("en-GB")}
@@ -158,7 +161,7 @@ export function AdminFinancePage() {
         <div className="mt-4 grid gap-3 text-sm text-slate-300">
           <div className="flex items-center justify-between gap-4">
             <span>Transaction ID</span>
-            <span className="max-w-[60%] truncate text-right text-white">{transaction.id}</span>
+            <span className="min-w-0 max-w-[62%] break-all text-right font-mono text-xs text-white">{transaction.id}</span>
           </div>
 
           {transaction.type === "deposit" && proofLink ? (
@@ -188,12 +191,14 @@ export function AdminFinancePage() {
               </div>
               <div className="flex items-center justify-between gap-4">
                 <span>Destination</span>
-                <span className="max-w-[60%] truncate text-right text-white">{transaction.destinationAddress ?? "Not provided"}</span>
+                <span className="min-w-0 max-w-[62%] break-all text-right font-mono text-xs text-white">
+                  {transaction.destinationAddress ?? "Not provided"}
+                </span>
               </div>
               {transaction.releaseAt ? (
                 <div className="flex items-center justify-between gap-4">
                   <span>Hold release</span>
-                  <span className={holdActive ? "text-amber-300" : "text-white"}>
+                  <span className={holdPending ? "text-amber-300" : "text-white"}>
                     {new Date(transaction.releaseAt).toLocaleString("en-GB")}
                   </span>
                 </div>
@@ -212,11 +217,11 @@ export function AdminFinancePage() {
           <div className="mt-4 flex flex-wrap gap-2">
             <button
               className="rounded-full bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 disabled:opacity-60"
-              disabled={actionId === transaction.id || !transaction.canApprove}
+              disabled={actionId === transaction.id}
               onClick={() => void reviewTransaction(transaction.id, "approve")}
               type="button"
             >
-              {holdActive ? "Waiting for hold" : actionId === transaction.id ? "Working..." : "Approve"}
+              {actionId === transaction.id ? "Working..." : holdPending ? "Approve now" : "Approve"}
             </button>
             <button
               className="rounded-full border border-rose-400/30 bg-rose-400/10 px-4 py-2 text-sm font-semibold text-rose-200 disabled:opacity-60"
@@ -233,7 +238,7 @@ export function AdminFinancePage() {
   };
 
   return (
-    <div className="grid gap-6 xl:grid-cols-2">
+    <div className="grid gap-6">
       <SectionCard
         action={
           <button

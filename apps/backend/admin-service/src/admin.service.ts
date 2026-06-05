@@ -1155,10 +1155,6 @@ export class AdminService implements OnModuleInit {
         throw new BadRequestException("Only pending transactions can be approved");
       }
 
-      if (transaction.type === "withdrawal" && transaction.release_at && new Date(transaction.release_at) > new Date()) {
-        throw new BadRequestException("Withdrawal is still in the 72-hour holding period");
-      }
-
       if (transaction.type === "lucky_draw_prize") {
         await client.query(
           `
@@ -1897,7 +1893,7 @@ export class AdminService implements OnModuleInit {
       proofUrl: transaction.proof_url,
       destinationAddress: transaction.destination_address,
       releaseAt: transaction.release_at,
-      canApprove: transaction.type !== "withdrawal" || !transaction.release_at || new Date(transaction.release_at) <= new Date(),
+      canApprove: true,
       createdAt: transaction.created_at
     }));
   }

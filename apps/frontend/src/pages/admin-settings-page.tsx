@@ -1,6 +1,21 @@
 import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { Ban, CheckCircle2, ImagePlus, Plus, Trash2, XCircle } from "lucide-react";
+import {
+  Ban,
+  CheckCircle2,
+  Gift,
+  ImagePlus,
+  Images,
+  ListChecks,
+  Plus,
+  Route,
+  Save,
+  Settings2,
+  Ticket,
+  Trash2,
+  WalletCards,
+  XCircle
+} from "lucide-react";
 import type {
   AdCarouselSlide,
   AdminPlatformSettings,
@@ -192,6 +207,15 @@ const fieldClass = "min-w-0 w-full rounded-2xl border border-white/10 bg-white/5
 const toggleRowClass = "flex min-w-0 items-center justify-between gap-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3";
 const primaryButtonClass = "w-full rounded-2xl bg-cyan-400 px-4 py-3 font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:opacity-70";
 const secondaryButtonClass = "inline-flex items-center justify-center gap-2 rounded-2xl border border-cyan-300/20 bg-cyan-300/10 px-4 py-3 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-300/15 disabled:opacity-60";
+
+const settingsQuickLinks = [
+  { href: "#platform-settings", label: "Platform", detail: "Brand, fees, limits", icon: Settings2 },
+  { href: "#mission-tasks", label: "Missions", detail: "Tasks and rewards", icon: ListChecks },
+  { href: "#giveaway-campaign", label: "Giveaway", detail: "Campaign copy", icon: Gift },
+  { href: "#lucky-draw", label: "Lucky Draw", detail: "Spins and prizes", icon: Ticket },
+  { href: "#ad-carousel", label: "Ads", detail: "Dashboard slides", icon: Images },
+  { href: "#asset-routes", label: "Assets", detail: "Routes and labels", icon: Route }
+];
 
 const formatAdminReward = (amount: number, asset: LuckyDrawPrize["rewardAsset"]) =>
   `${amount.toFixed(2)} ${asset.startsWith("USDT") ? "USDT" : asset}`;
@@ -596,10 +620,73 @@ export function AdminSettingsPage() {
 
   const luckyDrawChanceTotal = settings.luckyDraw.prizes.reduce((sum, prize) => sum + Number(prize.chance || 0), 0);
   const luckyDrawChanceTotalIsBalanced = Math.abs(luckyDrawChanceTotal - 100) < 0.01;
+  const enabledAssetCount = settings.assetSettings.filter((assetSetting) => assetSetting.enabled).length;
+  const enabledMissionCount = settings.missionTasks.filter((task) => task.enabled).length;
+  const enabledSlideCount = settings.adCarouselSlides.filter((slide) => slide.enabled).length;
+  const enabledPrizeCount = settings.luckyDraw.prizes.filter((prize) => prize.chance > 0).length;
 
   return (
-    <div className="grid min-w-0 items-start gap-6 xl:grid-cols-2">
-      <SectionCard title="Platform Settings" subtitle="Branding, maintenance mode, and asset toggles.">
+    <div className="grid min-w-0 items-start gap-6">
+      <section className="glass-panel p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-xs uppercase tracking-[0.2em] text-cyan-200/70">Settings workspace</p>
+            <h1 className="mt-2 text-2xl font-semibold text-white">Admin Controls</h1>
+            <p className="mt-1 text-sm text-slate-400">Manage platform rules, campaigns, app content, and deposit routes from one screen.</p>
+          </div>
+          <button
+            className="inline-flex items-center gap-2 rounded-2xl bg-cyan-400 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:opacity-70"
+            disabled={loading || saving}
+            onClick={saveSettings}
+            type="button"
+          >
+            <Save className="h-4 w-4" />
+            {saving ? "Saving..." : "Save all settings"}
+          </button>
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            { label: "Assets enabled", value: `${enabledAssetCount}/${settings.assetSettings.length}`, icon: WalletCards },
+            { label: "Mission tasks", value: `${enabledMissionCount}/${settings.missionTasks.length}`, icon: ListChecks },
+            { label: "Lucky prizes", value: `${enabledPrizeCount}/${settings.luckyDraw.prizes.length}`, icon: Ticket },
+            { label: "Live slides", value: `${enabledSlideCount}/${settings.adCarouselSlides.length}`, icon: Images }
+          ].map((metric) => {
+            const Icon = metric.icon;
+            return (
+              <div key={metric.label} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs uppercase tracking-[0.16em] text-slate-400">{metric.label}</span>
+                  <Icon className="h-4 w-4 text-cyan-200" />
+                </div>
+                <div className="mt-2 text-xl font-semibold text-white">{metric.value}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
+          {settingsQuickLinks.map((item) => {
+            const Icon = item.icon;
+            return (
+              <a
+                key={item.href}
+                className="group rounded-2xl border border-white/10 bg-[#070a3f] px-4 py-3 transition hover:border-cyan-300/35 hover:bg-cyan-300/10"
+                href={item.href}
+              >
+                <div className="flex items-center gap-2 text-sm font-semibold text-white">
+                  <Icon className="h-4 w-4 text-cyan-200" />
+                  {item.label}
+                </div>
+                <div className="mt-1 text-xs text-slate-400 group-hover:text-cyan-100">{item.detail}</div>
+              </a>
+            );
+          })}
+        </div>
+      </section>
+
+      <div className="grid min-w-0 items-start gap-6 xl:grid-cols-2">
+        <SectionCard id="platform-settings" title="Platform Settings" subtitle="Branding, maintenance mode, and asset toggles.">
         {adminApiOffline ? (
           <div className="mb-4 rounded-2xl border border-amber-300/20 bg-amber-300/10 px-4 py-3 text-sm text-amber-100">
             Live admin settings are unavailable right now.
@@ -692,6 +779,7 @@ export function AdminSettingsPage() {
       </SectionCard>
 
       <SectionCard
+        id="mission-tasks"
         className="xl:col-span-2"
         title="Mission Tasks"
         subtitle="Tasks shown in the user Mission Center. Progress tracks direct invited members whose approved deposits meet the mission condition."
@@ -834,7 +922,7 @@ export function AdminSettingsPage() {
         </div>
       </SectionCard>
 
-      <SectionCard title="Giveaway Campaign" subtitle="Configure the giveaway copy and runtime values from admin.">
+      <SectionCard id="giveaway-campaign" title="Giveaway Campaign" subtitle="Configure the giveaway copy and runtime values from admin.">
         <div className="grid gap-3">
           <label className={toggleRowClass}>
             <span className="min-w-0">Enable giveaway</span>
@@ -896,6 +984,7 @@ export function AdminSettingsPage() {
       </SectionCard>
 
       <SectionCard
+        id="lucky-draw"
         action={
           <button className={secondaryButtonClass} disabled={loading} onClick={addLuckyDrawPrize} type="button">
             <Plus className="h-4 w-4" />
@@ -1347,6 +1436,7 @@ export function AdminSettingsPage() {
       </SectionCard>
 
       <SectionCard
+        id="ad-carousel"
         className="xl:col-span-2"
         title="Ad Carousel"
         subtitle="Dashboard promotional slides. Upload photos here, then save settings to publish them in the app."
@@ -1489,6 +1579,7 @@ export function AdminSettingsPage() {
       </SectionCard>
 
       <SectionCard
+        id="asset-routes"
         className="xl:col-span-2"
         title="Asset Routes"
         subtitle="Only enabled assets appear in the app deposit picker. Edit the user-facing label and destination address here."
@@ -1548,6 +1639,7 @@ export function AdminSettingsPage() {
           </button>
         </div>
       </SectionCard>
+      </div>
     </div>
   );
 }
