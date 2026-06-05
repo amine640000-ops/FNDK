@@ -130,6 +130,23 @@ const resolveAdminAssetUrl = (url: string) => {
 
 const isInternalHref = (href: string) => href.startsWith("/");
 
+const normalizeAdCarouselSlides = (value: unknown) => {
+  if (!Array.isArray(value)) {
+    return defaultAdCarouselSlides;
+  }
+
+  const enabledSlides = value.filter((slide): slide is AdCarouselSlide => {
+    if (!slide || typeof slide !== "object") {
+      return false;
+    }
+
+    const candidate = slide as Partial<AdCarouselSlide>;
+    return candidate.enabled !== false && typeof candidate.title === "string" && typeof candidate.ctaHref === "string";
+  });
+
+  return enabledSlides.length ? enabledSlides : defaultAdCarouselSlides;
+};
+
 type NotificationItem = {
   id: string;
   title: string;
@@ -237,6 +254,7 @@ export function OverviewPage() {
   const [failedLogos, setFailedLogos] = useState<Record<string, boolean>>({});
   const [adSlides, setAdSlides] = useState<AdCarouselSlide[]>(defaultAdCarouselSlides);
   const [activeAdIndex, setActiveAdIndex] = useState(0);
+  const [failedAdImages, setFailedAdImages] = useState<Record<string, boolean>>({});
   const [showLuckyDrawShortcut, setShowLuckyDrawShortcut] = useState(true);
   const [language, setLanguage] = useState<LanguageCode>(() => {
     const stored = localStorage.getItem("nevo.language");
@@ -354,7 +372,7 @@ export function OverviewPage() {
       .get<LuckyDrawSummary>("/wallet/lucky-draw")
       .then((response) => {
         if (active) {
-          setShowLuckyDrawShortcut(response.data.event.enabled !== false);
+          setShowLuckyDrawShortcut(response.data.event.enabled !== false && response.data.event.isActive);
         }
       })
       .catch(() => {
@@ -383,8 +401,7 @@ export function OverviewPage() {
           return;
         }
 
-        const enabledSlides = response.data.filter((slide) => slide.enabled);
-        setAdSlides(enabledSlides.length ? enabledSlides : defaultAdCarouselSlides);
+        setAdSlides(normalizeAdCarouselSlides(response.data));
       })
       .catch(() => {
         if (active) {
@@ -479,6 +496,7 @@ export function OverviewPage() {
   const overviewWalletAvailable = liveWallet?.availableToWithdraw ?? overviewWalletTotal;
   const activeAdSlide = adSlides[activeAdIndex] ?? defaultAdCarouselSlides[0];
   const activeAdImageUrl = resolveAdminAssetUrl(activeAdSlide.imageUrl);
+  const shouldShowActiveAdImage = Boolean(activeAdImageUrl && !failedAdImages[activeAdImageUrl]);
   const tt = (text: string) => translateText(language, text);
   const visibleNotifications = Array.isArray(notifications) ? notifications : [];
 
@@ -577,11 +595,17 @@ export function OverviewPage() {
         </div>
       ) : null}
 
-      <section className="ad-carousel mt-5 min-h-[224px] px-4 py-5">
-        {activeAdImageUrl ? (
+      <section className="promo-rotator mt-5 min-h-[224px] px-4 py-5">
+        {shouldShowActiveAdImage ? (
           <img
             alt=""
             className="absolute inset-y-0 right-0 h-full w-[58%] object-cover opacity-85 [mask-image:linear-gradient(90deg,transparent_0%,black_36%)]"
+            onError={() => {
+              setFailedAdImages((current) => ({
+                ...current,
+                [activeAdImageUrl]: true
+              }));
+            }}
             src={activeAdImageUrl}
           />
         ) : (

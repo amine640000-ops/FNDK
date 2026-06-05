@@ -171,6 +171,11 @@ export class AdjustUserBalanceDto {
   note?: string;
 }
 
+export class UpdateUserStatusDto {
+  @IsBoolean()
+  isActive!: boolean;
+}
+
 export class UpdateProfitSettingsDto {
   @IsBoolean()
   autoProfitDistribution!: boolean;

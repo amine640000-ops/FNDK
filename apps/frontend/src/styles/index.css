@@ -1589,7 +1589,7 @@ body {
 }
 
 .concept-banner,
-.ad-carousel {
+.promo-rotator {
   position: relative;
   overflow: hidden;
   border-radius: 28px;
@@ -1605,7 +1605,7 @@ body {
 }
 
 .concept-banner::after,
-.ad-carousel::after {
+.promo-rotator::after {
   content: "";
   position: absolute;
   inset: 0;

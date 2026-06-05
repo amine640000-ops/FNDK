@@ -34,6 +34,7 @@ interface IdentityUserRecord {
   referred_by: string | null;
   kyc_status: KycStatus;
   role: UserRole;
+  is_active: boolean;
   email_verified_at: string | null;
   security_passcode_hash: string | null;
 }
@@ -488,6 +489,7 @@ export class AuthService {
           referred_by,
           kyc_status,
           role,
+          is_active,
           email_verified_at,
           security_passcode_hash
         FROM users
@@ -517,6 +519,7 @@ export class AuthService {
           referred_by,
           kyc_status,
           role,
+          is_active,
           email_verified_at,
           security_passcode_hash
         FROM users
@@ -540,6 +543,10 @@ export class AuthService {
   }
 
   private createSession(user: IdentityUserRecord): AuthSession {
+    if (!user.is_active) {
+      throw new ForbiddenException("Account is banned");
+    }
+
     const tokenPayload = {
       sub: user.id,
       email: user.email,

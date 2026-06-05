@@ -179,9 +179,14 @@ type UserRow = {
   full_name: string;
   email: string;
   kyc_status: string;
+  is_active: boolean;
   created_at: string;
   vip_tier: string | null;
   balance: number;
+  wallet_balance: number;
+  active_investment: number;
+  total_deposited: number;
+  total_gained: number;
   wallets: Array<{
     asset: AssetType;
     balance: number;
@@ -318,6 +323,46 @@ export class AdminService implements OnModuleInit {
           FROM user_vip uv
           JOIN vip_tiers vt ON vt.id = uv.tier_id
           ORDER BY uv.user_id, uv.assigned_at DESC
+        ),
+        wallet_totals AS (
+          SELECT
+            user_id,
+            COALESCE(SUM(balance), 0)::float8 AS wallet_balance,
+            COALESCE(SUM(active_investment), 0)::float8 AS active_investment,
+            COALESCE(SUM(total_earned), 0)::float8 AS total_earned
+          FROM wallets
+          GROUP BY user_id
+        ),
+        wallet_rows AS (
+          SELECT
+            user_id,
+            COALESCE(
+              jsonb_agg(
+                jsonb_build_object(
+                  'asset', asset_type,
+                  'balance', balance::float8,
+                  'activeInvestment', active_investment::float8
+                )
+                ORDER BY asset_type
+              ),
+              '[]'::jsonb
+            ) AS wallets
+          FROM wallets
+          GROUP BY user_id
+        ),
+        transaction_totals AS (
+          SELECT
+            user_id,
+            COALESCE(SUM(amount) FILTER (WHERE type = 'deposit' AND status = 'approved'), 0)::float8 AS total_deposited,
+            COALESCE(
+              SUM(amount) FILTER (
+                WHERE type IN ('profit', 'referral', 'lucky_draw_prize')
+                  AND status = 'approved'
+              ),
+              0
+            )::float8 AS total_gained
+          FROM transactions
+          GROUP BY user_id
         )
         SELECT
           u.id,
@@ -325,25 +370,21 @@ export class AdminService implements OnModuleInit {
           u.full_name,
           u.email,
           u.kyc_status,
+          u.is_active,
           u.created_at,
           lv.vip_tier,
-          COALESCE(SUM(w.balance), 0)::float8 AS balance,
-          COALESCE(
-            jsonb_agg(
-              jsonb_build_object(
-                'asset', w.asset_type,
-                'balance', w.balance::float8,
-                'activeInvestment', w.active_investment::float8
-              )
-              ORDER BY w.asset_type
-            ) FILTER (WHERE w.id IS NOT NULL),
-            '[]'::jsonb
-          ) AS wallets
+          (COALESCE(wt.wallet_balance, 0) + COALESCE(wt.active_investment, 0))::float8 AS balance,
+          COALESCE(wt.wallet_balance, 0)::float8 AS wallet_balance,
+          COALESCE(wt.active_investment, 0)::float8 AS active_investment,
+          COALESCE(tt.total_deposited, 0)::float8 AS total_deposited,
+          GREATEST(COALESCE(wt.total_earned, 0), COALESCE(tt.total_gained, 0))::float8 AS total_gained,
+          COALESCE(wr.wallets, '[]'::jsonb) AS wallets
         FROM users u
-        LEFT JOIN wallets w ON w.user_id = u.id
         LEFT JOIN latest_vip lv ON lv.user_id = u.id
+        LEFT JOIN wallet_totals wt ON wt.user_id = u.id
+        LEFT JOIN wallet_rows wr ON wr.user_id = u.id
+        LEFT JOIN transaction_totals tt ON tt.user_id = u.id
         WHERE u.role = 'USER'
-        GROUP BY u.id, u.public_id, u.full_name, u.email, u.kyc_status, u.created_at, lv.vip_tier
         ORDER BY u.created_at DESC
       `
     );
@@ -355,10 +396,54 @@ export class AdminService implements OnModuleInit {
       email: user.email,
       vipTier: user.vip_tier ?? "Starter",
       balance: user.balance,
+      walletBalance: user.wallet_balance,
+      activeInvestment: user.active_investment,
+      totalDeposited: user.total_deposited,
+      totalGained: user.total_gained,
       wallets: user.wallets,
       kycStatus: user.kyc_status,
+      isActive: user.is_active,
       joinDate: user.created_at
     }));
+  }
+
+  async updateUserStatus(actorUserId: string, userId: string, isActive: boolean) {
+    return withTransaction(async (client: PoolClient) => {
+      const result = await client.query<{
+        id: string;
+        public_id: string;
+        full_name: string;
+        email: string;
+        is_active: boolean;
+      }>(
+        `
+          UPDATE users
+          SET is_active = $2
+          WHERE id = $1
+            AND role = 'USER'
+          RETURNING id, public_id, full_name, email, is_active
+        `,
+        [userId, isActive]
+      );
+
+      if (!result.rowCount) {
+        throw new NotFoundException("User account not found");
+      }
+
+      const user = result.rows[0];
+      await this.logAdminActivity(client, actorUserId, isActive ? "user_unbanned" : "user_banned", "user", user.id, {
+        publicId: user.public_id,
+        email: user.email
+      });
+
+      return {
+        id: user.id,
+        publicId: user.public_id,
+        fullName: user.full_name,
+        email: user.email,
+        isActive: user.is_active
+      };
+    });
   }
 
   async adjustUserBalance(userId: string, input: AdjustUserBalanceDto) {

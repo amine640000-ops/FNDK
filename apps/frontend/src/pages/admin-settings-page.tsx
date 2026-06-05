@@ -261,6 +261,7 @@ export function AdminSettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingSlideId, setUploadingSlideId] = useState<string | null>(null);
+  const [failedAdPreviewUrls, setFailedAdPreviewUrls] = useState<Record<string, boolean>>({});
   const [luckyDrawAnalytics, setLuckyDrawAnalytics] = useState<LuckyDrawAnalytics | null>(null);
   const [luckyDrawActionId, setLuckyDrawActionId] = useState<string | null>(null);
   const [luckyDrawGrant, setLuckyDrawGrant] = useState({
@@ -1359,20 +1360,24 @@ export function AdminSettingsPage() {
         <div className="grid gap-4">
           {settings.adCarouselSlides.map((slide, index) => {
             const imagePreviewUrl = resolveAdminAssetUrl(slide.imageUrl);
+            const showImagePreview = Boolean(imagePreviewUrl && !failedAdPreviewUrls[imagePreviewUrl]);
             const inputId = `ad-image-${slide.id}`;
 
             return (
               <div key={slide.id} className="grid gap-4 rounded-lg border border-white/10 bg-white/5 p-4 lg:grid-cols-[220px_1fr]">
                 <div className="min-w-0">
                   <div className="relative flex aspect-[4/3] items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-[#08105e]">
-                    {imagePreviewUrl ? (
+                    {showImagePreview ? (
                       <img
                         key={imagePreviewUrl}
                         alt=""
                         className="h-full w-full object-cover"
                         src={imagePreviewUrl}
-                        onError={(event) => {
-                          event.currentTarget.style.display = "none";
+                        onError={() => {
+                          setFailedAdPreviewUrls((current) => ({
+                            ...current,
+                            [imagePreviewUrl]: true
+                          }));
                         }}
                       />
                     ) : (

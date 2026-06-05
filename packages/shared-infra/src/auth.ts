@@ -8,6 +8,7 @@ import {
 } from "@nestjs/common";
 import jwt from "jsonwebtoken";
 import type { AccessTokenPayload, UserRole } from "@nevo/shared-types";
+import { getOne } from "./db";
 
 const PUBLIC_KEY = "isPublic";
 const ROLES_KEY = "roles";
@@ -44,7 +45,7 @@ export const Public = () => SetMetadata(PUBLIC_KEY, true);
 export const Roles = (...roles: UserRole[]) => SetMetadata(ROLES_KEY, roles);
 
 export class JwtAuthGuard implements CanActivate {
-  canActivate(context: ExecutionContext) {
+  async canActivate(context: ExecutionContext) {
     const isPublic = getMetadata<boolean>(PUBLIC_KEY, context);
     if (isPublic) {
       return true;
@@ -59,8 +60,17 @@ export class JwtAuthGuard implements CanActivate {
 
     try {
       request.user = verifyToken(token);
+      const user = await getOne<{ is_active: boolean }>("SELECT is_active FROM users WHERE id = $1", [request.user.sub]);
+      if (!user?.is_active) {
+        throw new ForbiddenException("Account is banned");
+      }
+
       return true;
-    } catch {
+    } catch (error) {
+      if (error instanceof ForbiddenException) {
+        throw error;
+      }
+
       throw new UnauthorizedException("Invalid or expired token");
     }
   }

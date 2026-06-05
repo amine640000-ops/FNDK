@@ -13,7 +13,15 @@ import {
   UseInterceptors
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
-import { AdminGuard, CurrentUser, JwtAuthGuard, createDiskStorageOptions, toPublicUploadUrl } from "@nevo/shared-infra";
+import {
+  AdminGuard,
+  CurrentUser,
+  JwtAuthGuard,
+  createDiskStorageOptions,
+  isCloudinaryUploadsEnabled,
+  toPublicUploadUrl,
+  uploadFileToCloudinary
+} from "@nevo/shared-infra";
 import type { AccessTokenPayload } from "@nevo/shared-types";
 import {
   AdjustUserBalanceDto,
@@ -21,6 +29,7 @@ import {
   RevokeLuckyDrawSpinDto,
   UpdateAdminSettingsDto,
   UpdateProfitSettingsDto,
+  UpdateUserStatusDto,
   UpdateVipTierDto
 } from "./admin.dto";
 import { AdminService } from "./admin.service";
@@ -116,6 +125,15 @@ export class AdminController {
     return this.adminService.adjustUserBalance(userId, body);
   }
 
+  @Patch("users/:userId/status")
+  updateUserStatus(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param("userId") userId: string,
+    @Body() body: UpdateUserStatusDto
+  ) {
+    return this.adminService.updateUserStatus(user.sub, userId, body.isActive);
+  }
+
   @Post("notifications/broadcast")
   broadcast(@Body() body: { title: string; message: string }) {
     return this.adminService.broadcast(body.title, body.message);
@@ -128,9 +146,21 @@ export class AdminController {
       limits: { fileSize: 5 * 1024 * 1024 }
     })
   )
-  uploadAdImage(@UploadedFile() image?: { filename: string }) {
+  async uploadAdImage(@UploadedFile() image?: { filename: string; path?: string }) {
     if (!image) {
       throw new BadRequestException("Ad image is required");
+    }
+
+    if (isCloudinaryUploadsEnabled()) {
+      if (!image.path) {
+        throw new BadRequestException("Ad image upload file path was not available");
+      }
+
+      try {
+        return { url: await uploadFileToCloudinary(image.path, "ad-carousel") };
+      } catch (error) {
+        throw new BadRequestException(error instanceof Error ? error.message : "Could not upload ad image");
+      }
     }
 
     return { url: toPublicUploadUrl("ad-carousel", image.filename) };

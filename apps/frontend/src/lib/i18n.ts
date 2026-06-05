@@ -431,6 +431,7 @@ const arabicLabels: Record<string, string> = {
   "Could not use Lucky Draw spin.": "تعذر استخدام دورة السحب المحظوظ.",
   "Please try again later.": "يرجى المحاولة لاحقا.",
   "This event is currently disabled.": "هذا الحدث معطل حاليا.",
+  "This event is currently unavailable.": "هذا الحدث غير متاح حاليا.",
   "Invite a direct referral who makes their first deposit of 100 USDT or more to receive 1 spin.": "ادع إحالة مباشرة تقوم بأول إيداع بقيمة 100 USDT أو أكثر لتحصل على دورة واحدة.",
   "Deposit 200 USDT or more in one transaction to receive 1 spin.": "أودع 200 USDT أو أكثر في عملية واحدة لتحصل على دورة واحدة.",
   "Deposit 300 USDT or more in one transaction to receive 2 spins.": "أودع 300 USDT أو أكثر في عملية واحدة لتحصل على دورتين.",

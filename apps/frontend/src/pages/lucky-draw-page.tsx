@@ -181,6 +181,7 @@ export function LuckyDrawPage() {
   const spinTimeoutRef = useRef<number | null>(null);
 
   const luckyDrawEnabled = summary.event.enabled !== false;
+  const luckyDrawAvailable = luckyDrawEnabled && summary.event.isActive;
 
   const eventRange = useMemo(
     () => `${formatEventDate(summary.event.startsAt)} - ${formatEventDate(summary.event.endsAt)}`,
@@ -287,7 +288,7 @@ export function LuckyDrawPage() {
     }
   };
 
-  if (!loading && (!luckyDrawEnabled || loadFailed)) {
+  if (!loading && (!luckyDrawAvailable || loadFailed)) {
     return (
       <div className="lucky-draw-page pb-6">
         <div className="lucky-draw-content">
@@ -299,7 +300,7 @@ export function LuckyDrawPage() {
               {tt(loadFailed ? "Lucky Draw is unavailable right now." : "Lucky Draw is closed.")}
             </div>
             <div className="mt-2 text-sm leading-6 text-slate-300">
-              {tt(loadFailed ? "Please try again later." : "This event is currently disabled.")}
+              {tt(loadFailed ? "Please try again later." : "This event is currently unavailable.")}
             </div>
           </section>
         </div>
@@ -374,7 +375,7 @@ export function LuckyDrawPage() {
             </div>
             <button
               className="lucky-draw-button"
-              disabled={loading || spinning || !luckyDrawEnabled || !summary.event.isActive || summary.availableSpins <= 0}
+              disabled={loading || spinning || !luckyDrawAvailable || summary.availableSpins <= 0}
               onClick={() => void useSpin()}
               type="button"
             >

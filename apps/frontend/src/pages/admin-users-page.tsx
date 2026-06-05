@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { ExternalLink, RefreshCcw, WalletCards, X } from "lucide-react";
+import { Ban, CheckCircle2, ExternalLink, RefreshCcw, WalletCards, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { AssetType } from "@nevo/shared-types";
 import { SUPPORTED_ASSETS, formatCurrency } from "@nevo/shared-utils";
@@ -21,8 +21,13 @@ type AdminUser = {
   email: string;
   vipTier: string;
   balance: number;
+  walletBalance: number;
+  activeInvestment: number;
+  totalDeposited: number;
+  totalGained: number;
   wallets: AdminWallet[];
   kycStatus: "pending" | "verified" | "rejected";
+  isActive: boolean;
   joinDate: string;
 };
 
@@ -69,6 +74,7 @@ export function AdminUsersPage() {
   const [adminApiOffline, setAdminApiOffline] = useState(false);
   const [actionId, setActionId] = useState<string | null>(null);
   const [balanceActionId, setBalanceActionId] = useState<string | null>(null);
+  const [statusActionId, setStatusActionId] = useState<string | null>(null);
   const [balanceForm, setBalanceForm] = useState<{
     user: AdminUser;
     asset: AssetType;
@@ -212,6 +218,36 @@ export function AdminUsersPage() {
     }
   };
 
+  const toggleUserStatus = async (user: AdminUser) => {
+    const nextActive = user.isActive === false;
+    const token = getAccessToken();
+    if (!token) {
+      toast.error("Sign in as admin first.");
+      return;
+    }
+
+    if (!nextActive) {
+      const confirmed = window.confirm(`Ban ${user.fullName}? They will not be able to log in or use the app.`);
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    setStatusActionId(user.id);
+    try {
+      await adminApi.patch(`/admin/users/${user.id}/status`, {
+        isActive: nextActive
+      });
+
+      toast.success(nextActive ? "User access restored." : "User banned from the app.");
+      await loadAdminUsersState();
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Could not update user access."));
+    } finally {
+      setStatusActionId(null);
+    }
+  };
+
   return (
     <div className="grid gap-6">
       <SectionCard
@@ -227,7 +263,7 @@ export function AdminUsersPage() {
           </button>
         }
         title="User Management"
-        subtitle="User state, VIP tier, balance, and KYC status."
+        subtitle="Deposits, gains, wallet balances, VIP tier, KYC, and account access."
       >
         {adminApiOffline ? (
           <div className="mb-4 rounded-3xl border border-amber-300/20 bg-amber-300/10 p-4 text-sm text-amber-100">
@@ -235,46 +271,89 @@ export function AdminUsersPage() {
           </div>
         ) : null}
         <div className="hide-scrollbar overflow-x-auto rounded-[24px]">
-          <table className="min-w-full text-left text-sm">
+          <table className="min-w-[76rem] text-left text-sm">
             <thead className="text-slate-400">
               <tr>
                 <th className="pb-3">Name</th>
                 <th className="pb-3">User ID</th>
                 <th className="pb-3">Email</th>
                 <th className="pb-3">VIP</th>
-                <th className="pb-3">Balance</th>
+                <th className="pb-3">Deposited</th>
+                <th className="pb-3">Gained</th>
+                <th className="pb-3">Wallet now</th>
                 <th className="pb-3">KYC</th>
+                <th className="pb-3">Status</th>
                 <th className="pb-3">Joined</th>
                 <th className="pb-3">Actions</th>
               </tr>
             </thead>
             <tbody className="text-white">
               {users.length ? (
-                users.map((user) => (
-                  <tr key={user.id} className="border-t border-white/10">
+                users.map((user) => {
+                  const userIsActive = user.isActive !== false;
+                  const activeInvestment = user.activeInvestment ?? 0;
+
+                  return (
+                  <tr key={user.id} className={`border-t border-white/10 ${userIsActive ? "" : "bg-rose-950/20 text-white/70"}`}>
                     <td className="py-4">{user.fullName}</td>
                     <td className="py-4 font-mono text-cyan-100">{user.publicId}</td>
                     <td className="py-4">{user.email}</td>
                     <td className="py-4">{user.vipTier}</td>
-                    <td className="py-4">{formatCurrency(user.balance)}</td>
+                    <td className="py-4 font-semibold text-cyan-100">{formatCurrency(user.totalDeposited ?? 0)}</td>
+                    <td className="py-4 font-semibold text-emerald-200">{formatCurrency(user.totalGained ?? 0)}</td>
+                    <td className="py-4">
+                      <div className="font-semibold text-white">{formatCurrency(user.balance ?? user.walletBalance ?? 0)}</div>
+                      {activeInvestment > 0 ? (
+                        <div className="mt-1 text-[11px] text-cyan-200/70">
+                          Active {formatCurrency(activeInvestment)}
+                        </div>
+                      ) : null}
+                    </td>
                     <td className="py-4 capitalize">{user.kycStatus}</td>
+                    <td className="py-4">
+                      <span
+                        className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${
+                          userIsActive
+                            ? "border-emerald-300/25 bg-emerald-300/10 text-emerald-100"
+                            : "border-rose-300/30 bg-rose-400/10 text-rose-100"
+                        }`}
+                      >
+                        {userIsActive ? "Active" : "Banned"}
+                      </span>
+                    </td>
                     <td className="py-4">{new Date(user.joinDate).toLocaleDateString("en-GB")}</td>
                     <td className="py-4">
-                      <button
-                        className="inline-flex items-center gap-2 rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-300/15 disabled:opacity-60"
-                        disabled={balanceActionId === user.id}
-                        onClick={() => openBalanceManager(user)}
-                        type="button"
-                      >
-                        <WalletCards className="h-4 w-4" />
-                        Adjust
-                      </button>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          className="inline-flex items-center gap-2 rounded-full border border-cyan-300/25 bg-cyan-300/10 px-3 py-2 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-300/15 disabled:opacity-60"
+                          disabled={balanceActionId === user.id}
+                          onClick={() => openBalanceManager(user)}
+                          type="button"
+                        >
+                          <WalletCards className="h-4 w-4" />
+                          Adjust
+                        </button>
+                        <button
+                          className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition disabled:opacity-60 ${
+                            userIsActive
+                              ? "border-rose-300/30 bg-rose-400/10 text-rose-100 hover:bg-rose-400/15"
+                              : "border-emerald-300/25 bg-emerald-300/10 text-emerald-100 hover:bg-emerald-300/15"
+                          }`}
+                          disabled={statusActionId === user.id}
+                          onClick={() => void toggleUserStatus(user)}
+                          type="button"
+                        >
+                          {userIsActive ? <Ban className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+                          {statusActionId === user.id ? "Saving..." : userIsActive ? "Ban" : "Unban"}
+                        </button>
+                      </div>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               ) : (
                 <tr className="border-t border-white/10">
-                  <td className="py-6 text-slate-400" colSpan={8}>
+                  <td className="py-6 text-slate-400" colSpan={11}>
                     {loading ? "Loading users..." : "No users loaded."}
                   </td>
                 </tr>
