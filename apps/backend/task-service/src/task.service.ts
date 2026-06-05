@@ -14,6 +14,7 @@ import type { PoolClient } from "pg";
 type DistributionCandidate = {
   user_id: string;
   tier_id: number;
+  min_deposit: number;
   daily_roi_min: number;
   daily_roi_max: number;
   daily_profit_cap: number | null;
@@ -55,6 +56,7 @@ type ActivationRow = {
   exit_price: number | null;
   profit: number | null;
   daily_limit: number;
+  min_deposit?: number;
   daily_roi_min?: number;
   daily_roi_max?: number;
   daily_profit_cap?: number | null;
@@ -209,6 +211,7 @@ export class TaskService implements OnModuleInit {
           ata.exit_price::float8 AS exit_price,
           ata.profit::float8 AS profit,
           vt.activation_limit_per_day AS daily_limit,
+          vt.min_deposit::float8 AS min_deposit,
           vt.daily_roi_min::float8 AS daily_roi_min,
           vt.daily_roi_max::float8 AS daily_roi_max,
           vt.daily_profit_cap::float8 AS daily_profit_cap
@@ -244,6 +247,7 @@ export class TaskService implements OnModuleInit {
           ata.exit_price::float8 AS exit_price,
           ata.profit::float8 AS profit,
           vt.activation_limit_per_day AS daily_limit,
+          vt.min_deposit::float8 AS min_deposit,
           vt.daily_roi_min::float8 AS daily_roi_min,
           vt.daily_roi_max::float8 AS daily_roi_max,
           vt.daily_profit_cap::float8 AS daily_profit_cap
@@ -538,6 +542,7 @@ export class TaskService implements OnModuleInit {
           ata.exit_price::float8 AS exit_price,
           ata.profit::float8 AS profit,
           vt.activation_limit_per_day AS daily_limit,
+          vt.min_deposit::float8 AS min_deposit,
           vt.daily_roi_min::float8 AS daily_roi_min,
           vt.daily_roi_max::float8 AS daily_roi_max,
           vt.daily_profit_cap::float8 AS daily_profit_cap
@@ -557,6 +562,7 @@ export class TaskService implements OnModuleInit {
         dailyRoiMin: tier.daily_roi_min,
         dailyRoiMax: tier.daily_roi_max,
         activationLimitPerDay: tier.activation_limit_per_day,
+        minDeposit: tier.min_deposit,
         dailyProfitCap: tier.daily_profit_cap,
         dailySlotNumber: runningActivation.daily_slot_number
       });
@@ -598,6 +604,7 @@ export class TaskService implements OnModuleInit {
       dailyRoiMin: tier.daily_roi_min,
       dailyRoiMax: tier.daily_roi_max,
       activationLimitPerDay: tier.activation_limit_per_day,
+      minDeposit: tier.min_deposit,
       dailyProfitCap: tier.daily_profit_cap,
       dailySlotNumber: usedActivations + 1
     });
@@ -660,7 +667,8 @@ export class TaskService implements OnModuleInit {
             $11::int AS daily_limit,
             $12::float8 AS daily_roi_min,
             $13::float8 AS daily_roi_max,
-            $14::float8 AS daily_profit_cap
+            $14::float8 AS daily_profit_cap,
+            $15::float8 AS min_deposit
         `,
         [
           userId,
@@ -676,7 +684,8 @@ export class TaskService implements OnModuleInit {
           tier.activation_limit_per_day,
           tier.daily_roi_min,
           tier.daily_roi_max,
-          tier.daily_profit_cap
+          tier.daily_profit_cap,
+          tier.min_deposit
         ]
       );
 
@@ -743,7 +752,8 @@ export class TaskService implements OnModuleInit {
           $11::int AS daily_limit,
           $12::float8 AS daily_roi_min,
           $13::float8 AS daily_roi_max,
-          $14::float8 AS daily_profit_cap
+          $14::float8 AS daily_profit_cap,
+          $15::float8 AS min_deposit
       `,
       [
         userId,
@@ -759,7 +769,8 @@ export class TaskService implements OnModuleInit {
         tier.activation_limit_per_day,
         tier.daily_roi_min,
         tier.daily_roi_max,
-        tier.daily_profit_cap
+        tier.daily_profit_cap,
+        tier.min_deposit
       ]
     );
 
@@ -807,6 +818,7 @@ export class TaskService implements OnModuleInit {
       daily_slot_number: number;
       active_investment: number;
       reservation_amount: number;
+      min_deposit: number;
       daily_roi_min: number;
       daily_roi_max: number;
       daily_profit_cap: number | null;
@@ -830,6 +842,7 @@ export class TaskService implements OnModuleInit {
           ata.daily_slot_number,
           COALESCE(ap.active_investment, 0)::float8 AS active_investment,
           ata.reservation_amount::float8 AS reservation_amount,
+          vt.min_deposit::float8 AS min_deposit,
           vt.daily_roi_min::float8 AS daily_roi_min,
           vt.daily_roi_max::float8 AS daily_roi_max,
           vt.daily_profit_cap::float8 AS daily_profit_cap,
@@ -991,6 +1004,7 @@ export class TaskService implements OnModuleInit {
         SELECT
           ap.user_id,
           vt.id AS tier_id,
+          vt.min_deposit::float8 AS min_deposit,
           vt.daily_roi_min::float8 AS daily_roi_min,
           vt.daily_roi_max::float8 AS daily_roi_max,
           vt.daily_profit_cap::float8 AS daily_profit_cap,
@@ -1035,7 +1049,8 @@ export class TaskService implements OnModuleInit {
       calculateDailyProfit(candidate.active_investment, sampledRoi),
       candidate.daily_profit_cap,
       candidate.active_investment,
-      candidate.daily_roi_min
+      candidate.daily_roi_min,
+      candidate.min_deposit
     );
     const entryPrice = Number((5000 + Math.random() * 600).toFixed(2));
     const exitPrice = Number((entryPrice + profit / 4).toFixed(2));
@@ -1435,6 +1450,7 @@ export class TaskService implements OnModuleInit {
   private buildActivationCompletion(activation: {
     active_investment: number;
     reservation_amount: number;
+    min_deposit: number;
     daily_roi_min: number;
     daily_roi_max: number;
     daily_profit_cap: number | null;
@@ -1447,7 +1463,8 @@ export class TaskService implements OnModuleInit {
       calculateDailyProfit(reservedAmount, sampledRoi),
       activation.daily_profit_cap,
       reservedAmount,
-      activation.daily_roi_min
+      activation.daily_roi_min,
+      activation.min_deposit
     );
     const profit = this.splitDailyProfitForSlot(fullDayProfit, activation.activation_limit_per_day, activation.daily_slot_number);
     const entryPrice = Number((5000 + Math.random() * 700).toFixed(2));
@@ -1461,6 +1478,7 @@ export class TaskService implements OnModuleInit {
       dailyRoiMin: number;
       dailyRoiMax: number;
       activationLimitPerDay: number;
+      minDeposit: number;
       dailyProfitCap?: number | null;
       dailySlotNumber?: number;
     }
@@ -1469,13 +1487,15 @@ export class TaskService implements OnModuleInit {
       calculateDailyProfit(reservationAmount, tier.dailyRoiMin),
       tier.dailyProfitCap ?? null,
       reservationAmount,
-      tier.dailyRoiMin
+      tier.dailyRoiMin,
+      tier.minDeposit
     );
     const fullDayMaxProfit = this.applyDailyProfitCap(
       calculateDailyProfit(reservationAmount, tier.dailyRoiMax),
       tier.dailyProfitCap ?? null,
       reservationAmount,
-      tier.dailyRoiMin
+      tier.dailyRoiMin,
+      tier.minDeposit
     );
 
     return {
@@ -1499,10 +1519,15 @@ export class TaskService implements OnModuleInit {
     profit: number,
     dailyProfitCap: number | null | undefined,
     investmentAmount: number,
-    fallbackCapRoi: number
+    fallbackCapRoi: number,
+    tierMinDeposit: number
   ) {
     const automaticCap = calculateDailyProfit(investmentAmount, fallbackCapRoi);
-    const effectiveCap = dailyProfitCap && dailyProfitCap > 0 ? dailyProfitCap : automaticCap;
+    const capScale =
+      Number.isFinite(tierMinDeposit) && tierMinDeposit > 0
+        ? Math.max(investmentAmount, 0) / tierMinDeposit
+        : 1;
+    const effectiveCap = dailyProfitCap && dailyProfitCap > 0 ? dailyProfitCap * capScale : automaticCap;
 
     return Number(Math.min(profit, Math.max(effectiveCap, 0)).toFixed(2));
   }
@@ -1557,6 +1582,7 @@ export class TaskService implements OnModuleInit {
       dailyRoiMin: activation.daily_roi_min ?? fallbackTier.dailyRoiMin,
       dailyRoiMax: activation.daily_roi_max ?? fallbackTier.dailyRoiMax,
       activationLimitPerDay: activation.daily_limit,
+      minDeposit: activation.min_deposit ?? fallbackTier.minDeposit,
       dailyProfitCap: activation.daily_profit_cap !== undefined ? activation.daily_profit_cap : fallbackTier.dailyProfitCap,
       dailySlotNumber: activation.daily_slot_number
     });

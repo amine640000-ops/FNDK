@@ -30,8 +30,15 @@ const resolveAutomaticDailyProfitCap = (tier: Pick<VipTier, "minDeposit" | "dail
 
 const formatDailyProfitCap = (tier: VipTier) =>
   tier.dailyProfitCap && tier.dailyProfitCap > 0
-    ? formatCurrency(tier.dailyProfitCap)
+    ? `${formatCurrency(tier.dailyProfitCap)} at ${formatCurrency(tier.minDeposit)}`
     : `Auto ${formatCurrency(resolveAutomaticDailyProfitCap(tier))}`;
+
+const parseDecimalInput = (value: string) => Number(value.trim().replace(",", "."));
+
+const parseOptionalDecimalInput = (value: string) => {
+  const trimmed = value.trim();
+  return trimmed ? parseDecimalInput(trimmed) : null;
+};
 
 const toEditorState = (tier: VipTier): TierEditorState => ({
   id: tier.id,
@@ -80,6 +87,30 @@ export function AdminProfitPage() {
   const [recalculating, setRecalculating] = useState(false);
   const [editingTier, setEditingTier] = useState<TierEditorState | null>(null);
   const loadedRef = useRef(false);
+  const editingCapPreview = (() => {
+    if (!editingTier) {
+      return null;
+    }
+
+    const minDeposit = parseDecimalInput(editingTier.minDeposit);
+    const dailyProfitCap = parseOptionalDecimalInput(editingTier.dailyProfitCap);
+    if (
+      !Number.isFinite(minDeposit) ||
+      minDeposit <= 0 ||
+      dailyProfitCap === null ||
+      !Number.isFinite(dailyProfitCap) ||
+      dailyProfitCap <= 0
+    ) {
+      return null;
+    }
+
+    return {
+      minDeposit,
+      dailyProfitCap,
+      exampleBalance: Number((minDeposit * 10).toFixed(2)),
+      exampleCap: Number((dailyProfitCap * 10).toFixed(2))
+    };
+  })();
 
   const handleAuthFailure = () => {
     clearAuthSession();
@@ -139,12 +170,27 @@ export function AdminProfitPage() {
 
     setSavingTierId(editingTier.id);
     try {
+      const minDeposit = parseDecimalInput(editingTier.minDeposit);
+      const dailyProfitCap = parseOptionalDecimalInput(editingTier.dailyProfitCap);
+      const dailyRoiMinPercent = parseDecimalInput(editingTier.dailyRoiMinPercent);
+      const dailyRoiMaxPercent = parseDecimalInput(editingTier.dailyRoiMaxPercent);
+
+      if (
+        !Number.isFinite(minDeposit) ||
+        !Number.isFinite(dailyRoiMinPercent) ||
+        !Number.isFinite(dailyRoiMaxPercent) ||
+        (dailyProfitCap !== null && !Number.isFinite(dailyProfitCap))
+      ) {
+        toast.error("Use valid numbers. Decimal comma is accepted, for example 0,7.");
+        return;
+      }
+
       const payload = {
         name: editingTier.name.trim(),
-        minDeposit: Number(editingTier.minDeposit),
-        dailyRoiMin: Number(editingTier.dailyRoiMinPercent) / 100,
-        dailyRoiMax: Number(editingTier.dailyRoiMaxPercent) / 100,
-        dailyProfitCap: editingTier.dailyProfitCap.trim() ? Number(editingTier.dailyProfitCap) : null,
+        minDeposit,
+        dailyRoiMin: dailyRoiMinPercent / 100,
+        dailyRoiMax: dailyRoiMaxPercent / 100,
+        dailyProfitCap,
         requiredDirectMembers: Number(editingTier.requiredDirectMembers),
         activationLimitPerDay: Number(editingTier.activationLimitPerDay),
         activationDurationMinutes: Number(editingTier.activationDurationMinutes)
@@ -348,7 +394,7 @@ export function AdminProfitPage() {
                 />
               </label>
               <label className="grid gap-2">
-                <span className="text-sm text-slate-300">Daily profit cap (USDT, 0 = auto)</span>
+                <span className="text-sm text-slate-300">Daily profit cap at minimum deposit (USDT, 0 = auto)</span>
                 <input
                   className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white"
                   inputMode="decimal"
@@ -360,6 +406,15 @@ export function AdminProfitPage() {
                     setEditingTier((current) => (current ? { ...current, dailyProfitCap: event.target.value } : current))
                   }
                 />
+                <span className="text-xs leading-5 text-slate-400">
+                  {editingCapPreview
+                    ? `${formatCurrency(editingCapPreview.dailyProfitCap)} at ${formatCurrency(
+                        editingCapPreview.minDeposit
+                      )}; ${formatCurrency(editingCapPreview.exampleBalance)} balance caps at ${formatCurrency(
+                        editingCapPreview.exampleCap
+                      )} per day.`
+                    : "0 uses the automatic ROI cap. Any custom cap scales with the user's reservation balance."}
+                </span>
               </label>
               <label className="grid gap-2">
                 <span className="text-sm text-slate-300">Daily reservations</span>
