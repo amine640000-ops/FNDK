@@ -335,7 +335,7 @@ export class AdminService implements OnModuleInit {
           SELECT
             user_id,
             COALESCE(SUM(balance), 0)::float8 AS wallet_balance,
-            COALESCE(SUM(active_investment), 0)::float8 AS active_investment,
+            COALESCE(SUM(balance), 0)::float8 AS active_investment,
             COALESCE(SUM(total_earned), 0)::float8 AS total_earned
           FROM wallets
           GROUP BY user_id
@@ -348,7 +348,7 @@ export class AdminService implements OnModuleInit {
                 jsonb_build_object(
                   'asset', asset_type,
                   'balance', balance::float8,
-                  'activeInvestment', active_investment::float8
+                  'activeInvestment', balance::float8
                 )
                 ORDER BY asset_type
               ),

@@ -951,27 +951,79 @@ export class TaskService implements OnModuleInit {
           FROM wallets w
           GROUP BY w.user_id
         ),
-        latest_tier AS (
-          SELECT DISTINCT ON (uv.user_id)
-            uv.user_id,
-            uv.tier_id
-          FROM user_vip uv
-          ORDER BY uv.user_id, uv.assigned_at DESC
+        direct_member_funding AS (
+          SELECT
+            direct_users.referred_by AS user_id,
+            direct_users.id,
+            COALESCE(
+              SUM(transactions.amount) FILTER (
+                WHERE transactions.type = 'deposit'
+                  AND transactions.status = 'approved'
+                  AND transactions.amount > 0
+              ),
+              0
+            )::float8 AS approved_deposit,
+            COALESCE(
+              SUM(transactions.amount) FILTER (
+                WHERE transactions.type IN ('deposit', 'adjustment')
+                  AND transactions.status = 'approved'
+                  AND transactions.amount > 0
+              ),
+              0
+            )::float8 AS activation_funding
+          FROM users direct_users
+          LEFT JOIN transactions
+            ON transactions.user_id = direct_users.id
+          WHERE direct_users.role = 'USER'
+            AND direct_users.is_active = TRUE
+            AND direct_users.referred_by IS NOT NULL
+          GROUP BY direct_users.referred_by, direct_users.id
+        ),
+        valid_direct_members AS (
+          SELECT
+            user_id,
+            COUNT(*)::int AS count
+          FROM direct_member_funding
+          WHERE approved_deposit > 0
+            AND activation_funding >= $2
+          GROUP BY user_id
         )
         SELECT
           ap.user_id,
-          COALESCE(lt.tier_id, 1) AS tier_id,
+          vt.id AS tier_id,
           vt.daily_roi_min::float8 AS daily_roi_min,
           vt.daily_roi_max::float8 AS daily_roi_max,
           vt.daily_profit_cap::float8 AS daily_profit_cap,
           ap.active_investment::float8 AS active_investment
         FROM active_positions ap
-        LEFT JOIN latest_tier lt ON lt.user_id = ap.user_id
-        JOIN vip_tiers vt ON vt.id = COALESCE(lt.tier_id, 1)
+        LEFT JOIN valid_direct_members vdm ON vdm.user_id = ap.user_id
+        JOIN LATERAL (
+          SELECT candidate.*
+          FROM vip_tiers candidate
+          WHERE (
+              candidate.min_deposit <= ap.active_investment
+              AND candidate.required_direct_members <= COALESCE(vdm.count, 0)
+            )
+            OR candidate.id = (
+              SELECT fallback.id
+              FROM vip_tiers fallback
+              ORDER BY fallback.min_deposit ASC
+              LIMIT 1
+            )
+          ORDER BY
+            CASE
+              WHEN candidate.min_deposit <= ap.active_investment
+                AND candidate.required_direct_members <= COALESCE(vdm.count, 0)
+              THEN 0
+              ELSE 1
+            END,
+            candidate.min_deposit DESC
+          LIMIT 1
+        ) vt ON TRUE
         WHERE ap.active_investment > 0
           AND ($1 = 'all' OR ap.user_id = $1)
       `,
-      [scope]
+      [scope, MINIMUM_VALID_MEMBER_ACTIVATION_DEPOSIT]
     );
 
     return result.rows;
@@ -979,7 +1031,12 @@ export class TaskService implements OnModuleInit {
 
   private buildDistributionEvent(candidate: DistributionCandidate): ProfitDistributionEvent {
     const sampledRoi = this.sampleRoi(candidate.daily_roi_min, candidate.daily_roi_max);
-    const profit = this.applyDailyProfitCap(calculateDailyProfit(candidate.active_investment, sampledRoi), candidate.daily_profit_cap);
+    const profit = this.applyDailyProfitCap(
+      calculateDailyProfit(candidate.active_investment, sampledRoi),
+      candidate.daily_profit_cap,
+      candidate.active_investment,
+      candidate.daily_roi_min
+    );
     const entryPrice = Number((5000 + Math.random() * 600).toFixed(2));
     const exitPrice = Number((entryPrice + profit / 4).toFixed(2));
 
@@ -1100,7 +1157,7 @@ export class TaskService implements OnModuleInit {
         CROSS JOIN valid_direct_members vdm
         LEFT JOIN latest_tier lt ON TRUE
         LEFT JOIN computed_tier ct ON TRUE
-        JOIN vip_tiers vt ON vt.id = COALESCE(lt.tier_id, ct.id, 1)
+        JOIN vip_tiers vt ON vt.id = COALESCE(ct.id, lt.tier_id, 1)
       `,
       [userId, MINIMUM_VALID_MEMBER_ACTIVATION_DEPOSIT]
     );
@@ -1386,7 +1443,12 @@ export class TaskService implements OnModuleInit {
   }) {
     const reservedAmount = activation.reservation_amount > 0 ? activation.reservation_amount : activation.active_investment;
     const sampledRoi = this.sampleRoi(activation.daily_roi_min, activation.daily_roi_max);
-    const fullDayProfit = this.applyDailyProfitCap(calculateDailyProfit(reservedAmount, sampledRoi), activation.daily_profit_cap);
+    const fullDayProfit = this.applyDailyProfitCap(
+      calculateDailyProfit(reservedAmount, sampledRoi),
+      activation.daily_profit_cap,
+      reservedAmount,
+      activation.daily_roi_min
+    );
     const profit = this.splitDailyProfitForSlot(fullDayProfit, activation.activation_limit_per_day, activation.daily_slot_number);
     const entryPrice = Number((5000 + Math.random() * 700).toFixed(2));
     const exitPrice = Number((entryPrice + Math.max(profit / 6, 1.2)).toFixed(2));
@@ -1403,8 +1465,18 @@ export class TaskService implements OnModuleInit {
       dailySlotNumber?: number;
     }
   ) {
-    const fullDayMinProfit = this.applyDailyProfitCap(calculateDailyProfit(reservationAmount, tier.dailyRoiMin), tier.dailyProfitCap ?? null);
-    const fullDayMaxProfit = this.applyDailyProfitCap(calculateDailyProfit(reservationAmount, tier.dailyRoiMax), tier.dailyProfitCap ?? null);
+    const fullDayMinProfit = this.applyDailyProfitCap(
+      calculateDailyProfit(reservationAmount, tier.dailyRoiMin),
+      tier.dailyProfitCap ?? null,
+      reservationAmount,
+      tier.dailyRoiMin
+    );
+    const fullDayMaxProfit = this.applyDailyProfitCap(
+      calculateDailyProfit(reservationAmount, tier.dailyRoiMax),
+      tier.dailyProfitCap ?? null,
+      reservationAmount,
+      tier.dailyRoiMin
+    );
 
     return {
       min: this.splitDailyProfitForSlot(fullDayMinProfit, tier.activationLimitPerDay, tier.dailySlotNumber ?? 1),
@@ -1423,12 +1495,16 @@ export class TaskService implements OnModuleInit {
     return Number((slotCents / 100).toFixed(2));
   }
 
-  private applyDailyProfitCap(profit: number, dailyProfitCap?: number | null) {
-    if (dailyProfitCap === null || dailyProfitCap === undefined) {
-      return profit;
-    }
+  private applyDailyProfitCap(
+    profit: number,
+    dailyProfitCap: number | null | undefined,
+    investmentAmount: number,
+    fallbackCapRoi: number
+  ) {
+    const automaticCap = calculateDailyProfit(investmentAmount, fallbackCapRoi);
+    const effectiveCap = dailyProfitCap && dailyProfitCap > 0 ? dailyProfitCap : automaticCap;
 
-    return Number(Math.min(profit, Math.max(dailyProfitCap, 0)).toFixed(2));
+    return Number(Math.min(profit, Math.max(effectiveCap, 0)).toFixed(2));
   }
 
   private mapTierRow(tier: ActivationTierRow): VipTier {

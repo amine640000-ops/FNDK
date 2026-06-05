@@ -243,7 +243,7 @@ export class WalletService implements OnModuleInit {
         )
         SELECT
           COALESCE(SUM(GREATEST(wallets.balance - COALESCE(pending_withdrawals.pending_amount, 0), 0)), 0)::float8 AS total_balance,
-          0::float8 AS active_investment,
+          COALESCE(SUM(GREATEST(wallets.balance - COALESCE(pending_withdrawals.pending_amount, 0), 0)), 0)::float8 AS active_investment,
           COALESCE(SUM(wallets.total_earned), 0)::float8 AS total_earned
         FROM wallets
         LEFT JOIN pending_withdrawals
@@ -268,7 +268,7 @@ export class WalletService implements OnModuleInit {
         SELECT
           wallets.asset_type,
           GREATEST(wallets.balance - COALESCE(pending_withdrawals.pending_amount, 0), 0)::float8 AS balance,
-          0::float8 AS active_investment,
+          GREATEST(wallets.balance - COALESCE(pending_withdrawals.pending_amount, 0), 0)::float8 AS active_investment,
           wallets.total_earned::float8 AS total_earned
         FROM wallets
         LEFT JOIN pending_withdrawals

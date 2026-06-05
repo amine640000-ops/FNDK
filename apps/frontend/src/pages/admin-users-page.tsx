@@ -286,7 +286,6 @@ export function AdminUsersPage() {
               {users.length ? (
                 users.map((user) => {
                   const userIsActive = user.isActive !== false;
-                  const activeInvestment = user.activeInvestment ?? 0;
 
                   return (
                   <tr key={user.id} className={`border-t border-white/10 ${userIsActive ? "" : "bg-rose-950/20 text-white/70"}`}>
@@ -298,11 +297,6 @@ export function AdminUsersPage() {
                     <td className="py-4 font-semibold text-emerald-200">{formatCurrency(user.totalGained ?? 0)}</td>
                     <td className="py-4">
                       <div className="font-semibold text-white">{formatCurrency(user.walletBalance ?? user.balance ?? 0)}</div>
-                      {activeInvestment > 0 ? (
-                        <div className="mt-1 text-[11px] text-cyan-200/70">
-                          Active {formatCurrency(activeInvestment)}
-                        </div>
-                      ) : null}
                     </td>
                     <td className="py-4 capitalize">{user.kycStatus}</td>
                     <td className="py-4">

@@ -25,6 +25,14 @@ type TierEditorState = {
   activationDurationMinutes: string;
 };
 
+const resolveAutomaticDailyProfitCap = (tier: Pick<VipTier, "minDeposit" | "dailyRoiMin">) =>
+  Number((tier.minDeposit * tier.dailyRoiMin).toFixed(2));
+
+const formatDailyProfitCap = (tier: VipTier) =>
+  tier.dailyProfitCap && tier.dailyProfitCap > 0
+    ? formatCurrency(tier.dailyProfitCap)
+    : `Auto ${formatCurrency(resolveAutomaticDailyProfitCap(tier))}`;
+
 const toEditorState = (tier: VipTier): TierEditorState => ({
   id: tier.id,
   name: tier.name,
@@ -32,7 +40,7 @@ const toEditorState = (tier: VipTier): TierEditorState => ({
   minDeposit: String(tier.minDeposit),
   dailyRoiMinPercent: String(Number((tier.dailyRoiMin * 100).toFixed(2))),
   dailyRoiMaxPercent: String(Number((tier.dailyRoiMax * 100).toFixed(2))),
-  dailyProfitCap: tier.dailyProfitCap == null ? "" : String(tier.dailyProfitCap),
+  dailyProfitCap: tier.dailyProfitCap == null ? "0" : String(tier.dailyProfitCap),
   requiredDirectMembers: String(tier.requiredDirectMembers),
   activationLimitPerDay: String(tier.activationLimitPerDay),
   activationDurationMinutes: String(tier.activationDurationMinutes)
@@ -53,7 +61,7 @@ const createTierEditorState = (tiers: VipTier[]): TierEditorState => {
     minDeposit: String(minDeposit),
     dailyRoiMinPercent: highestTier ? String(Number((highestTier.dailyRoiMin * 100).toFixed(2))) : "0.5",
     dailyRoiMaxPercent: highestTier ? String(Number((highestTier.dailyRoiMax * 100).toFixed(2))) : "1",
-    dailyProfitCap: highestTier?.dailyProfitCap == null ? "" : String(highestTier.dailyProfitCap),
+    dailyProfitCap: highestTier?.dailyProfitCap == null ? "0" : String(highestTier.dailyProfitCap),
     requiredDirectMembers: String(highestTier?.requiredDirectMembers ?? 0),
     activationLimitPerDay: String(highestTier?.activationLimitPerDay ?? 3),
     activationDurationMinutes: String(highestTier?.activationDurationMinutes ?? 2)
@@ -340,7 +348,7 @@ export function AdminProfitPage() {
                 />
               </label>
               <label className="grid gap-2">
-                <span className="text-sm text-slate-300">Daily profit cap (USDT)</span>
+                <span className="text-sm text-slate-300">Daily profit cap (USDT, 0 = auto)</span>
                 <input
                   className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white"
                   inputMode="decimal"
@@ -482,7 +490,7 @@ export function AdminProfitPage() {
                       {tier.activationLimitPerDay} runs/day · {tier.activationDurationMinutes} min
                     </div>
                     <div className="mt-1 text-xs text-slate-400">
-                      Daily cap: {tier.dailyProfitCap == null ? "No cap" : formatCurrency(tier.dailyProfitCap)}
+                      Daily cap: {formatDailyProfitCap(tier)}
                     </div>
                   </div>
                   <div className="flex flex-wrap items-end justify-start gap-2 md:justify-end">

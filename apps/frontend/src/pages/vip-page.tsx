@@ -18,7 +18,7 @@ import {
   X
 } from "lucide-react";
 import type { AiTradingActivation, AssetType, MissionTaskCategory, MissionTaskProgress, VipTier, WalletSummary } from "@nevo/shared-types";
-import { VIP_TIERS, formatCurrency } from "@nevo/shared-utils";
+import { VIP_TIERS, calculateDailyProfit, formatCurrency } from "@nevo/shared-utils";
 import { useLocation, useNavigate } from "react-router-dom";
 import { getApiErrorMessage, isApiAuthError, notificationApi, taskApi, vipApi, walletApi } from "@/api/client";
 import { BrandMark } from "@/components/brand-mark";
@@ -186,8 +186,10 @@ const formatRoiBand = (tier: VipTier) => {
   return `${lower}% ~ ${upper}%`;
 };
 
-const formatDailyProfitCap = (tier: VipTier, translate: (text: string) => string) =>
-  tier.dailyProfitCap == null ? translate("No cap") : formatCurrency(tier.dailyProfitCap);
+const formatDailyProfitCap = (tier: VipTier, investmentAmount = tier.minDeposit) =>
+  tier.dailyProfitCap && tier.dailyProfitCap > 0
+    ? formatCurrency(tier.dailyProfitCap)
+    : formatCurrency(calculateDailyProfit(Math.max(investmentAmount, 0), tier.dailyRoiMin));
 
 const formatReservationOrderNumber = (activation: AiTradingActivation) => `QR-${activation.id.replace(/-/g, "").slice(0, 18).toUpperCase()}`;
 
@@ -279,9 +281,9 @@ export function VipPage() {
   const fallbackActivationState = useMemo<ActivationState>(
     () => ({
       currentTier: staticCurrentTier,
-      activeInvestment: wallet.activeInvestment,
+      activeInvestment: fallbackTierInvestment,
       accountVerified: false,
-      accountFunded: wallet.activeInvestment >= minimumAccountActivationDeposit,
+      accountFunded: fallbackTierInvestment >= minimumAccountActivationDeposit,
       accountActive: false,
       minimumActivationDeposit: minimumAccountActivationDeposit,
       runningActivation: null,
@@ -289,7 +291,7 @@ export function VipPage() {
       usedActivationsToday: 0,
       history: []
     }),
-    [staticCurrentTier, wallet.activeInvestment]
+    [fallbackTierInvestment, staticCurrentTier]
   );
 
   const buildFallbackState = (activeInvestment: number): ActivationState => {
@@ -1118,7 +1120,7 @@ export function VipPage() {
                       </div>
                       <div className="flex items-center justify-between gap-4">
                         <span>Daily profit cap</span>
-                        <span className="font-semibold text-white">{formatDailyProfitCap(tier, tt)}</span>
+                        <span className="font-semibold text-white">{formatDailyProfitCap(tier)}</span>
                       </div>
                       <div className="flex items-center justify-between gap-4">
                         <span>Participating assets</span>
@@ -1353,7 +1355,7 @@ export function VipPage() {
                 </div>
                 <div className="flex items-center justify-between gap-4 text-[15px]">
                   <span className="text-white/45">{tt("Daily profit cap")}</span>
-                  <span className="font-semibold text-white">{formatDailyProfitCap(currentTier, tt)}</span>
+                  <span className="font-semibold text-white">{formatDailyProfitCap(currentTier, liveState.activeInvestment)}</span>
                 </div>
                 <div className="flex items-center justify-between gap-4 text-[15px]">
                   <span className="text-white/45">{tt("Depot Minimum")}</span>

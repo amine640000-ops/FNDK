@@ -75,8 +75,10 @@ export class VipService implements OnModuleInit {
   }
 
   async getCurrentTier(userId: string) {
-    const current = await this.getLatestTierAssignment(userId);
     const activeInvestment = await this.getEffectiveInvestment(userId);
+    const validDirectMembers = await this.getValidDirectMemberCount(userId);
+    const current = this.mapTier(await this.getTierDefinitionForEligibility(activeInvestment, validDirectMembers));
+
     return {
       ...current,
       activeInvestment
@@ -86,8 +88,8 @@ export class VipService implements OnModuleInit {
   async getNextUpgrade(userId: string) {
     const tiers = await this.getTiers();
     const activeInvestment = await this.getEffectiveInvestment(userId);
-    const currentTier = await this.getLatestTierAssignment(userId);
     const validDirectMembers = await this.getValidDirectMemberCount(userId);
+    const currentTier = this.mapTier(await this.getTierDefinitionForEligibility(activeInvestment, validDirectMembers));
     const nextTier = tiers.find((tier: { id: number }) => tier.id > currentTier.id) ?? null;
 
     return {
