@@ -6,6 +6,7 @@ import {
 import {
   createNumericVerificationCode,
   dbQuery,
+  ensureReferralLedgerColumns,
   getOne,
   hashSecurityPasscode,
   hashVerificationCode,
@@ -216,6 +217,8 @@ export class WalletService implements OnModuleInit {
   private readonly withdrawalCodeTtlMinutes = 10;
 
   async onModuleInit() {
+    await ensureReferralLedgerColumns();
+
     try {
       await subscribeToEvents("wallet-service", {
         "user.registered": async ({ userId }: RabbitEventMap["user.registered"]) => {

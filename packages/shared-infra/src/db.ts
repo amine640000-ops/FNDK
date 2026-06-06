@@ -110,3 +110,49 @@ export const ensureVipTierRuntimeColumns = async () => {
 };
 
 export const ensureVipDailyProfitCapColumn = ensureVipTierRuntimeColumns;
+
+export const ensureReferralLedgerColumns = async () => {
+  await dbQuery(`
+    ALTER TABLE referrals
+      ADD COLUMN IF NOT EXISTS bonus_type TEXT NOT NULL DEFAULT 'deposit_bonus',
+      ADD COLUMN IF NOT EXISTS generation INTEGER NOT NULL DEFAULT 1,
+      ADD COLUMN IF NOT EXISTS bonus_percent NUMERIC(8, 4),
+      ADD COLUMN IF NOT EXISTS source_reference TEXT
+  `);
+
+  await dbQuery(`
+    UPDATE referrals
+    SET bonus_type = 'deposit_bonus'
+    WHERE bonus_type IS NULL OR bonus_type = ''
+  `);
+
+  await dbQuery(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_referrals_unique_commission_source
+      ON referrals (referrer_id, referred_id, bonus_type, generation, source_reference)
+      WHERE source_reference IS NOT NULL
+  `);
+
+  await dbQuery(`
+    CREATE INDEX IF NOT EXISTS idx_referrals_referrer_type_paid_at
+      ON referrals (referrer_id, bonus_type, paid_at DESC)
+  `);
+};
+
+export const ensureAdminActivityLogTable = async () => {
+  await dbQuery(`
+    CREATE TABLE IF NOT EXISTS admin_activity_log (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      actor_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+      action TEXT NOT NULL,
+      entity_type TEXT NOT NULL,
+      entity_id TEXT,
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await dbQuery(`
+    CREATE INDEX IF NOT EXISTS idx_admin_activity_log_created
+      ON admin_activity_log(created_at DESC)
+  `);
+};

@@ -1,5 +1,13 @@
 import { BadRequestException, Injectable, OnModuleInit } from "@nestjs/common";
-import { dbQuery, ensureVipTierRuntimeColumns, getOne, hashSecurityPasscode, publishEvent, withTransaction } from "@nevo/shared-infra";
+import {
+  dbQuery,
+  ensureReferralLedgerColumns,
+  ensureVipTierRuntimeColumns,
+  getOne,
+  hashSecurityPasscode,
+  publishEvent,
+  withTransaction
+} from "@nevo/shared-infra";
 import type {
   AiTradingActivation,
   AssetType,
@@ -164,6 +172,7 @@ export class TaskService implements OnModuleInit {
 
   async onModuleInit() {
     await ensureVipTierRuntimeColumns();
+    await ensureReferralLedgerColumns();
   }
 
   async getStatus() {
