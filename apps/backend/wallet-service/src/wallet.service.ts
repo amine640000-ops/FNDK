@@ -30,7 +30,7 @@ import type {
   RabbitEventMap,
   WalletSummary
 } from "@nevo/shared-types";
-import { DEFAULT_ASSET_LABELS, SUPPORTED_ASSETS } from "@nevo/shared-utils";
+import { DEFAULT_ASSET_LABELS, DEFAULT_ASSET_ROUTE_SETTINGS, SUPPORTED_ASSETS } from "@nevo/shared-utils";
 import type { PoolClient } from "pg";
 import type { CreateDepositDto, CreateWithdrawalDto, RequestWithdrawalCodeDto } from "./wallet.dto";
 import { selectWeightedLuckyDrawPrize } from "./lucky-draw.util";
@@ -225,6 +225,20 @@ export class WalletService implements OnModuleInit {
   }
 
   async getSummary(userId: string): Promise<WalletSummary> {
+    const enabledAssets = (await this.getAssetSettings())
+      .filter((assetSetting) => assetSetting.enabled)
+      .map((assetSetting) => assetSetting.asset);
+
+    if (!enabledAssets.length) {
+      return {
+        totalBalance: 0,
+        activeInvestment: 0,
+        availableToWithdraw: 0,
+        totalEarned: 0,
+        assets: []
+      };
+    }
+
     const totals = await getOne<{
       total_balance: number;
       active_investment: number;
@@ -249,8 +263,9 @@ export class WalletService implements OnModuleInit {
         LEFT JOIN pending_withdrawals
           ON pending_withdrawals.asset = wallets.asset_type
         WHERE wallets.user_id = $1
+          AND wallets.asset_type = ANY($2::text[])
       `,
-      [userId]
+      [userId, enabledAssets]
     );
 
     const assets = await dbQuery<WalletRow>(
@@ -274,9 +289,10 @@ export class WalletService implements OnModuleInit {
         LEFT JOIN pending_withdrawals
           ON pending_withdrawals.asset = wallets.asset_type
         WHERE wallets.user_id = $1
+          AND wallets.asset_type = ANY($2::text[])
         ORDER BY wallets.asset_type ASC
       `,
-      [userId]
+      [userId, enabledAssets]
     );
 
     const totalBalance = totals?.total_balance ?? 0;
@@ -1566,7 +1582,7 @@ export class WalletService implements OnModuleInit {
   private resolveAssetEnabled(asset: AssetType, configured: Map<string, unknown>) {
     const configuredValue = configured.get(`asset.${asset}.enabled`);
     if (typeof configuredValue !== "boolean") {
-      return true;
+      return DEFAULT_ASSET_ROUTE_SETTINGS.find((assetSetting) => assetSetting.asset === asset)?.enabled ?? false;
     }
 
     return configuredValue;

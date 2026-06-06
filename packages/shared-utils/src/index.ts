@@ -11,6 +11,8 @@ export const SUPPORTED_ASSETS = [
   "STOCKS"
 ] as const;
 
+export const DEFAULT_ENABLED_ASSETS = ["USDT_TRC20", "USDT_ERC20"] as const;
+
 export const DEFAULT_ASSET_LABELS: Record<AssetType, string> = {
   BTC: "BTC",
   ETH: "ETH",
@@ -26,7 +28,7 @@ export const DEFAULT_ASSET_ROUTE_SETTINGS: AssetRouteSetting[] = SUPPORTED_ASSET
   asset,
   label: DEFAULT_ASSET_LABELS[asset],
   address: "",
-  enabled: true
+  enabled: DEFAULT_ENABLED_ASSETS.includes(asset as (typeof DEFAULT_ENABLED_ASSETS)[number])
 }));
 
 export const VIP_TIERS: VipTier[] = [

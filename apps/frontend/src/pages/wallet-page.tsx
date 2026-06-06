@@ -9,7 +9,7 @@ import {
   ReceiptText
 } from "lucide-react";
 import type { DashboardTransaction, WalletSummary } from "@nevo/shared-types";
-import { formatCurrency } from "@nevo/shared-utils";
+import { DEFAULT_ASSET_LABELS } from "@nevo/shared-utils";
 import { isApiAuthError, walletApi } from "@/api/client";
 import { BrandMark } from "@/components/brand-mark";
 import { clearAuthSession, getAccessToken } from "@/lib/auth";
@@ -321,7 +321,7 @@ export function WalletPage() {
                 <div key={asset.asset} className="neon-panel rounded-[24px] px-4 py-4">
                   <div className="flex items-center justify-between gap-4">
                     <div>
-                      <div className="text-[15px] font-semibold text-white">{asset.asset}</div>
+                      <div className="text-[15px] font-semibold text-white">{DEFAULT_ASSET_LABELS[asset.asset]}</div>
                     </div>
                     <div className="text-right">
                       <div className="text-[1rem] font-semibold text-cyan-100">
