@@ -15,7 +15,13 @@ import type {
 } from "@nevo/shared-types";
 import { DEFAULT_ASSET_LABELS, DEFAULT_ASSET_ROUTE_SETTINGS, SUPPORTED_ASSETS } from "@nevo/shared-utils";
 import type { PoolClient } from "pg";
-import type { AdjustUserBalanceDto, GrantLuckyDrawSpinsDto, UpdateAdminSettingsDto, UpdateVipTierDto } from "./admin.dto";
+import type {
+  AdjustUserBalanceDto,
+  AdjustUserGainDto,
+  GrantLuckyDrawSpinsDto,
+  UpdateAdminSettingsDto,
+  UpdateVipTierDto
+} from "./admin.dto";
 
 type AdminSettingValue =
   | string
@@ -31,6 +37,8 @@ type AdminSettingValue =
 const maxAdCarouselSlides = 8;
 const defaultMissionQualifyingDepositAmount = 107;
 const aggregateBalanceAdjustmentAsset: AssetType = "USD";
+const adminGainAdjustmentAsset: AssetType = "USDT_TRC20";
+const manualTeamGainAdjustmentType = "manual_team_gain_adjustment";
 
 const defaultAdCarouselSlides: AdCarouselSlide[] = [
   {
@@ -188,6 +196,8 @@ type UserRow = {
   active_investment: number;
   total_deposited: number;
   total_gained: number;
+  trading_gain: number;
+  team_gain: number;
   wallets: Array<{
     asset: AssetType;
     balance: number;
@@ -235,6 +245,7 @@ type AdminSettingRow = {
 
 type WalletBalanceRow = {
   balance: number;
+  total_earned: number;
 };
 
 type AggregateWalletBalanceRow = {
@@ -360,9 +371,17 @@ export class AdminService implements OnModuleInit {
         transaction_totals AS (
           SELECT
             user_id,
-            COALESCE(SUM(amount) FILTER (WHERE type = 'deposit' AND status = 'approved'), 0)::float8 AS total_deposited
+            COALESCE(SUM(amount) FILTER (WHERE type = 'deposit' AND status = 'approved'), 0)::float8 AS total_deposited,
+            COALESCE(SUM(amount) FILTER (WHERE type = 'profit' AND status = 'approved'), 0)::float8 AS trading_gain
           FROM transactions
           GROUP BY user_id
+        ),
+        referral_totals AS (
+          SELECT
+            referrer_id AS user_id,
+            COALESCE(SUM(bonus_amount), 0)::float8 AS team_gain
+          FROM referrals
+          GROUP BY referrer_id
         )
         SELECT
           u.id,
@@ -378,12 +397,15 @@ export class AdminService implements OnModuleInit {
           COALESCE(wt.active_investment, 0)::float8 AS active_investment,
           COALESCE(tt.total_deposited, 0)::float8 AS total_deposited,
           COALESCE(wt.total_earned, 0)::float8 AS total_gained,
+          COALESCE(tt.trading_gain, 0)::float8 AS trading_gain,
+          COALESCE(rt.team_gain, 0)::float8 AS team_gain,
           COALESCE(wr.wallets, '[]'::jsonb) AS wallets
         FROM users u
         LEFT JOIN latest_vip lv ON lv.user_id = u.id
         LEFT JOIN wallet_totals wt ON wt.user_id = u.id
         LEFT JOIN wallet_rows wr ON wr.user_id = u.id
         LEFT JOIN transaction_totals tt ON tt.user_id = u.id
+        LEFT JOIN referral_totals rt ON rt.user_id = u.id
         WHERE u.role = 'USER'
         ORDER BY u.created_at DESC
       `
@@ -400,6 +422,8 @@ export class AdminService implements OnModuleInit {
       activeInvestment: user.active_investment,
       totalDeposited: user.total_deposited,
       totalGained: user.total_gained,
+      tradingGain: user.trading_gain,
+      teamGain: user.team_gain,
       wallets: user.wallets,
       kycStatus: user.kyc_status,
       isActive: user.is_active,
@@ -692,6 +716,259 @@ export class AdminService implements OnModuleInit {
     });
 
     return result;
+  }
+
+  async adjustUserGain(actorUserId: string, userId: string, input: AdjustUserGainDto) {
+    return this.adjustUserGainTarget(actorUserId, userId, input, "trading");
+  }
+
+  async adjustUserTeamGain(actorUserId: string, userId: string, input: AdjustUserGainDto) {
+    return this.adjustUserGainTarget(actorUserId, userId, input, "team");
+  }
+
+  private async adjustUserGainTarget(
+    actorUserId: string,
+    userId: string,
+    input: AdjustUserGainDto,
+    target: "trading" | "team"
+  ) {
+    const adjustmentAmount = Number(input.amount.toFixed(2));
+    if ((input.operation === "add" || input.operation === "subtract") && adjustmentAmount <= 0) {
+      throw new BadRequestException("Gain adjustment amount must be greater than 0");
+    }
+
+    const note = input.note?.trim();
+
+    return withTransaction(async (client: PoolClient) => {
+      const user = await client.query<{ id: string; public_id: string; full_name: string; email: string }>(
+        `
+          SELECT id, public_id, full_name, email
+          FROM users
+          WHERE id = $1
+            AND role = 'USER'
+          FOR UPDATE
+        `,
+        [userId]
+      );
+
+      if (!user.rowCount) {
+        throw new NotFoundException("User account not found");
+      }
+
+      const previousGain = await this.getUserGainTotalWithClient(client, userId, target);
+      const delta =
+        input.operation === "add"
+          ? adjustmentAmount
+          : input.operation === "subtract"
+            ? -adjustmentAmount
+            : Number((adjustmentAmount - previousGain).toFixed(2));
+      const nextGain = Number((previousGain + delta).toFixed(2));
+
+      if (delta === 0) {
+        throw new BadRequestException(`${target === "team" ? "Team gain" : "User gain"} is already set to that amount`);
+      }
+
+      if (nextGain < 0) {
+        throw new BadRequestException("Gain adjustment cannot make the gain negative");
+      }
+
+      const creditAsset = await this.resolveAdminCreditAsset(client, adminGainAdjustmentAsset);
+      await this.ensureWalletWithClient(client, userId, creditAsset);
+
+      const wallet = await client.query<WalletBalanceRow>(
+        `
+          SELECT balance::float8 AS balance, total_earned::float8 AS total_earned
+          FROM wallets
+          WHERE user_id = $1
+            AND asset_type = $2
+          FOR UPDATE
+        `,
+        [userId, creditAsset]
+      );
+      const walletBalance = wallet.rows[0]?.balance ?? 0;
+      const totalEarned = wallet.rows[0]?.total_earned ?? 0;
+
+      if (Number((walletBalance + delta).toFixed(2)) < 0) {
+        throw new BadRequestException("Gain adjustment cannot make the wallet balance negative");
+      }
+
+      if (Number((totalEarned + delta).toFixed(2)) < 0) {
+        throw new BadRequestException("Gain adjustment cannot make total earned negative");
+      }
+
+      await client.query(
+        `
+          UPDATE wallets
+          SET
+            balance = balance + $3,
+            total_earned = total_earned + $3,
+            active_investment = LEAST(active_investment, GREATEST(balance + $3, 0))
+          WHERE user_id = $1
+            AND asset_type = $2
+        `,
+        [userId, creditAsset, delta]
+      );
+
+      const auditNote =
+        note ??
+        [
+          `Admin ${target === "team" ? "team gain" : "user gain"} ${input.operation}`,
+          `Previous: ${previousGain}`,
+          `Current: ${nextGain}`
+        ].join(" | ");
+
+      if (target === "team") {
+        await client.query(
+          `
+            INSERT INTO referrals (
+              id,
+              referrer_id,
+              referred_id,
+              bonus_amount,
+              bonus_type,
+              generation,
+              source_reference
+            )
+            VALUES (
+              gen_random_uuid(),
+              $1,
+              $1,
+              $2,
+              $3,
+              1,
+              'admin:' || gen_random_uuid()::text
+            )
+          `,
+          [userId, delta, manualTeamGainAdjustmentType]
+        );
+      }
+
+      await client.query(
+        `
+          INSERT INTO transactions (id, user_id, type, asset, amount, fee_amount, status, admin_note)
+          VALUES (gen_random_uuid(), $1, $2, $3, $4, 0, 'approved', $5)
+        `,
+        [userId, target === "team" ? "referral" : "profit", creditAsset, delta, auditNote]
+      );
+
+      await client.query(
+        `
+          INSERT INTO notifications (id, user_id, title, message, is_read, created_at)
+          VALUES (gen_random_uuid(), $1, $2, $3, FALSE, NOW())
+        `,
+        [
+          userId,
+          target === "team" ? "Team gain adjusted" : "User gain adjusted",
+          `${target === "team" ? "Team gain" : "User gain"} was updated from ${previousGain.toFixed(2)} to ${nextGain.toFixed(2)} ${creditAsset}.`
+        ]
+      );
+
+      await this.logAdminActivity(
+        client,
+        actorUserId,
+        target === "team" ? "user_team_gain_adjusted" : "user_gain_adjusted",
+        "user",
+        userId,
+        {
+          publicId: user.rows[0].public_id,
+          email: user.rows[0].email,
+          operation: input.operation,
+          previousGain,
+          nextGain,
+          delta,
+          asset: creditAsset
+        }
+      );
+
+      return {
+        userId,
+        fullName: user.rows[0].full_name,
+        target,
+        operation: input.operation,
+        previousGain,
+        gain: nextGain,
+        delta,
+        asset: creditAsset
+      };
+    });
+  }
+
+  private async getUserGainTotalWithClient(client: PoolClient, userId: string, target: "trading" | "team") {
+    if (target === "team") {
+      const result = await client.query<{ total_gain: number }>(
+        `
+          SELECT COALESCE(SUM(bonus_amount), 0)::float8 AS total_gain
+          FROM referrals
+          WHERE referrer_id = $1
+        `,
+        [userId]
+      );
+
+      return Number((result.rows[0]?.total_gain ?? 0).toFixed(2));
+    }
+
+    const result = await client.query<{ total_gain: number }>(
+      `
+        SELECT COALESCE(SUM(amount), 0)::float8 AS total_gain
+        FROM transactions
+        WHERE user_id = $1
+          AND type = 'profit'
+          AND status = 'approved'
+      `,
+      [userId]
+    );
+
+    return Number((result.rows[0]?.total_gain ?? 0).toFixed(2));
+  }
+
+  private async ensureWalletWithClient(client: PoolClient, userId: string, asset: AssetType) {
+    await client.query(
+      `
+        INSERT INTO wallets (id, user_id, asset_type, balance, active_investment, total_earned)
+        VALUES (gen_random_uuid(), $1, $2, 0, 0, 0)
+        ON CONFLICT (user_id, asset_type) DO NOTHING
+      `,
+      [userId, asset]
+    );
+  }
+
+  private async resolveAdminCreditAsset(client: PoolClient, preferredAsset: AssetType): Promise<AssetType> {
+    const keys = [
+      `asset.${preferredAsset}.enabled`,
+      "asset.USDT_TRC20.enabled",
+      "asset.USDT_ERC20.enabled"
+    ];
+    const result = await client.query<AdminSettingRow>(
+      `
+        SELECT key, value
+        FROM admin_settings
+        WHERE key = ANY($1)
+      `,
+      [keys]
+    );
+    const configured = new Map(result.rows.map((row) => [row.key, row.value]));
+    const isEnabled = (asset: AssetType) => {
+      const configuredValue = configured.get(`asset.${asset}.enabled`);
+      if (typeof configuredValue === "boolean") {
+        return configuredValue;
+      }
+
+      return DEFAULT_ASSET_ROUTE_SETTINGS.find((assetSetting) => assetSetting.asset === asset)?.enabled ?? false;
+    };
+
+    if (isEnabled(preferredAsset)) {
+      return preferredAsset;
+    }
+
+    if (isEnabled("USDT_TRC20")) {
+      return "USDT_TRC20";
+    }
+
+    if (isEnabled("USDT_ERC20")) {
+      return "USDT_ERC20";
+    }
+
+    return preferredAsset;
   }
 
   async getSettings(): Promise<AdminPlatformSettings> {

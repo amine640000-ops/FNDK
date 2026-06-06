@@ -8,7 +8,7 @@ import type {
   ProfitDistributionEvent,
   VipTier
 } from "@nevo/shared-types";
-import { calculateDailyProfit, getTierConfig } from "@nevo/shared-utils";
+import { TEAM_PROFIT_COMMISSION_RATES, calculateDailyProfit, getTierConfig } from "@nevo/shared-utils";
 import type { PoolClient } from "pg";
 
 type DistributionCandidate = {
@@ -473,16 +473,30 @@ export class TaskService implements OnModuleInit {
     );
 
     const teamMembers = result.rows;
+    const manualTeamGain = await getOne<{ total_gain: number; today_gain: number }>(
+      `
+        SELECT
+          COALESCE(SUM(bonus_amount), 0)::float8 AS total_gain,
+          COALESCE(SUM(bonus_amount) FILTER (WHERE paid_at::date = CURRENT_DATE), 0)::float8 AS today_gain
+        FROM referrals
+        WHERE referrer_id = $1
+          AND bonus_type = 'manual_team_gain_adjustment'
+      `,
+      [userId]
+    );
     const generations = ([1, 2, 3] as const).map((generation) => {
       const generationMembers = teamMembers.filter((member) => member.generation === generation);
+      const manualIncome = generation === 1 ? manualTeamGain?.total_gain ?? 0 : 0;
+      const manualTodayIncome = generation === 1 ? manualTeamGain?.today_gain ?? 0 : 0;
 
       return {
         generation,
+        commissionRate: TEAM_PROFIT_COMMISSION_RATES[generation],
         members: generationMembers.filter((member) => member.active).length,
         registeredMembers: generationMembers.length,
         todayMembers: generationMembers.filter((member) => member.active_today).length,
-        income: generationMembers.reduce((sum, member) => sum + member.referral_gain, 0),
-        todayIncome: generationMembers.reduce((sum, member) => sum + member.today_referral_gain, 0)
+        income: generationMembers.reduce((sum, member) => sum + member.referral_gain, manualIncome),
+        todayIncome: generationMembers.reduce((sum, member) => sum + member.today_referral_gain, manualTodayIncome)
       };
     });
 
@@ -1059,7 +1073,7 @@ export class TaskService implements OnModuleInit {
       userId: candidate.user_id,
       tierId: candidate.tier_id,
       profit,
-      asset: "USD",
+      asset: "USDT_TRC20",
       strategy: this.pickStrategy(candidate.tier_id),
       entryPrice,
       exitPrice,

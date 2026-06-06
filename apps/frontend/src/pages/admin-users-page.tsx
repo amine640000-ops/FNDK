@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { Ban, CheckCircle2, ExternalLink, RefreshCcw, WalletCards, X } from "lucide-react";
+import { Ban, CheckCircle2, ExternalLink, HandCoins, RefreshCcw, TrendingUp, WalletCards, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { AssetType } from "@nevo/shared-types";
 import { formatCurrency } from "@nevo/shared-utils";
@@ -25,6 +25,8 @@ type AdminUser = {
   activeInvestment: number;
   totalDeposited: number;
   totalGained: number;
+  tradingGain: number;
+  teamGain: number;
   wallets: AdminWallet[];
   kycStatus: "pending" | "verified" | "rejected";
   isActive: boolean;
@@ -51,6 +53,7 @@ const statusTone: Record<KycSubmission["status"], string> = {
 };
 
 type BalanceOperation = "add" | "subtract" | "set";
+type GainTarget = "trading" | "team";
 
 const balanceOperations: Array<{ value: BalanceOperation; label: string }> = [
   { value: "add", label: "Add funds" },
@@ -74,9 +77,17 @@ export function AdminUsersPage() {
   const [adminApiOffline, setAdminApiOffline] = useState(false);
   const [actionId, setActionId] = useState<string | null>(null);
   const [balanceActionId, setBalanceActionId] = useState<string | null>(null);
+  const [gainActionId, setGainActionId] = useState<string | null>(null);
   const [statusActionId, setStatusActionId] = useState<string | null>(null);
   const [balanceForm, setBalanceForm] = useState<{
     user: AdminUser;
+    operation: BalanceOperation;
+    amount: string;
+    note: string;
+  } | null>(null);
+  const [gainForm, setGainForm] = useState<{
+    user: AdminUser;
+    target: GainTarget;
     operation: BalanceOperation;
     amount: string;
     note: string;
@@ -94,6 +105,13 @@ export function AdminUsersPage() {
 
     return balanceForm.user.walletBalance ?? balanceForm.user.balance ?? 0;
   }, [balanceForm]);
+  const selectedGain = useMemo(() => {
+    if (!gainForm) {
+      return 0;
+    }
+
+    return gainForm.target === "team" ? gainForm.user.teamGain ?? 0 : gainForm.user.tradingGain ?? 0;
+  }, [gainForm]);
 
   const loadAdminUsersState = async () => {
     const token = getAccessToken();
@@ -178,6 +196,16 @@ export function AdminUsersPage() {
     });
   };
 
+  const openGainManager = (user: AdminUser, target: GainTarget) => {
+    setGainForm({
+      user,
+      target,
+      operation: "add",
+      amount: "",
+      note: ""
+    });
+  };
+
   const submitBalanceAdjustment = async () => {
     if (!balanceForm) {
       return;
@@ -210,6 +238,42 @@ export function AdminUsersPage() {
       toast.error(getApiErrorMessage(error, "Could not update account balance."));
     } finally {
       setBalanceActionId(null);
+    }
+  };
+
+  const submitGainAdjustment = async () => {
+    if (!gainForm) {
+      return;
+    }
+
+    const token = getAccessToken();
+    if (!token) {
+      toast.error("Sign in as admin first.");
+      return;
+    }
+
+    const amount = Number(gainForm.amount || 0);
+    if (!Number.isFinite(amount) || amount < 0 || (gainForm.operation !== "set" && amount <= 0)) {
+      toast.error("Enter a valid gain amount.");
+      return;
+    }
+
+    const endpoint = gainForm.target === "team" ? "team-gain" : "gain";
+    setGainActionId(gainForm.user.id);
+    try {
+      await adminApi.patch(`/admin/users/${gainForm.user.id}/${endpoint}`, {
+        operation: gainForm.operation,
+        amount,
+        note: gainForm.note.trim() || undefined
+      });
+
+      toast.success(gainForm.target === "team" ? "Team gain updated." : "User gain updated.");
+      setGainForm(null);
+      await loadAdminUsersState();
+    } catch (error) {
+      toast.error(getApiErrorMessage(error, "Could not update gain."));
+    } finally {
+      setGainActionId(null);
     }
   };
 
@@ -266,7 +330,7 @@ export function AdminUsersPage() {
           </div>
         ) : null}
         <div className="hide-scrollbar overflow-x-auto rounded-[24px]">
-          <table className="min-w-[76rem] text-left text-sm">
+          <table className="min-w-[88rem] text-left text-sm">
             <thead className="text-slate-400">
               <tr>
                 <th className="pb-3">Name</th>
@@ -274,7 +338,8 @@ export function AdminUsersPage() {
                 <th className="pb-3">Email</th>
                 <th className="pb-3">VIP</th>
                 <th className="pb-3">Deposited</th>
-                <th className="pb-3">Gained</th>
+                <th className="pb-3">User gain</th>
+                <th className="pb-3">Team gain</th>
                 <th className="pb-3">Wallet now</th>
                 <th className="pb-3">KYC</th>
                 <th className="pb-3">Status</th>
@@ -294,7 +359,8 @@ export function AdminUsersPage() {
                     <td className="py-4">{user.email}</td>
                     <td className="py-4">{user.vipTier}</td>
                     <td className="py-4 font-semibold text-cyan-100">{formatCurrency(user.totalDeposited ?? 0)}</td>
-                    <td className="py-4 font-semibold text-emerald-200">{formatCurrency(user.totalGained ?? 0)}</td>
+                    <td className="py-4 font-semibold text-emerald-200">{formatCurrency(user.tradingGain ?? 0)}</td>
+                    <td className="py-4 font-semibold text-cyan-200">{formatCurrency(user.teamGain ?? 0)}</td>
                     <td className="py-4">
                       <div className="font-semibold text-white">{formatCurrency(user.walletBalance ?? user.balance ?? 0)}</div>
                     </td>
@@ -323,6 +389,24 @@ export function AdminUsersPage() {
                           Adjust
                         </button>
                         <button
+                          className="inline-flex items-center gap-2 rounded-full border border-emerald-300/25 bg-emerald-300/10 px-3 py-2 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-300/15 disabled:opacity-60"
+                          disabled={gainActionId === user.id}
+                          onClick={() => openGainManager(user, "trading")}
+                          type="button"
+                        >
+                          <TrendingUp className="h-4 w-4" />
+                          Gain
+                        </button>
+                        <button
+                          className="inline-flex items-center gap-2 rounded-full border border-sky-300/25 bg-sky-300/10 px-3 py-2 text-xs font-semibold text-sky-100 transition hover:bg-sky-300/15 disabled:opacity-60"
+                          disabled={gainActionId === user.id}
+                          onClick={() => openGainManager(user, "team")}
+                          type="button"
+                        >
+                          <HandCoins className="h-4 w-4" />
+                          Team
+                        </button>
+                        <button
                           className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold transition disabled:opacity-60 ${
                             userIsActive
                               ? "border-rose-300/30 bg-rose-400/10 text-rose-100 hover:bg-rose-400/15"
@@ -342,7 +426,7 @@ export function AdminUsersPage() {
                 })
               ) : (
                 <tr className="border-t border-white/10">
-                  <td className="py-6 text-slate-400" colSpan={11}>
+                  <td className="py-6 text-slate-400" colSpan={12}>
                     {loading ? "Loading users..." : "No users loaded."}
                   </td>
                 </tr>
@@ -442,6 +526,106 @@ export function AdminUsersPage() {
                 type="button"
               >
                 {balanceActionId === balanceForm.user.id ? "Saving..." : "Save Balance"}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {gainForm ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4 py-6 backdrop-blur-sm">
+          <section className="w-full max-w-xl rounded-[28px] border border-white/10 bg-[#070a3f] p-5 shadow-[0_24px_70px_rgba(0,0,0,0.45)]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-semibold text-white">
+                  Manage {gainForm.target === "team" ? "Team Gain" : "User Gain"}
+                </h2>
+                <p className="mt-1 text-sm text-slate-400">
+                  {gainForm.user.fullName} · {gainForm.user.publicId}
+                </p>
+              </div>
+              <button
+                aria-label="Close gain manager"
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-200"
+                onClick={() => setGainForm(null)}
+                type="button"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="mt-5">
+              <label className="grid gap-2 text-sm font-medium text-slate-300">
+                Operation
+                <select
+                  className="rounded-2xl border border-white/10 bg-[#03062f] px-4 py-3 text-white outline-none focus:border-cyan-300/70"
+                  value={gainForm.operation}
+                  onChange={(event) =>
+                    setGainForm((current) =>
+                      current ? { ...current, operation: event.target.value as BalanceOperation } : current
+                    )
+                  }
+                >
+                  {balanceOperations.map((operation) => (
+                    <option key={operation.value} value={operation.value}>
+                      {operation.label.replace("funds", "gain").replace("balance", "gain")}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-emerald-300/15 bg-emerald-300/[0.08] px-4 py-3">
+              <div className="text-xs uppercase tracking-[0.18em] text-emerald-200/75">
+                Current {gainForm.target === "team" ? "team gain" : "user gain"}
+              </div>
+              <div className="mt-2 text-2xl font-semibold text-white">{formatCurrency(selectedGain)}</div>
+            </div>
+
+            <label className="mt-4 grid gap-2 text-sm font-medium text-slate-300">
+              Amount
+              <input
+                className="rounded-2xl border border-white/10 bg-[#03062f] px-4 py-3 text-white outline-none focus:border-cyan-300/70"
+                inputMode="decimal"
+                min="0"
+                placeholder={gainForm.operation === "set" ? "New gain" : "Adjustment amount"}
+                type="text"
+                value={gainForm.amount}
+                onChange={(event) =>
+                  setGainForm((current) =>
+                    current ? { ...current, amount: event.target.value.replace(/[^\d.]/g, "") } : current
+                  )
+                }
+              />
+            </label>
+
+            <label className="mt-4 grid gap-2 text-sm font-medium text-slate-300">
+              Admin note
+              <textarea
+                className="min-h-24 rounded-2xl border border-white/10 bg-[#03062f] px-4 py-3 text-white outline-none focus:border-cyan-300/70"
+                placeholder="Optional internal audit note."
+                value={gainForm.note}
+                onChange={(event) =>
+                  setGainForm((current) => (current ? { ...current, note: event.target.value } : current))
+                }
+              />
+            </label>
+
+            <div className="mt-5 flex flex-wrap justify-end gap-3">
+              <button
+                className="rounded-full border border-white/10 bg-white/5 px-5 py-2.5 text-sm font-semibold text-slate-200"
+                onClick={() => setGainForm(null)}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="rounded-full bg-cyan-300 px-5 py-2.5 text-sm font-semibold text-slate-950 disabled:opacity-60"
+                disabled={gainActionId === gainForm.user.id}
+                onClick={() => void submitGainAdjustment()}
+                type="button"
+              >
+                {gainActionId === gainForm.user.id ? "Saving..." : "Save Gain"}
               </button>
             </div>
           </section>

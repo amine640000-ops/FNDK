@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts";
 import toast from "react-hot-toast";
 import { Bell, ChevronRight, Globe, HandCoins, Headset, Users } from "lucide-react";
+import { TEAM_PROFIT_COMMISSION_RATES } from "@nevo/shared-utils";
 import { taskApi } from "@/api/client";
 import { BrandMark } from "@/components/brand-mark";
 import { getAccessToken } from "@/lib/auth";
@@ -9,6 +10,7 @@ import { applyLanguagePreference, getNextLanguage, translateText, useAppLanguage
 
 type TeamGenerationSummary = {
   generation: 1 | 2 | 3;
+  commissionRate: number;
   members: number;
   registeredMembers: number;
   income: number;
@@ -45,6 +47,7 @@ const formatUsdt = (value: number) => (value > 0 ? value.toFixed(5) : "0");
 const zeroTeamGenerations = ([1, 2, 3] as const).map((generation) => ({
   generation,
   label: `${generation} générations`,
+  commissionRate: TEAM_PROFIT_COMMISSION_RATES[generation],
   members: 0,
   registeredMembers: 0,
   income: 0,
@@ -99,6 +102,7 @@ export function ReferralsPage() {
       return {
         generation,
         label: `${generation} générations`,
+        commissionRate: item?.commissionRate ?? TEAM_PROFIT_COMMISSION_RATES[generation],
         members: item?.members ?? 0,
         registeredMembers: item?.registeredMembers ?? 0,
         income: item?.income ?? 0,
@@ -265,6 +269,7 @@ export function ReferralsPage() {
                     <span className="whitespace-nowrap">
                       {item.generation} {tt("générations")}({item.members}/{item.target})
                     </span>
+                    <span className="text-cyan-200/80">{item.commissionRate}%</span>
                   </div>
                 ))}
               </div>
@@ -319,6 +324,7 @@ export function ReferralsPage() {
             </div>
             <div>
               <div className="text-[1rem] leading-snug text-white/48">{tt("Récompenses De Référence")}</div>
+              <div className="mt-3 text-[1.25rem] font-extrabold text-[#16dce5]">{selectedGeneration.commissionRate}%</div>
             </div>
           </div>
 

@@ -30,7 +30,12 @@ import type {
   RabbitEventMap,
   WalletSummary
 } from "@nevo/shared-types";
-import { DEFAULT_ASSET_LABELS, DEFAULT_ASSET_ROUTE_SETTINGS, SUPPORTED_ASSETS } from "@nevo/shared-utils";
+import {
+  DEFAULT_ASSET_LABELS,
+  DEFAULT_ASSET_ROUTE_SETTINGS,
+  SUPPORTED_ASSETS,
+  TEAM_PROFIT_COMMISSION_RATES
+} from "@nevo/shared-utils";
 import type { PoolClient } from "pg";
 import type { CreateDepositDto, CreateWithdrawalDto, RequestWithdrawalCodeDto } from "./wallet.dto";
 import { selectWeightedLuckyDrawPrize } from "./lucky-draw.util";
@@ -133,7 +138,14 @@ type AdminSettingRow = {
   value: unknown;
 };
 
+type ReferralUplineRow = {
+  referrer_id: string;
+  generation: 1 | 2 | 3;
+};
+
 const WITHDRAWAL_FEE_RATE = 0.05;
+const DEPOSIT_REFERRAL_BONUS_TYPE = "deposit_bonus";
+const DAILY_PROFIT_COMMISSION_TYPE = "daily_profit_commission";
 const defaultLuckyDrawPrizes: LuckyDrawPrize[] = [
   {
     id: "bonus-draw-ticket",
@@ -1024,6 +1036,7 @@ export class WalletService implements OnModuleInit {
 
   private async applyProfitDistribution(payload: ProfitDistributionEvent) {
     await withTransaction(async (client: PoolClient) => {
+      const creditAsset = await this.resolveCreditAsset(client, payload.asset);
       await this.ensureWalletsWithClient(client, payload.userId);
       await client.query(
         `
@@ -1031,12 +1044,12 @@ export class WalletService implements OnModuleInit {
           SET
             balance = balance + $2,
             total_earned = total_earned + $2
-          WHERE user_id = $1 AND asset_type = 'USD'
+          WHERE user_id = $1 AND asset_type = $3
         `,
-        [payload.userId, payload.profit]
+        [payload.userId, payload.profit, creditAsset]
       );
 
-      await client.query(
+      const transaction = await client.query<{ id: string }>(
         `
           INSERT INTO transactions (id, user_id, type, asset, amount, status, admin_note)
           VALUES (
@@ -1048,15 +1061,168 @@ export class WalletService implements OnModuleInit {
             'approved',
             $4
           )
+          RETURNING id
         `,
         [
           payload.userId,
-          payload.asset,
+          creditAsset,
           payload.profit,
-          `${payload.strategy} @ ${payload.entryPrice} -> ${payload.exitPrice}`
+          payload.asset === creditAsset
+            ? `${payload.strategy} @ ${payload.entryPrice} -> ${payload.exitPrice}`
+            : `${payload.strategy} @ ${payload.entryPrice} -> ${payload.exitPrice} | credited as ${creditAsset}`
         ]
       );
+
+      await this.applyTeamProfitCommissions(client, payload, creditAsset, transaction.rows[0].id);
     });
+  }
+
+  private async applyTeamProfitCommissions(
+    client: PoolClient,
+    payload: ProfitDistributionEvent,
+    creditAsset: AssetType,
+    sourceTransactionId: string
+  ) {
+    if (payload.profit <= 0) {
+      return;
+    }
+
+    const uplines = await client.query<ReferralUplineRow>(
+      `
+        WITH RECURSIVE uplines AS (
+          SELECT
+            referrer.id AS referrer_id,
+            referrer.referred_by AS next_referrer_id,
+            referrer.is_active AS referrer_active,
+            1 AS generation
+          FROM users source_user
+          INNER JOIN users referrer
+            ON referrer.id = source_user.referred_by
+          WHERE source_user.id = $1
+            AND referrer.role = 'USER'
+
+          UNION ALL
+
+          SELECT
+            referrer.id AS referrer_id,
+            referrer.referred_by AS next_referrer_id,
+            referrer.is_active AS referrer_active,
+            uplines.generation + 1 AS generation
+          FROM uplines
+          INNER JOIN users referrer
+            ON referrer.id = uplines.next_referrer_id
+          WHERE uplines.generation < 3
+            AND referrer.role = 'USER'
+        )
+        SELECT referrer_id, generation::int AS generation
+        FROM uplines
+        WHERE referrer_active = TRUE
+        ORDER BY generation ASC
+      `,
+      [payload.userId]
+    );
+
+    const sourceReference = this.createTeamCommissionSourceReference(payload);
+
+    for (const upline of uplines.rows) {
+      const bonusPercent = TEAM_PROFIT_COMMISSION_RATES[upline.generation];
+      const bonusAmount = Number(((payload.profit * bonusPercent) / 100).toFixed(2));
+
+      if (bonusAmount <= 0) {
+        continue;
+      }
+
+      await this.ensureWalletsWithClient(client, upline.referrer_id);
+
+      const referral = await client.query<{ id: string }>(
+        `
+          INSERT INTO referrals (
+            id,
+            referrer_id,
+            referred_id,
+            bonus_amount,
+            bonus_type,
+            generation,
+            bonus_percent,
+            source_reference
+          )
+          VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7)
+          ON CONFLICT DO NOTHING
+          RETURNING id
+        `,
+        [
+          upline.referrer_id,
+          payload.userId,
+          bonusAmount,
+          DAILY_PROFIT_COMMISSION_TYPE,
+          upline.generation,
+          bonusPercent,
+          sourceReference
+        ]
+      );
+
+      if (!referral.rowCount) {
+        continue;
+      }
+
+      await client.query(
+        `
+          UPDATE wallets
+          SET
+            balance = balance + $2,
+            total_earned = total_earned + $2
+          WHERE user_id = $1 AND asset_type = $3
+        `,
+        [upline.referrer_id, bonusAmount, creditAsset]
+      );
+
+      await client.query(
+        `
+          INSERT INTO transactions (id, user_id, type, asset, amount, status, admin_note)
+          VALUES (
+            gen_random_uuid(),
+            $1,
+            'referral',
+            $2,
+            $3,
+            'approved',
+            $4
+          )
+        `,
+        [
+          upline.referrer_id,
+          creditAsset,
+          bonusAmount,
+          `Generation ${upline.generation} team gain: ${bonusPercent}% from daily profit transaction ${sourceTransactionId}`
+        ]
+      );
+
+      await client.query(
+        `
+          INSERT INTO notifications (id, user_id, title, message, is_read, created_at)
+          VALUES (gen_random_uuid(), $1, $2, $3, FALSE, NOW())
+        `,
+        [
+          upline.referrer_id,
+          "Team gain credited",
+          `${bonusAmount.toFixed(2)} ${creditAsset} was credited from generation ${upline.generation} team profit.`
+        ]
+      );
+    }
+  }
+
+  private createTeamCommissionSourceReference(payload: ProfitDistributionEvent) {
+    if (payload.activationId) {
+      return `activation:${payload.activationId}`;
+    }
+
+    return [
+      "profit",
+      payload.userId,
+      payload.executedAt,
+      payload.strategy,
+      payload.profit.toFixed(2)
+    ].join(":");
   }
 
   private async getLuckyDrawConfig(client?: PoolClient): Promise<LuckyDrawEventConfig> {
@@ -1477,12 +1643,17 @@ export class WalletService implements OnModuleInit {
       `
         SELECT
           u.referred_by,
-          EXISTS(SELECT 1 FROM referrals WHERE referred_id = u.id) AS already_paid,
+          EXISTS(
+            SELECT 1
+            FROM referrals
+            WHERE referred_id = u.id
+              AND bonus_type = $2
+          ) AS already_paid,
           COALESCE((SELECT (value #>> '{}')::float8 FROM admin_settings WHERE key = 'platform.referralBonusPercent'), 5) AS bonus_percent
         FROM users u
         WHERE u.id = $1
       `,
-      [referredUserId]
+      [referredUserId, DEPOSIT_REFERRAL_BONUS_TYPE]
     );
 
     const referral = referralContext.rows[0];
@@ -1491,6 +1662,7 @@ export class WalletService implements OnModuleInit {
     }
 
     const bonusAmount = Number(((approvedDepositAmount * referral.bonus_percent) / 100).toFixed(2));
+    const creditAsset = await this.resolveCreditAsset(client, "USDT_TRC20");
     await this.ensureWalletsWithClient(client, referral.referred_by);
 
     await client.query(
@@ -1499,17 +1671,17 @@ export class WalletService implements OnModuleInit {
         SET
           balance = balance + $2,
           total_earned = total_earned + $2
-        WHERE user_id = $1 AND asset_type = 'USD'
+        WHERE user_id = $1 AND asset_type = $3
       `,
-      [referral.referred_by, bonusAmount]
+      [referral.referred_by, bonusAmount, creditAsset]
     );
 
     await client.query(
       `
-        INSERT INTO referrals (id, referrer_id, referred_id, bonus_amount)
-        VALUES (gen_random_uuid(), $1, $2, $3)
+        INSERT INTO referrals (id, referrer_id, referred_id, bonus_amount, bonus_type, generation, bonus_percent)
+        VALUES (gen_random_uuid(), $1, $2, $3, $4, 1, $5)
       `,
-      [referral.referred_by, referredUserId, bonusAmount]
+      [referral.referred_by, referredUserId, bonusAmount, DEPOSIT_REFERRAL_BONUS_TYPE, referral.bonus_percent]
     );
 
     await client.query(
@@ -1519,14 +1691,53 @@ export class WalletService implements OnModuleInit {
           gen_random_uuid(),
           $1,
           'referral',
-          'USD',
           $2,
+          $3,
           'approved',
           'First approved referral deposit bonus'
         )
       `,
-      [referral.referred_by, bonusAmount]
+      [referral.referred_by, creditAsset, bonusAmount]
     );
+  }
+
+  private async resolveCreditAsset(client: PoolClient, preferredAsset: AssetType): Promise<AssetType> {
+    const keys = [
+      `asset.${preferredAsset}.enabled`,
+      "asset.USDT_TRC20.enabled",
+      "asset.USDT_ERC20.enabled"
+    ];
+    const result = await client.query<AdminSettingRow>(
+      `
+        SELECT key, value
+        FROM admin_settings
+        WHERE key = ANY($1)
+      `,
+      [keys]
+    );
+    const configured = new Map(result.rows.map((row) => [row.key, row.value]));
+    const isEnabled = (asset: AssetType) => {
+      const configuredValue = configured.get(`asset.${asset}.enabled`);
+      if (typeof configuredValue === "boolean") {
+        return configuredValue;
+      }
+
+      return DEFAULT_ASSET_ROUTE_SETTINGS.find((assetSetting) => assetSetting.asset === asset)?.enabled ?? false;
+    };
+
+    if (isEnabled(preferredAsset)) {
+      return preferredAsset;
+    }
+
+    if (isEnabled("USDT_TRC20")) {
+      return "USDT_TRC20";
+    }
+
+    if (isEnabled("USDT_ERC20")) {
+      return "USDT_ERC20";
+    }
+
+    return preferredAsset;
   }
 
   private async ensureWalletsWithClient(client: PoolClient, userId: string) {

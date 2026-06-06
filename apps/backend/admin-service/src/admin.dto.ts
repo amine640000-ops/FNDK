@@ -172,6 +172,20 @@ export class AdjustUserBalanceDto {
   note?: string;
 }
 
+export class AdjustUserGainDto {
+  @IsIn(["add", "subtract", "set"])
+  operation!: "add" | "subtract" | "set";
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  amount!: number;
+
+  @IsOptional()
+  @IsString()
+  note?: string;
+}
+
 export class UpdateUserStatusDto {
   @IsBoolean()
   isActive!: boolean;

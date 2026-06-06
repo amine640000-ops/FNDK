@@ -25,6 +25,7 @@ import {
 import type { AccessTokenPayload } from "@nevo/shared-types";
 import {
   AdjustUserBalanceDto,
+  AdjustUserGainDto,
   GrantLuckyDrawSpinsDto,
   RevokeLuckyDrawSpinDto,
   UpdateAdminSettingsDto,
@@ -123,6 +124,24 @@ export class AdminController {
   @Patch("users/:userId/balance")
   adjustUserBalance(@Param("userId") userId: string, @Body() body: AdjustUserBalanceDto) {
     return this.adminService.adjustUserBalance(userId, body);
+  }
+
+  @Patch("users/:userId/gain")
+  adjustUserGain(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param("userId") userId: string,
+    @Body() body: AdjustUserGainDto
+  ) {
+    return this.adminService.adjustUserGain(user.sub, userId, body);
+  }
+
+  @Patch("users/:userId/team-gain")
+  adjustUserTeamGain(
+    @CurrentUser() user: AccessTokenPayload,
+    @Param("userId") userId: string,
+    @Body() body: AdjustUserGainDto
+  ) {
+    return this.adminService.adjustUserTeamGain(user.sub, userId, body);
   }
 
   @Patch("users/:userId/status")

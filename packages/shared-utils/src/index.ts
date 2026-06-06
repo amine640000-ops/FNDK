@@ -13,6 +13,12 @@ export const SUPPORTED_ASSETS = [
 
 export const DEFAULT_ENABLED_ASSETS = ["USDT_TRC20", "USDT_ERC20"] as const;
 
+export const TEAM_PROFIT_COMMISSION_RATES = {
+  1: 17,
+  2: 8,
+  3: 3
+} as const;
+
 export const DEFAULT_ASSET_LABELS: Record<AssetType, string> = {
   BTC: "BTC",
   ETH: "ETH",

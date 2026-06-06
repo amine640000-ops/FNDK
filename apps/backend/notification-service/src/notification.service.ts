@@ -34,7 +34,7 @@ export class NotificationService implements OnModuleInit {
         );
       },
       "profit.distributed": async ({ userId, profit, strategy }: RabbitEventMap["profit.distributed"]) => {
-        await this.insertNotification(userId, "Profit credited", `${profit.toFixed(2)} USD was credited from ${strategy}.`);
+        await this.insertNotification(userId, "Profit credited", `${profit.toFixed(2)} trading profit was credited from ${strategy}.`);
       },
       "vip.upgraded": async ({ userId, nextTierId }: RabbitEventMap["vip.upgraded"]) => {
         const tier = await getOne<{ name: string }>("SELECT name FROM vip_tiers WHERE id = $1", [nextTierId]);
